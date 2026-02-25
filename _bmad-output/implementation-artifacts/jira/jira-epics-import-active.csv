@@ -1,0 +1,34 @@
+"Summary","Work Type","Description","Labels"
+"Epic 0: Foundation & Shared Platform","Epic","Canonical source: _bmad-output/planning-artifacts/epics.md
+Epic number: 0
+Story count (canonical): 5","bmad,epic-0,epic-ready"
+"Epic 1: Channel Auth & Session Platform","Epic","Canonical source: _bmad-output/planning-artifacts/epics.md
+Epic number: 1
+Story count (canonical): 6","bmad,epic-1,epic-ready"
+"Epic 2: Account Domain & Inquiry APIs","Epic","Canonical source: _bmad-output/planning-artifacts/epics.md
+Epic number: 2
+Story count (canonical): 6","bmad,epic-2,epic-ready"
+"Epic 3: External Gateway Contract (FEP)","Epic","Canonical source: _bmad-output/planning-artifacts/epics.md
+Epic number: 3
+Story count (canonical): 6","bmad,epic-3,epic-ready"
+"Epic 4: Channel Transfer Session & OTP FSM","Epic","Canonical source: _bmad-output/planning-artifacts/epics.md
+Epic number: 4
+Story count (canonical): 8","bmad,epic-4,epic-ready"
+"Epic 5: Account Ledger, Limits, Idempotency, Concurrency","Epic","Canonical source: _bmad-output/planning-artifacts/epics.md
+Epic number: 5
+Story count (canonical): 7","bmad,epic-5,epic-ready"
+"Epic 6: External Resilience, Chaos, Replay/Recovery Ops","Epic","Canonical source: _bmad-output/planning-artifacts/epics.md
+Epic number: 6
+Story count (canonical): 7","bmad,epic-6,epic-ready"
+"Epic 7: Channel Notifications, Admin, Channel Security","Epic","Canonical source: _bmad-output/planning-artifacts/epics.md
+Epic number: 7
+Story count (canonical): 7","bmad,epic-7,epic-ready"
+"Epic 8: Cross-system Security, Audit, Observability","Epic","Canonical source: _bmad-output/planning-artifacts/epics.md
+Epic number: 8
+Story count (canonical): 6","bmad,epic-8,epic-ready"
+"Epic 9: Integration Orchestration & End-to-End Recovery","Epic","Canonical source: _bmad-output/planning-artifacts/epics.md
+Epic number: 9
+Story count (canonical): 6","bmad,epic-9,epic-ready"
+"Epic 10: Full Validation & Release Readiness","Epic","Canonical source: _bmad-output/planning-artifacts/epics.md
+Epic number: 10
+Story count (canonical): 6","bmad,epic-10,epic-ready"
