@@ -1,0 +1,140 @@
+# generated: 2026-02-25 19:58
+# project: fix
+# project_key: FIX
+# tracking_system: file-system
+# story_location: {project-root}/_bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created, ready for development
+#   - in-progress: Developer actively working on implementation
+#   - review: Implementation complete, ready for review
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Mark epic as 'in-progress' when starting work on its first story
+# - SM typically creates next story ONLY after previous one is done to incorporate learnings
+# - Dev moves story to review, then code-review sets done/in-progress
+
+generated: 2026-02-25 19:58
+project: fix
+project_key: FIX
+tracking_system: file-system
+story_location: "{project-root}/_bmad-output/implementation-artifacts"
+
+development_status:
+  epic-0: in-progress
+  0-1-be-core-platform-baseline: ready-for-dev
+  0-2-be-test-ci-foundation: ready-for-dev
+  0-3-fe-frontend-foundation-scaffold: ready-for-dev
+  0-4-mob-mobile-foundation-scaffold: ready-for-dev
+  0-5-collaboration-webhook-notifications: ready-for-dev
+  epic-0-retrospective: optional
+
+  epic-1: in-progress
+  1-1-be-registration-login-session: ready-for-dev
+  1-2-be-logout-profile-session-security: ready-for-dev
+  1-3-fe-web-auth-flow: ready-for-dev
+  1-4-mob-mobile-auth-flow: ready-for-dev
+  1-5-be-auth-guardrails-lockout-rate-limit: ready-for-dev
+  1-6-fe-mob-auth-error-standardization: ready-for-dev
+  epic-1-retrospective: optional
+
+  epic-2: in-progress
+  2-1-schema-and-auto-account-provisioning: ready-for-dev
+  2-2-balance-and-available-balance-api: ready-for-dev
+  2-3-transfer-history-api: ready-for-dev
+  2-4-web-account-dashboard-and-history: ready-for-dev
+  2-5-mobile-account-dashboard-and-history: ready-for-dev
+  2-6-account-status-contract: ready-for-dev
+  epic-2-retrospective: optional
+
+  epic-3: in-progress
+  3-1-fep-dto-client-contract: ready-for-dev
+  3-2-external-error-taxonomy: ready-for-dev
+  3-3-referenceid-and-idempotency-policy: ready-for-dev
+  3-4-fep-status-query-api: ready-for-dev
+  3-5-contract-test-suite: ready-for-dev
+  3-6-visible-external-error-ux: ready-for-dev
+  epic-3-retrospective: optional
+
+  epic-4: in-progress
+  4-1-transfer-session-create-status-plus-ownership: ready-for-dev
+  4-2-otp-verification-policy: ready-for-dev
+  4-3-fsm-transition-governance: ready-for-dev
+  4-4-web-transfer-step-a-b: ready-for-dev
+  4-5-web-otp-plus-step-c: ready-for-dev
+  4-6-mobile-transfer-step-a-b: ready-for-dev
+  4-7-mobile-otp-plus-step-c: ready-for-dev
+  4-8-cross-client-fsm-parity-validation: ready-for-dev
+  epic-4-retrospective: optional
+
+  epic-5: in-progress
+  5-1-limit-engine: ready-for-dev
+  5-2-same-bank-ledger-posting: ready-for-dev
+  5-3-interbank-ledger-semantics: ready-for-dev
+  5-4-idempotent-posting: ready-for-dev
+  5-5-concurrency-control: ready-for-dev
+  5-6-ledger-integrity: ready-for-dev
+  5-7-visible-result-error-ux: ready-for-dev
+  epic-5-retrospective: optional
+
+  epic-6: in-progress
+  6-1-timeout-and-circuit-breaker: ready-for-dev
+  6-2-retry-boundary-policy: ready-for-dev
+  6-3-chaos-control-api: ready-for-dev
+  6-4-unknown-requery-scheduler: ready-for-dev
+  6-5-manual-replay-recovery-api: ready-for-dev
+  6-6-resilience-scenario-tests: ready-for-dev
+  6-7-degraded-operation-ux: ready-for-dev
+  epic-6-retrospective: optional
+
+  epic-7: in-progress
+  7-1-sse-stream-registry: ready-for-dev
+  7-2-notification-persistence-apis: ready-for-dev
+  7-3-web-notification-center: ready-for-dev
+  7-4-mobile-notification-feed: ready-for-dev
+  7-5-admin-session-and-audit-apis: ready-for-dev
+  7-6-web-admin-console-screens: ready-for-dev
+  7-7-channel-security-hardening: ready-for-dev
+  epic-7-retrospective: optional
+
+  epic-8: in-progress
+  8-1-audit-security-event-model: ready-for-dev
+  8-2-pii-masking-enforcement: ready-for-dev
+  8-3-correlation-id-3-hop-propagation: ready-for-dev
+  8-4-openapi-completeness: ready-for-dev
+  8-5-web-correlation-propagation-support: ready-for-dev
+  8-6-mobile-correlation-propagation-support: ready-for-dev
+  epic-8-retrospective: optional
+
+  epic-9: in-progress
+  9-1-execution-orchestration: ready-for-dev
+  9-2-end-state-normalization: ready-for-dev
+  9-3-recovery-scheduler-integration: ready-for-dev
+  9-4-cross-system-idempotency-reconciliation: ready-for-dev
+  9-5-integrated-final-state-and-retry-ux: ready-for-dev
+  9-6-integrated-final-state-and-retry-ux: ready-for-dev
+  epic-9-retrospective: optional
+
+  epic-10: in-progress
+  10-1-7-plus-1-acceptance-ci-gate: ready-for-dev
+  10-2-concurrency-performance-gate: ready-for-dev
+  10-3-fep-resilience-drills: ready-for-dev
+  10-4-full-stack-smoke-and-rehearsal: ready-for-dev
+  10-5-web-release-readiness-pack: ready-for-dev
+  10-6-mobile-release-readiness-pack: ready-for-dev
+  epic-10-retrospective: optional
+

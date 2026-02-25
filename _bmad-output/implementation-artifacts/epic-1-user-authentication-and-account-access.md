@@ -7,6 +7,12 @@ Users can log in and maintain their session via Spring Session Redis (JSESSIONID
 **FRs covered:** FR-01, FR-02, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-52  
 **Architecture requirements:** SessionConfig(@EnableRedisHttpSession), SpringSessionBackedSessionRegistry, CorrelationIdFilter, AuthService, OtpService (base), SecurityConfig, CorsConfig, Member Entity, Account Entity, ChannelIntegrationTestBase, CoreBankIntegrationTestBase  
 **Frontend:** LoginPage.tsx, RegisterPage.tsx, DashboardPage.tsx, App.tsx(Router), PrivateRoute, NavigationBar, useAuthStore.ts, useAccount.ts, lib/axios.ts(SSE + 401 handler)
+**Canonical planning source:** `_bmad-output/planning-artifacts/epics.md` (Epic 1 Story `1.1`~`1.6`)  
+**Canonical tracking source:** `_bmad-output/implementation-artifacts/sprint-status.yaml`  
+**Usage rule:** This document is supplemental technical context; do not use its `1.1`~`1.9` numbering as canonical story IDs or sprint-status keys.  
+**Numbering notice:** Scope overlaps exist for `1.1`~`1.6`, and this document includes additional references `1.7`~`1.9`; map implementation work to canonical Story files only.  
+**Alignment hint:** Canonical Story 1.1/1.2/1.3/1.4/1.5/1.6 should consume relevant technical details from this document without replacing canonical ownership.  
+**Verification baseline:** Party-mode QA reinforcement is reflected in canonical Story files and can be checked with `node ./scripts/qa-epic1-quinn-check.mjs`.
 
 > **Common Error Format (GlobalExceptionHandler):** All error responses follow the `{ code: string, message: string, timestamp: ISO8601, path: string }` structure. `@ControllerAdvice` `GlobalExceptionHandler` handles this consistently.
 
