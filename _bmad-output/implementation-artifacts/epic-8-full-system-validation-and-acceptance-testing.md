@@ -1,0 +1,204 @@
+# Epic 8: Full System Validation & Acceptance Testing
+
+## Summary
+
+Verify that all features implemented in Epics 0~7 work correctly in an integrated environment. 7+1 Acceptance Scenarios must pass CI, JaCoCo threshold met, Ledger Integrity verified, Concurrency tests passed, and Docker Compose full-stack smoke test passed. Completion of this Epic = MVP Complete = Ready for GitHub release.
+
+**FRs covered:** (No new features — Validation of existing Epics)  
+**NFRs covered:** NFR-R1(7 Scenarios CI), NFR-T1~T7(JaCoCo + Timeout), NFR-D1(Ledger Integrity), NFR-P4(Concurrency 5s), NFR-P6(Error Response SLA), NFR-S4(Internal Network Isolation)
+
+**Validation Scope:**
+- Scenario #1: Same-bank E2E → TransferControllerIntegrationTest
+- Scenario #2: 10-thread Concurrent Transfer → ConcurrentTransferIntegrationTest @Timeout(10)
+- Scenario #3: OTP Failure → TransferSessionServiceTest
+- Scenario #4: duplicate clientRequestId → IdempotencyIntegrationTest
+- Scenario #5: FEP timeout → CB OPEN → FepCircuitBreakerIntegrationTest
+- Scenario #6: Session Refusal after Logout → AuthControllerIntegrationTest
+- Scenario #7: SUM(DEBIT)==SUM(CREDIT) → LedgerIntegrityIntegrationTest
+- Scenario #8: Direct Call without X-Internal-Secret → SecurityBoundaryTest
+
+---
+
+## Story 8.1: Acceptance Scenario Suite (7+1)
+
+As a **project maintainer**,  
+I want all 7+1 acceptance scenarios to pass in CI on every commit to main,  
+So that the system's correctness claims are continuously verified.
+
+**Depends On:** All Epics 1~6 completed, Story 7.3 (README completed)
+
+### Acceptance Criteria
+
+**Given** Scenario #1 (Same-bank E2E happy path) — `TransferControllerIntegrationTest`  
+**When** `POST /session → POST /otp → POST /otp/verify → POST /execute` full flow  
+**Then** `ChannelIntegrationTestBase @BeforeEach` performs login + obtains JSESSIONID cookie  
+**And** HTTP 200 COMPLETED, returns `transactionId`, verifies DB TransferHistory 2 records (DEBIT+CREDIT) (NFR-R1)
+
+**Given** Scenario #3 (OTP failure blocks transfer) — `TransferSessionOtpIntegrationTest`  
+**When** Incorrect OTP entered 3 times  
+**Then** Include `@DisplayName("Scenario #3: OTP failure blocks transfer")` annotation  
+**And** Session status `FAILED`, execute call returns HTTP 409 `TRF-010`  
+**And** Verify no actual balance change
+
+**Given** Scenario #4a (Same member + Duplicate clientRequestId) — `IdempotencyIntegrationTest.SameMemberIdempotency`  
+**When** Same member attempts session creation twice with same `clientRequestId`  
+**Then** 2nd request HTTP 200 — Returns existing sessionId (Idempotent)  
+**And** Only 1 session record in DB
+
+**Given** Scenario #4b (Different member + Duplicate clientRequestId) — `IdempotencyIntegrationTest.CrossMemberSecurity`  
+**When** Different member attempts session creation using another's `clientRequestId`  
+**Then** HTTP 403 `{ code: "AUTH-007" }` (Security Boundary)  
+**And** Only 1 session record in DB
+
+**Given** Scenario #5 (FEP timeout → CB OPEN) — `FepCircuitBreakerIntegrationTest`  
+**When** WireMock FEP stub timeouts 3 times  
+**Then** 4th call verifies WireMock not called + Verify CB state `OPEN`
+
+**Given** Scenario #6 (Session invalidated after logout) — `AuthControllerIntegrationTest`  
+**When** Call protected API with same JSESSIONID after logout  
+**Then** HTTP 401 `UNAUTHORIZED` (Verify Redis Spring Session key deletion)
+
+**Given** Scenario #7 (Ledger Integrity) — `LedgerIntegrityTest` (corebank-service integration test)  
+**When** Aggregate `core_db.transactions` after N completed transfers + M compensating transactions  
+**Then** `SUM(amount WHERE type='DEBIT') == SUM(amount WHERE type='CREDIT') + SUM(amount WHERE type='COMPENSATING_CREDIT')`  
+**And** Verify `transactionId IS NOT NULL` for all `transfer_history` where `status='COMPLETED'`  
+**And** Execute in `ci-corebank.yml`
+
+**Given** Scenario #8 (Security boundary) — `SecurityBoundaryTest (@Nested)`  
+**When** Direct call to `corebank-service:8081/internal/v1/**` without X-Internal-Secret header  
+**Then** HTTP 403
+
+**Given** `ci.yml` GitHub Actions (NFR-R1)  
+**When** `push main` / `pull_request → main`  
+**Then** PR merge allowed only if all 7+1 scenarios pass  
+**And** JaCoCo threshold check — `main` branch only condition:
+```yaml
+- name: Check JaCoCo Coverage
+  if: github.ref == 'refs/heads/main'
+  run: ./gradlew jacocoTestCoverageVerification
+```
+**And** New `@Tag("concurrency")` — Concurrency correctness test (Blocking execution on PR + main)  
+**And** Separate `@Tag("slow")` tests into distinct CI step:
+```yaml
+- name: Run slow tests
+  if: github.ref == 'refs/heads/main'
+  run: ./gradlew test -Pgroups=slow
+```
+**And** Include `@DisplayName("Scenario #N: ...")` annotation in each scenario test class
+
+**Given** `ci-channel.yml`, `ci-corebank.yml`, `ci-fep.yml`, `ci-frontend.yml` (4 workflows)  
+**When** Push changes to each service  
+**Then** Run CI only for that service in parallel  
+**And** JaCoCo Reports: channel ≥ 70% (NFR-T1), corebank ≥ 80% (NFR-T2), fep ≥ 60% (NFR-T3)
+
+---
+
+## Story 8.2: Performance & Concurrency Validation
+
+As a **system**,  
+I want concurrent transfer attempts to complete without deadlock or data corruption,  
+So that the pessimistic locking strategy is proven under load.
+
+**Depends On:** Story 4.1 (PESSIMISTIC_WRITE), Story 8.1
+
+### Acceptance Criteria
+
+**Given** `ConcurrentTransferIntegrationTest` (Testcontainers MySQL — Scenario #2)  
+**When** 10 threads concurrently attempt transfer of ₩200,000 × 5 times from same account (`accountId=1`, balance ₩1,000,000) using `ExecutorService` + `CountDownLatch`  
+**Then** Include `@DisplayName("Scenario #2: Concurrent transfer — PESSIMISTIC_WRITE integrity")` annotation  
+**And** Apply `@Tag("concurrency")`  
+**And** Exactly 5 transfers `COMPLETED`, remaining `FAILED` (due to Insufficient Balance or Lock Timeout)  
+**And** Final balance = ₩0 (No negative balance, NFR-D1)  
+**And** Total `TransferHistory` DEBIT sum = ₩1,000,000  
+**And** Total execution time ≤ 20s (Generous for 2-core CI runner) — Apply `@Timeout(20)` annotation
+
+**Given** p95 Response Time Validation  
+**When** Measure Account List query after 50 warm-up calls  
+**Then** Apply `@Tag("perf")` — `main` branch only  
+**And** p95 ≤ 500ms (NFR-P1)
+
+**Given** Error Response (4xx, 5xx) SLA Measurement  
+**When** Measure 50 invalid login attempts (`@Tag("perf")`)  
+**Then** p95 ≤ 500ms (NFR-P6)
+
+**Given** `@Lock PESSIMISTIC_WRITE` lock hold time measurement test  
+**When** Measure execution time of single transfer  
+**Then** Measure using `StopWatch`:
+```java
+StopWatch sw = new StopWatch();
+sw.start();
+transferService.executeTransfer(sessionId, memberId);
+sw.stop();
+log.info("Lock hold time: {}ms", sw.getTotalTimeMillis());
+assertThat(sw.getTotalTimeMillis()).isLessThan(100);
+```
+**And** Verify lock hold time ≤ 100ms (NFR-P5)
+
+---
+
+## Story 8.3: Docker Integration & Final Polish
+
+As a **developer**,  
+I want the full Docker Compose stack to pass smoke tests and the README to be demo-ready,  
+So that any interviewer can verify the system within 5 minutes of cloning the repository.
+
+**Depends On:** Story 8.1, Story 7.3
+
+### Acceptance Criteria
+
+**Given** `docker compose up` (using `.env.example` based `.env`)  
+**When** Startup within 120s (NFR-P3 — Increased 90s → 120s due to Vault + vault-init addition)  
+**Then** `GET localhost:8080/actuator/health` → `{"status":"UP"}` (channel-service)  
+**And** `GET localhost:8081/actuator/health` → `{"status":"UP"}` (corebank-service)  
+**And** `GET localhost:8082/actuator/health` → `{"status":"UP"}` (fep-service)  
+**And** `GET localhost:8080/swagger-ui.html` → HTTP 200 (NFR-O1)
+
+**Given** Docker Compose Port Exposure Structure  
+**When** Check `compose.yml` (base)  
+**Then** `corebank-service`, `fep-service`, `vault` services have **NO** `ports:` section — No direct external access  
+**And** Dev ports (`8081:8081`, `8082:8082`, `8200:8200`) opened only in `docker-compose.override.yml`  
+**And** CI Environment: `docker compose -f compose.yml up` (without override) — No internal service exposure
+
+**Given** Docker Compose Network Isolation Verification  
+**When** `curl localhost:8081` from host (base compose without override)  
+**Then** Connection refused (NFR-S4 — Internal service isolation)
+
+**Given** JSON Log Parsing Verification  
+**When** Run `docker compose logs channel-service | head -5 | python3 -c "import sys,json; [json.loads(l) for l in sys.stdin]"`  
+**Then** JSON parsing succeeds without error (NFR-L1)  
+**And** Windows alternative (`jq`):
+```bash
+docker compose logs channel-service | head -5 | jq -R 'fromjson?' | jq -s '. | length'
+```
+
+**Given** Seed Data Verification  
+**When** Login test after `docker compose up`  
+**Then** `POST /api/v1/auth/login` with `{ email: "user@fix.com", password: "Test1234!" }` → HTTP 200  
+**And** `POST /api/v1/auth/login` with `{ email: "admin@fix.com", password: "Admin1234!" }` → HTTP 200
+
+**Given** 5 Concurrent User Sessions Simulation (NFR-SC1)  
+**When** Concurrent login from 5 independent browser/curl sessions  
+**Then** All issue independent session cookies, each account query returns normal response
+
+**Given** Dependabot Configuration (NFR-S6)  
+**When** Check `.github/dependabot.yml`  
+**Then** Gradle + pnpm dependency auto-update config exists  
+**And** `dependencyCheckAnalyze` — separated into weekly scheduled workflow:
+```yaml
+# .github/workflows/security-scan.yml
+schedule:
+  - cron: '0 2 * * 0'   # Every Sunday 02:00 UTC
+```
+**And** Verify `main` branch has no dependencies with CVSS ≥ 7.0
+
+**Given** README Quick Start Final Review  
+**When** Execute steps in fresh clone environment  
+**Then** Verify full stack startup with only 3 commands  
+**And** Login credentials (`user@fix.com / Test1234!`) explicitly stated in README  
+**And** 5-minute Verification Checklist:
+```
+□ docker compose up (Complete < 2min)
+□ localhost:8080/swagger-ui.html → HTTP 200
+□ Login → Transfer → SSE Notification Receive (Complete < 2min)
+□ POST /fep-internal/simulate-failures?count=3 → Check CB OPEN (< 1min)
+```
