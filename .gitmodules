@@ -1,0 +1,9 @@
+[submodule "BE"]
+	path = BE
+	url = https://github.com/DoYouLikeFIx/FIXYZ-BE.git
+[submodule "FE"]
+	path = FE
+	url = https://github.com/DoYouLikeFIx/FIXYZ-FE.git
+[submodule "MOB"]
+	path = MOB
+	url = https://github.com/DoYouLikeFIx/FIXYZ-MOB.git
