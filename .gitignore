@@ -3,9 +3,11 @@ _bmad-output/bmb-creations
 _bmad-output/test-artifacts
 
 .agent
+.agents
 .claude
 .cursor
 .gemini
 .github/agents
 .github/prompts
 .github/copilot-instructions.md
+node_modules/
