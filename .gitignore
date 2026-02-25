@@ -1,0 +1,12 @@
+_bmad
+_bmad-output/bmb-creations
+_bmad-output/implementation-artifacts
+_bmad-output/test-artifacts
+
+.agent
+.claude
+.cursor
+.gemini
+.github/agents
+.github/prompts
+.github/copilot-instructions.md

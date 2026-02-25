@@ -1,0 +1,1668 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FIX — Design Direction Showcase</title>
+    <style>
+      /* ============================================================
+       Step 8 globals.css 토큰 (인라인 — 의존성 제로)
+       ============================================================ */
+      :root {
+        --radius: 0.5rem;
+
+        --primary: #003087;
+        --primary-hover: #0041b8;
+        --primary-active: #002066;
+        --primary-foreground: #ffffff;
+
+        --destructive: #dc2626;
+        --success: #16a34a;
+        --warning: #d97706;
+
+        --background: #f1f5f9;
+        --surface: #ffffff;
+        --border: #e2e8f0;
+        --muted: #64748b;
+        --foreground: #0f172a;
+
+        --disabled: #cbd5e1;
+        --disabled-foreground: #94a3b8;
+
+        --color-accent: #eff6ff;
+        --color-accent-border: #bfdbfe;
+
+        --font-sans:
+          "Apple SD Gothic Neo", "맑은 고딕", "Malgun Gothic", system-ui,
+          -apple-system, sans-serif;
+        --font-mono:
+          ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, monospace;
+      }
+
+      /* ============================================================
+       Reset & Base
+       ============================================================ */
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: var(--font-sans);
+        background: var(--background);
+        color: var(--foreground);
+        font-size: 14px;
+        line-height: 1.5;
+      }
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      /* ============================================================
+       Direction Navigator (상단 탭)
+       ============================================================ */
+      .dir-nav {
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        padding: 0 24px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        overflow-x: auto;
+        position: sticky;
+        top: 0;
+        z-index: 100;
+      }
+      .dir-nav h1 {
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--primary);
+        margin-right: 24px;
+        white-space: nowrap;
+      }
+      .dir-tab {
+        padding: 14px 16px;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--muted);
+        border: none;
+        background: transparent;
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+        white-space: nowrap;
+        transition:
+          color 0.15s,
+          border-color 0.15s;
+      }
+      .dir-tab:hover {
+        color: var(--foreground);
+      }
+      .dir-tab.active {
+        color: var(--primary);
+        border-bottom-color: var(--primary);
+        font-weight: 600;
+      }
+
+      /* ============================================================
+       Direction Sections
+       ============================================================ */
+      .direction {
+        display: none;
+        padding: 32px 24px;
+      }
+      .direction.active {
+        display: block;
+      }
+
+      .direction-title {
+        font-size: 20px;
+        font-weight: 700;
+        margin-bottom: 4px;
+      }
+      .direction-tagline {
+        font-size: 13px;
+        color: var(--muted);
+        margin-bottom: 24px;
+      }
+
+      /* Screen grid: 2×2 */
+      .screen-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+        gap: 24px;
+      }
+      .screen-label {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        margin-bottom: 8px;
+      }
+
+      /* ============================================================
+       FIX App Shell (재사용)
+       ============================================================ */
+      .app-shell {
+        background: var(--background);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        overflow: hidden;
+        min-height: 480px;
+      }
+
+      /* Navigation */
+      .app-nav {
+        height: 56px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        padding: 0 16px;
+        gap: 12px;
+      }
+      .app-nav-logo {
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--primary);
+      }
+      .app-nav-title {
+        font-size: 14px;
+        font-weight: 600;
+        flex: 1;
+      }
+      .app-nav-link {
+        font-size: 12px;
+        color: var(--muted);
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .app-nav-session {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--muted);
+        background: var(--background);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 2px 6px;
+      }
+      .app-nav-breadcrumb {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .app-nav-breadcrumb .current {
+        color: var(--foreground);
+        font-weight: 500;
+      }
+      .app-nav-breadcrumb .sep {
+        margin: 0 4px;
+      }
+
+      .app-content {
+        padding: 24px 16px;
+      }
+
+      /* ============================================================
+       Components
+       ============================================================ */
+      /* Buttons */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        height: 40px;
+        padding: 0 16px;
+        border-radius: var(--radius);
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        border: 1px solid transparent;
+        transition: background 0.15s;
+      }
+      .btn-primary {
+        background: var(--primary);
+        color: var(--primary-foreground);
+        border-color: var(--primary);
+      }
+      .btn-primary:hover {
+        background: var(--primary-hover);
+      }
+      .btn-outline {
+        background: transparent;
+        color: var(--foreground);
+        border-color: var(--border);
+      }
+      .btn-outline:hover {
+        background: var(--background);
+      }
+      .btn-full {
+        width: 100%;
+      }
+      .btn-sm {
+        height: 32px;
+        padding: 0 12px;
+        font-size: 12px;
+      }
+
+      /* Input */
+      .form-group {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .form-label {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--foreground);
+      }
+      .form-input {
+        height: 40px;
+        padding: 0 12px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        font-size: 14px;
+        font-family: var(--font-sans);
+        background: var(--surface);
+        color: var(--foreground);
+        outline: none;
+      }
+      .form-input:focus {
+        border-color: var(--primary);
+        box-shadow: 0 0 0 2px
+          color-mix(in oklch, var(--primary) 20%, transparent);
+      }
+
+      /* Card */
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 16px;
+      }
+      .card-xl {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 32px;
+      }
+      .card-lg {
+        padding: 24px;
+      }
+
+      /* Badge */
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 8px;
+        border-radius: 9999px;
+        font-size: 11px;
+        font-weight: 600;
+        line-height: 1.5;
+      }
+      .badge-success {
+        background: #dcfce7;
+        color: #15803d;
+      }
+      .badge-error {
+        background: #fee2e2;
+        color: #b91c1c;
+      }
+      .badge-warning {
+        background: #fef9c3;
+        color: #a16207;
+      }
+      .badge-neutral {
+        background: var(--background);
+        color: var(--muted);
+        border: 1px solid var(--border);
+      }
+
+      /* Login Card */
+      .login-wrap {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 32px 16px;
+      }
+      .login-card {
+        width: 100%;
+        max-width: 360px;
+      }
+      .login-logo {
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--primary);
+        margin-bottom: 4px;
+      }
+      .login-subtitle {
+        font-size: 13px;
+        color: var(--muted);
+        margin-bottom: 24px;
+      }
+      .login-form {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .login-hint {
+        font-size: 12px;
+        color: var(--muted);
+        text-align: center;
+        margin-top: 12px;
+      }
+      .login-hint code {
+        font-family: var(--font-mono);
+        background: var(--background);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 1px 5px;
+      }
+
+      /* Account Card */
+      .account-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        cursor: pointer;
+        transition: box-shadow 0.15s;
+      }
+      .account-card:hover {
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      }
+      .account-card-row1 {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .account-name {
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .account-balance {
+        font-size: 20px;
+        font-weight: 700;
+        font-family: var(--font-mono);
+        color: var(--primary);
+      }
+      .account-number {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .account-card-row3 {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .chevron {
+        color: var(--muted);
+        font-size: 16px;
+      }
+
+      /* AccountDetail Hero */
+      .detail-hero {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 20px;
+        margin-bottom: 16px;
+      }
+      .detail-hero-type {
+        font-size: 13px;
+        color: var(--muted);
+        margin-bottom: 4px;
+      }
+      .detail-hero-balance {
+        font-size: 28px;
+        font-weight: 700;
+        font-family: var(--font-mono);
+        color: var(--foreground);
+        margin-bottom: 4px;
+      }
+      .detail-hero-number {
+        font-family: var(--font-mono);
+        font-size: 13px;
+        color: var(--muted);
+        margin-bottom: 16px;
+      }
+
+      /* Transaction Table */
+      .tx-table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      .tx-table th {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--muted);
+        text-align: left;
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--border);
+        background: var(--background);
+      }
+      .tx-table td {
+        font-size: 12px;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--border);
+        vertical-align: middle;
+      }
+      .tx-amount-in {
+        color: var(--success);
+        font-family: var(--font-mono);
+        font-weight: 600;
+      }
+      .tx-amount-out {
+        color: var(--foreground);
+        font-family: var(--font-mono);
+      }
+      .tx-trace-link {
+        color: var(--muted);
+        font-size: 14px;
+        cursor: pointer;
+      }
+      .tx-trace-link:hover {
+        color: var(--primary);
+      }
+      .tx-date {
+        font-family: var(--font-mono);
+        color: var(--muted);
+      }
+
+      /* Transfer Dialog */
+      .dialog-overlay {
+        background: rgba(15, 23, 42, 0.5);
+        padding: 24px 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .dialog {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 24px;
+        width: 100%;
+        max-width: 400px;
+      }
+      .dialog-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 20px;
+      }
+      .dialog-title {
+        font-size: 18px;
+        font-weight: 600;
+      }
+      .dialog-close {
+        width: 28px;
+        height: 28px;
+        border: none;
+        background: var(--background);
+        border-radius: var(--radius);
+        cursor: pointer;
+        color: var(--muted);
+        font-size: 16px;
+      }
+
+      /* Stepper */
+      .stepper {
+        display: flex;
+        align-items: center;
+        margin-bottom: 20px;
+        gap: 0;
+      }
+      .step-item {
+        display: flex;
+        align-items: center;
+        flex: 1;
+      }
+      .step-circle {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: 700;
+        flex-shrink: 0;
+      }
+      .step-circle.done {
+        background: var(--primary);
+        color: white;
+      }
+      .step-circle.active {
+        background: var(--primary);
+        color: white;
+        box-shadow: 0 0 0 3px
+          color-mix(in oklch, var(--primary) 25%, transparent);
+      }
+      .step-circle.pending {
+        background: var(--background);
+        color: var(--muted);
+        border: 2px solid var(--border);
+      }
+      .step-line {
+        flex: 1;
+        height: 2px;
+        background: var(--border);
+        margin: 0 4px;
+      }
+      .step-line.done {
+        background: var(--primary);
+      }
+
+      /* Accent Card (Summary) */
+      .accent-card {
+        background: var(--color-accent);
+        border: 1px solid var(--color-accent-border);
+        border-radius: var(--radius);
+        padding: 16px;
+      }
+      .accent-label {
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 4px;
+      }
+      .accent-value {
+        font-family: var(--font-mono);
+        font-size: 13px;
+        color: var(--foreground);
+        word-break: break-all;
+      }
+
+      /* Transfer Complete */
+      .complete-icon {
+        text-align: center;
+        font-size: 40px;
+        margin-bottom: 8px;
+      }
+      .complete-title {
+        text-align: center;
+        font-size: 20px;
+        font-weight: 700;
+        margin-bottom: 4px;
+      }
+      .complete-subtitle {
+        text-align: center;
+        font-size: 13px;
+        color: var(--muted);
+        margin-bottom: 20px;
+      }
+
+      /* OTP Input Group */
+      .otp-group {
+        display: flex;
+        gap: 8px;
+        justify-content: center;
+        margin: 16px 0;
+      }
+      .otp-input {
+        width: 40px;
+        height: 48px;
+        text-align: center;
+        font-size: 20px;
+        font-family: var(--font-mono);
+        font-weight: 600;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--surface);
+        color: var(--foreground);
+        outline: none;
+      }
+      .otp-input.filled {
+        border-color: var(--primary);
+        background: color-mix(in oklch, var(--primary) 5%, white);
+      }
+
+      /* Error Message */
+      .error-msg {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 12px;
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        border-radius: var(--radius);
+        font-size: 13px;
+        color: var(--destructive);
+      }
+
+      /* Divider */
+      .divider {
+        height: 1px;
+        background: var(--border);
+        margin: 16px 0;
+      }
+
+      /* Utility */
+      .mono {
+        font-family: var(--font-mono);
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .space-y-3 > * + * {
+        margin-top: 12px;
+      }
+      .space-y-4 > * + * {
+        margin-top: 16px;
+      }
+      .space-y-2 > * + * {
+        margin-top: 8px;
+      }
+      .flex {
+        display: flex;
+      }
+      .items-center {
+        align-items: center;
+      }
+      .justify-between {
+        justify-content: space-between;
+      }
+      .gap-2 {
+        gap: 8px;
+      }
+      .text-sm {
+        font-size: 13px;
+      }
+      .text-xs {
+        font-size: 11px;
+      }
+      .font-semibold {
+        font-weight: 600;
+      }
+
+      /* ============================================================
+       Direction-specific overrides
+       ============================================================ */
+      /* D4: Table layout */
+      .dir4 .tx-table {
+        font-size: 11px;
+      }
+
+      /* ============================================================
+       Footer note
+       ============================================================ */
+      .showcase-footer {
+        text-align: center;
+        padding: 32px;
+        font-size: 12px;
+        color: var(--muted);
+        border-top: 1px solid var(--border);
+        margin-top: 48px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ============================================================
+     Direction Navigator
+     ============================================================ -->
+    <nav class="dir-nav">
+      <h1>FIX Design Directions</h1>
+      <button class="dir-tab" onclick="showDir(1)">D1: Minimal Trust</button>
+      <button class="dir-tab" onclick="showDir(2)">D2: Architecture</button>
+      <button class="dir-tab" onclick="showDir(3)">D3: Toss-Card</button>
+      <button class="dir-tab" onclick="showDir(4)">D4: Data-Dense</button>
+      <button class="dir-tab" onclick="showDir(5)">D5: Progressive</button>
+      <button class="dir-tab active" onclick="showDir(6)">D6: Hybrid ✦</button>
+    </nav>
+
+    <!-- ============================================================
+     Direction 1: Minimal Trust
+     ============================================================ -->
+    <section class="direction" id="dir-1">
+      <p class="direction-title">Direction 1 — Minimal Trust</p>
+      <p class="direction-tagline">
+        Korean institutional banking, distilled. Maximum whitespace, zero noise.
+      </p>
+      <div class="screen-grid">
+        <!-- Login -->
+        <div>
+          <p class="screen-label">Login</p>
+          <div class="app-shell">
+            <div class="app-nav">
+              <span class="app-nav-logo">FIX</span>
+            </div>
+            <div class="login-wrap">
+              <div class="login-card card-xl">
+                <div class="login-logo">FIX</div>
+                <div class="login-subtitle">
+                  Korean Banking Architecture Simulator
+                </div>
+                <div class="login-form">
+                  <div class="form-group">
+                    <label class="form-label">아이디</label>
+                    <input class="form-input" placeholder="demo" />
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">비밀번호</label>
+                    <input
+                      class="form-input"
+                      type="password"
+                      placeholder="••••••••"
+                    />
+                  </div>
+                  <button class="btn btn-primary btn-full">로그인</button>
+                </div>
+                <p class="login-hint">
+                  테스트 계정: <code>demo</code> / <code>demo1234</code>
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- AccountList -->
+        <div>
+          <p class="screen-label">Account List</p>
+          <div class="app-shell">
+            <div class="app-nav">
+              <span class="app-nav-logo">FIX</span>
+              <span class="app-nav-title">내 계좌</span>
+            </div>
+            <div class="app-content space-y-3">
+              <div class="account-card">
+                <div class="account-card-row1">
+                  <span class="badge badge-neutral">입출금</span>
+                </div>
+                <div class="account-balance">₩5,420,000</div>
+                <div class="account-card-row3">
+                  <span class="account-number mono">110-234-5678-90</span>
+                  <span class="chevron">›</span>
+                </div>
+              </div>
+              <div class="account-card">
+                <div class="account-card-row1">
+                  <span class="badge badge-neutral">적금</span>
+                </div>
+                <div class="account-balance">₩12,300,000</div>
+                <div class="account-card-row3">
+                  <span class="account-number mono">220-345-6789-01</span>
+                  <span class="chevron">›</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+     Direction 2: Architecture Showcase
+     ============================================================ -->
+    <section class="direction" id="dir-2">
+      <p class="direction-title">Direction 2 — Architecture Showcase</p>
+      <p class="direction-tagline">
+        개발자가 만든 은행 — 기술 증거를 전면 배치. Actuator 상시 노출, trace ID
+        직접 링크.
+      </p>
+      <div class="screen-grid">
+        <!-- Navigation with session + actuator -->
+        <div>
+          <p class="screen-label">Navigation (with Actuator + Session Timer)</p>
+          <div class="app-shell" style="min-height: 80px">
+            <div class="app-nav">
+              <span class="app-nav-logo"
+                >FIX
+                <span
+                  style="font-size: 11px; font-weight: 400; color: var(--muted)"
+                  >[β]</span
+                ></span
+              >
+              <span style="flex: 1"></span>
+              <span
+                class="app-nav-link"
+                style="color: var(--muted); font-size: 12px; margin-right: 12px"
+              >
+                Actuator <span style="font-size: 10px">↗</span>
+              </span>
+              <span class="app-nav-session">⏱ 14:52</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Transfer Complete with accent summary -->
+        <div>
+          <p class="screen-label">Transfer Complete — Accent Summary Card</p>
+          <div class="app-shell">
+            <div class="app-nav">
+              <span class="app-nav-logo">FIX</span>
+              <span class="app-nav-link">Actuator ↗</span>
+              <span class="app-nav-session">⏱ 14:52</span>
+            </div>
+            <div class="app-content">
+              <div class="complete-icon">✅</div>
+              <div class="complete-title">이체 완료</div>
+              <div class="complete-subtitle">
+                ₩50,000이 성공적으로 이체되었습니다
+              </div>
+              <div class="space-y-3">
+                <div class="accent-card">
+                  <div class="accent-label">참조번호 (Reference Number)</div>
+                  <div class="accent-value mono">REF-2025-0115-001234</div>
+                </div>
+                <div class="accent-card">
+                  <div class="accent-label">Trace ID (Actuator 추적)</div>
+                  <div
+                    class="accent-value mono"
+                    style="font-size: 11px; word-break: break-all"
+                  >
+                    00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+                  </div>
+                </div>
+              </div>
+              <div style="margin-top: 16px">
+                <button class="btn btn-outline btn-full">
+                  계좌로 돌아가기
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+     Direction 3: Toss-Inspired Card
+     ============================================================ -->
+    <section class="direction" id="dir-3">
+      <p class="direction-title">Direction 3 — Toss-Inspired Card</p>
+      <p class="direction-tagline">
+        현대 한국 핀테크. 카드 중심, 잔액 히어로, 친근한 CTA.
+      </p>
+      <div class="screen-grid">
+        <!-- AccountList Toss-style -->
+        <div>
+          <p class="screen-label">Account List (Card Hero)</p>
+          <div class="app-shell">
+            <div class="app-nav">
+              <span class="app-nav-logo">FIX</span>
+              <span class="app-nav-title">내 계좌</span>
+            </div>
+            <div class="app-content space-y-3">
+              <div
+                class="account-card"
+                style="box-shadow: 0 2px 8px rgba(0, 48, 135, 0.08)"
+              >
+                <div class="account-card-row1">
+                  <span class="account-name">입출금 계좌</span>
+                  <span class="badge badge-neutral">입출금</span>
+                </div>
+                <div class="account-balance" style="font-size: 24px">
+                  ₩5,420,000
+                </div>
+                <div class="account-card-row3">
+                  <span class="account-number">110-234-5678-90</span>
+                  <span class="chevron" style="color: var(--primary)">›</span>
+                </div>
+              </div>
+              <div class="account-card">
+                <div class="account-card-row1">
+                  <span class="account-name">정기적금</span>
+                  <span class="badge badge-neutral">적금</span>
+                </div>
+                <div class="account-balance" style="font-size: 24px">
+                  ₩12,300,000
+                </div>
+                <div class="account-card-row3">
+                  <span class="account-number">220-345-6789-01</span>
+                  <span class="chevron" style="color: var(--primary)">›</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- AccountDetail Hero + CTA -->
+        <div>
+          <p class="screen-label">Account Detail (Hero Balance)</p>
+          <div class="app-shell">
+            <div class="app-nav">
+              <span class="app-nav-logo">FIX</span>
+              <span class="app-nav-title">입출금 계좌</span>
+            </div>
+            <div class="app-content">
+              <div style="text-align: center; padding: 20px 0">
+                <div
+                  style="
+                    font-size: 13px;
+                    color: var(--muted);
+                    margin-bottom: 8px;
+                  "
+                >
+                  잔액
+                </div>
+                <div
+                  style="
+                    font-size: 32px;
+                    font-weight: 700;
+                    font-family: var(--font-mono);
+                    color: var(--foreground);
+                  "
+                >
+                  ₩5,420,000
+                </div>
+                <div
+                  style="
+                    font-size: 12px;
+                    color: var(--muted);
+                    font-family: var(--font-mono);
+                    margin-top: 4px;
+                  "
+                >
+                  110-234-5678-90
+                </div>
+              </div>
+              <button
+                class="btn btn-primary btn-full"
+                style="margin-bottom: 16px"
+              >
+                이체하기
+              </button>
+              <div class="divider"></div>
+              <div
+                style="
+                  font-size: 12px;
+                  font-weight: 600;
+                  color: var(--muted);
+                  margin-bottom: 12px;
+                "
+              >
+                최근 거래
+              </div>
+              <div class="space-y-2">
+                <div
+                  class="flex justify-between items-center"
+                  style="padding: 8px 0; border-bottom: 1px solid var(--border)"
+                >
+                  <div>
+                    <div style="font-size: 13px">홍길동</div>
+                    <div
+                      style="
+                        font-size: 11px;
+                        color: var(--muted);
+                        font-family: var(--font-mono);
+                      "
+                    >
+                      01/15 14:32
+                    </div>
+                  </div>
+                  <span class="tx-amount-in">+₩50,000</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+     Direction 4: Data-Dense Professional
+     ============================================================ -->
+    <section class="direction" id="dir-4">
+      <p class="direction-title">Direction 4 — Data-Dense Professional</p>
+      <p class="direction-tagline">
+        Bloomberg meets Korean retail banking. 테이블 레이아웃, 브레드크럼,
+        고밀도 정보.
+      </p>
+      <div class="screen-grid">
+        <!-- AccountDetail with Transaction Table -->
+        <div style="grid-column: 1 / -1">
+          <p class="screen-label">Account Detail + Transaction Table</p>
+          <div class="app-shell">
+            <div class="app-nav">
+              <span class="app-nav-logo">FIX</span>
+              <span class="app-nav-breadcrumb">
+                계좌 목록 <span class="sep">&rsaquo;</span>
+                <span class="current">입출금 110-234-5678-90</span>
+              </span>
+              <span style="flex: 1"></span>
+              <span class="app-nav-link">Actuator ↗</span>
+            </div>
+            <div class="app-content">
+              <div
+                class="flex justify-between items-center"
+                style="margin-bottom: 16px"
+              >
+                <div>
+                  <div style="font-size: 13px; color: var(--muted)">
+                    입출금 계좌
+                  </div>
+                  <div
+                    style="
+                      font-size: 22px;
+                      font-weight: 700;
+                      font-family: var(--font-mono);
+                    "
+                  >
+                    ₩5,420,000
+                  </div>
+                  <div
+                    style="
+                      font-size: 12px;
+                      color: var(--muted);
+                      font-family: var(--font-mono);
+                    "
+                  >
+                    110-234-5678-90
+                  </div>
+                </div>
+                <button class="btn btn-primary">이체하기</button>
+              </div>
+              <div class="card" style="padding: 0; overflow: hidden">
+                <table class="tx-table">
+                  <thead>
+                    <tr>
+                      <th>날짜</th>
+                      <th>상대방</th>
+                      <th>금액</th>
+                      <th>상태</th>
+                      <th>Trace</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td class="tx-date">01/15 14:32</td>
+                      <td style="font-size: 12px">홍길동 110-234-567</td>
+                      <td class="tx-amount-in">+₩50,000</td>
+                      <td><span class="badge badge-success">완료</span></td>
+                      <td class="tx-trace-link">↗</td>
+                    </tr>
+                    <tr>
+                      <td class="tx-date">01/14 09:15</td>
+                      <td style="font-size: 12px">이순신 220-345-678</td>
+                      <td class="tx-amount-out">-₩200,000</td>
+                      <td><span class="badge badge-error">실패</span></td>
+                      <td class="tx-trace-link">↗</td>
+                    </tr>
+                    <tr>
+                      <td class="tx-date">01/13 18:44</td>
+                      <td style="font-size: 12px">김유신 330-456-789</td>
+                      <td class="tx-amount-out">-₩30,000</td>
+                      <td><span class="badge badge-warning">처리중</span></td>
+                      <td class="tx-trace-link">↗</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+     Direction 5: Progressive Focus
+     ============================================================ -->
+    <section class="direction" id="dir-5">
+      <p class="direction-title">Direction 5 — Progressive Focus</p>
+      <p class="direction-tagline">
+        한 화면에 하나의 액션. 시선 분산 없음, 접근성 최우선.
+      </p>
+      <div class="screen-grid">
+        <!-- Transfer Step A -->
+        <div>
+          <p class="screen-label">Transfer Step A — Full Screen</p>
+          <div class="app-shell">
+            <div class="app-nav">
+              <span class="app-nav-logo">FIX</span>
+              <span class="app-nav-title">이체 — 받는 계좌</span>
+            </div>
+            <div class="app-content" style="max-width: 400px; margin: 0 auto">
+              <div style="margin-bottom: 24px">
+                <div
+                  style="
+                    font-size: 12px;
+                    color: var(--muted);
+                    margin-bottom: 4px;
+                  "
+                >
+                  1단계 / 3단계
+                </div>
+                <div style="font-size: 18px; font-weight: 600">
+                  받는 계좌를 입력해주세요
+                </div>
+              </div>
+              <div class="form-group" style="margin-bottom: 16px">
+                <label class="form-label">받는 계좌번호</label>
+                <input class="form-input" placeholder="000-0000-0000-00" />
+              </div>
+              <button
+                class="btn btn-primary btn-full"
+                style="height: 48px; font-size: 16px"
+              >
+                다음
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Transfer OTP Step B -->
+        <div>
+          <p class="screen-label">Transfer Step B — OTP Focus</p>
+          <div class="app-shell">
+            <div class="app-nav">
+              <span class="app-nav-logo">FIX</span>
+              <span class="app-nav-title">이체 확인</span>
+            </div>
+            <div class="app-content" style="max-width: 400px; margin: 0 auto">
+              <div style="margin-bottom: 24px">
+                <div
+                  style="
+                    font-size: 12px;
+                    color: var(--muted);
+                    margin-bottom: 4px;
+                  "
+                >
+                  2단계 / 3단계
+                </div>
+                <div style="font-size: 18px; font-weight: 600">
+                  OTP를 입력해주세요
+                </div>
+              </div>
+              <div class="otp-group">
+                <input class="otp-input filled" value="1" readonly />
+                <input class="otp-input filled" value="2" readonly />
+                <input class="otp-input filled" value="3" readonly />
+                <input class="otp-input" />
+                <input class="otp-input" />
+                <input class="otp-input" />
+              </div>
+              <button class="btn btn-primary btn-full" style="height: 48px">
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+     Direction 6: Hybrid Showcase (DEFAULT ACTIVE)
+     ============================================================ -->
+    <section class="direction active" id="dir-6">
+      <p class="direction-title">
+        Direction 6 — Hybrid Showcase ✦
+        <span style="font-size: 14px; font-weight: 500; color: var(--muted)"
+          >(권장)</span
+        >
+      </p>
+      <p class="direction-tagline">
+        Korean Banking Trust × Architecture Visibility × Modern FinTech
+      </p>
+      <p
+        class="direction-tagline"
+        style="font-size: 12px; margin-top: -16px; font-style: italic"
+      >
+        D1 Login + D3 Accounts + D4 Transactions + D2 Navigation + D2 Summary
+        Card
+      </p>
+
+      <div class="screen-grid">
+        <!-- Login (D1 Minimal Trust) -->
+        <div>
+          <p class="screen-label">① Login — Minimal Trust Card</p>
+          <div class="app-shell">
+            <div class="app-nav">
+              <span class="app-nav-logo">FIX</span>
+            </div>
+            <div class="login-wrap">
+              <div class="login-card card-xl">
+                <div class="login-logo">FIX</div>
+                <div class="login-subtitle">
+                  Korean Banking Architecture Simulator
+                </div>
+                <div class="login-form">
+                  <div class="form-group">
+                    <label class="form-label">아이디</label>
+                    <input
+                      class="form-input"
+                      placeholder="demo"
+                      data-testid="login-username"
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">비밀번호</label>
+                    <input
+                      class="form-input"
+                      type="password"
+                      placeholder="••••••••"
+                      data-testid="login-password"
+                    />
+                  </div>
+                  <button
+                    class="btn btn-primary btn-full"
+                    data-testid="login-submit"
+                  >
+                    로그인
+                  </button>
+                </div>
+                <p class="login-hint">
+                  테스트 계정: <code>demo</code> / <code>demo1234</code>
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- AccountList (D3 Toss-Card) -->
+        <div>
+          <p class="screen-label">② Account List — Toss-Card</p>
+          <div class="app-shell">
+            <div class="app-nav">
+              <span class="app-nav-logo">FIX</span>
+              <span class="app-nav-title">내 계좌</span>
+              <span style="flex: 1"></span>
+              <span class="app-nav-link">Actuator ↗</span>
+              <span class="app-nav-session" style="margin-left: 8px"
+                >⏱ 14:52</span
+              >
+            </div>
+            <div class="app-content space-y-3">
+              <div class="account-card" data-testid="account-card-110234567890">
+                <div class="account-card-row1">
+                  <span class="account-name">입출금 계좌</span>
+                  <span class="badge badge-neutral">입출금</span>
+                </div>
+                <div class="account-balance">₩5,420,000</div>
+                <div class="account-card-row3">
+                  <span class="account-number">110-234-5678-90</span>
+                  <span class="chevron" style="color: var(--primary)">›</span>
+                </div>
+              </div>
+              <div class="account-card" data-testid="account-card-220345678901">
+                <div class="account-card-row1">
+                  <span class="account-name">정기적금</span>
+                  <span class="badge badge-neutral">적금</span>
+                </div>
+                <div class="account-balance">₩12,300,000</div>
+                <div class="account-card-row3">
+                  <span class="account-number">220-345-6789-01</span>
+                  <span class="chevron" style="color: var(--primary)">›</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- AccountDetail (D4 Hero + Table + D2 Navigation) -->
+        <div style="grid-column: 1 / -1">
+          <p class="screen-label">
+            ③ Account Detail — Hero Balance + D4 Transaction Table + Breadcrumb
+          </p>
+          <div class="app-shell">
+            <div class="app-nav">
+              <span class="app-nav-logo">FIX</span>
+              <span class="app-nav-breadcrumb" style="margin-left: 12px">
+                <a data-testid="breadcrumb-accounts">계좌 목록</a>
+                <span class="sep">&rsaquo;</span>
+                <span
+                  class="current"
+                  data-testid="breadcrumb-current"
+                  aria-current="page"
+                  >입출금 110-234-5678-90</span
+                >
+              </span>
+              <span style="flex: 1"></span>
+              <span class="app-nav-link" data-testid="nav-actuator-link"
+                >Actuator ↗</span
+              >
+              <span class="app-nav-session" style="margin-left: 8px"
+                >⏱ 14:52</span
+              >
+            </div>
+            <div class="app-content">
+              <div
+                class="detail-hero"
+                data-testid="account-detail-110234567890"
+              >
+                <div class="detail-hero-type">입출금 계좌</div>
+                <div class="detail-hero-balance">₩5,420,000</div>
+                <div class="detail-hero-number">110-234-5678-90</div>
+                <button
+                  class="btn btn-primary"
+                  data-testid="account-detail-transfer-btn"
+                >
+                  이체하기
+                </button>
+              </div>
+
+              <div class="card" style="padding: 0; overflow: hidden">
+                <table class="tx-table" data-testid="transaction-list">
+                  <thead>
+                    <tr>
+                      <th>날짜</th>
+                      <th>상대방</th>
+                      <th>금액</th>
+                      <th>상태</th>
+                      <th>Trace</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr data-testid="transaction-row-TX001">
+                      <td class="tx-date">01/15 14:32</td>
+                      <td>홍길동 110-234-567</td>
+                      <td
+                        class="tx-amount-in"
+                        data-testid="transaction-amount-TX001"
+                      >
+                        +₩50,000
+                      </td>
+                      <td data-testid="transaction-status-TX001">
+                        <span class="badge badge-success">완료</span>
+                      </td>
+                      <td>
+                        <a
+                          class="tx-trace-link"
+                          data-testid="transaction-trace-link-TX001"
+                          title="Actuator에서 추적"
+                          >↗</a
+                        >
+                      </td>
+                    </tr>
+                    <tr data-testid="transaction-row-TX002">
+                      <td class="tx-date">01/14 09:15</td>
+                      <td>이순신 220-345-678</td>
+                      <td
+                        class="tx-amount-out"
+                        data-testid="transaction-amount-TX002"
+                      >
+                        -₩200,000
+                      </td>
+                      <td data-testid="transaction-status-TX002">
+                        <span class="badge badge-error">실패</span>
+                      </td>
+                      <td>
+                        <a
+                          class="tx-trace-link"
+                          data-testid="transaction-trace-link-TX002"
+                          title="Actuator에서 추적"
+                          >↗</a
+                        >
+                      </td>
+                    </tr>
+                    <tr data-testid="transaction-row-TX003">
+                      <td class="tx-date">01/13 18:44</td>
+                      <td>김유신 330-456-789</td>
+                      <td
+                        class="tx-amount-out"
+                        data-testid="transaction-amount-TX003"
+                      >
+                        -₩30,000
+                      </td>
+                      <td data-testid="transaction-status-TX003">
+                        <span class="badge badge-warning">처리중</span>
+                      </td>
+                      <td>
+                        <a
+                          class="tx-trace-link"
+                          data-testid="transaction-trace-link-TX003"
+                          title="Actuator에서 추적"
+                          >↗</a
+                        >
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Transfer Dialog + Complete (D1 Dialog + D2 Accent Card) -->
+        <div>
+          <p class="screen-label">④-A Transfer Dialog — Step B (OTP)</p>
+          <div class="app-shell">
+            <div class="app-nav">
+              <span class="app-nav-logo">FIX</span>
+              <span class="app-nav-title">입출금 계좌</span>
+            </div>
+            <div
+              class="app-content"
+              style="
+                background: rgba(15, 23, 42, 0.3);
+                min-height: 420px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+              "
+            >
+              <div class="dialog" data-testid="transfer-modal">
+                <div class="dialog-header">
+                  <span class="dialog-title">이체하기</span>
+                  <button class="dialog-close">×</button>
+                </div>
+
+                <!-- Stepper -->
+                <div class="stepper">
+                  <div class="step-item">
+                    <div
+                      class="step-circle done"
+                      data-testid="transfer-stepper-step-a"
+                    >
+                      ✓
+                    </div>
+                    <div class="step-line done"></div>
+                  </div>
+                  <div class="step-item">
+                    <div
+                      class="step-circle active"
+                      data-testid="transfer-stepper-step-b"
+                    >
+                      2
+                    </div>
+                    <div class="step-line"></div>
+                  </div>
+                  <div class="step-item">
+                    <div
+                      class="step-circle pending"
+                      data-testid="transfer-stepper-step-c"
+                    >
+                      3
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  style="font-size: 13px; font-weight: 600; margin-bottom: 4px"
+                >
+                  OTP 확인
+                </div>
+                <div
+                  style="
+                    font-size: 12px;
+                    color: var(--muted);
+                    margin-bottom: 12px;
+                  "
+                >
+                  6자리 OTP를 입력해주세요
+                </div>
+
+                <div class="otp-group">
+                  <input
+                    class="otp-input filled"
+                    aria-label="OTP 1번째 자리"
+                    data-testid="otp-input-0"
+                    value="1"
+                    readonly
+                  />
+                  <input
+                    class="otp-input filled"
+                    aria-label="OTP 2번째 자리"
+                    data-testid="otp-input-1"
+                    value="2"
+                    readonly
+                  />
+                  <input
+                    class="otp-input filled"
+                    aria-label="OTP 3번째 자리"
+                    data-testid="otp-input-2"
+                    value="3"
+                    readonly
+                  />
+                  <input
+                    class="otp-input"
+                    aria-label="OTP 4번째 자리"
+                    data-testid="otp-input-3"
+                  />
+                  <input
+                    class="otp-input"
+                    aria-label="OTP 5번째 자리"
+                    data-testid="otp-input-4"
+                  />
+                  <input
+                    class="otp-input"
+                    aria-label="OTP 6번째 자리"
+                    data-testid="otp-input-5"
+                  />
+                </div>
+
+                <div class="flex gap-2">
+                  <button class="btn btn-outline" style="flex: 1">이전</button>
+                  <button class="btn btn-primary" style="flex: 1">확인</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Transfer Complete with Accent Summary Card -->
+        <div>
+          <p class="screen-label">
+            ④-B Transfer Complete — D2 Accent Summary Card
+          </p>
+          <div class="app-shell">
+            <div class="app-nav">
+              <span class="app-nav-logo">FIX</span>
+              <span class="app-nav-title">이체 완료</span>
+              <span style="flex: 1"></span>
+              <span class="app-nav-link" data-testid="nav-actuator-link"
+                >Actuator ↗</span
+              >
+              <span class="app-nav-session" style="margin-left: 8px"
+                >⏱ 14:49</span
+              >
+            </div>
+            <div
+              class="app-content"
+              style="max-width: 400px; margin: 0 auto; padding-top: 32px"
+            >
+              <div class="complete-icon">✅</div>
+              <div class="complete-title">이체 완료</div>
+              <div class="complete-subtitle">
+                ₩50,000이 성공적으로 이체되었습니다
+              </div>
+
+              <div class="space-y-3" style="margin-bottom: 20px">
+                <div class="accent-card" data-testid="transfer-summary-card">
+                  <div class="accent-label">참조번호</div>
+                  <div class="accent-value" data-testid="transfer-ref">
+                    REF-2025-0115-001234
+                  </div>
+                </div>
+                <div class="accent-card">
+                  <div class="accent-label">Trace ID</div>
+                  <div
+                    class="accent-value"
+                    data-testid="transfer-trace-id"
+                    style="font-size: 11px; word-break: break-all"
+                  >
+                    4bf92f3577b34da6-a3ce929d0e0e4736
+                  </div>
+                </div>
+              </div>
+
+              <button class="btn btn-outline btn-full">계좌로 돌아가기</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Error State (Circuit Breaker) -->
+        <div>
+          <p class="screen-label">⑤ Error State — Circuit Breaker (CB)</p>
+          <div class="app-shell">
+            <div class="app-nav">
+              <span class="app-nav-logo">FIX</span>
+              <span class="app-nav-title">이체하기</span>
+            </div>
+            <div class="app-content">
+              <div class="card space-y-3" style="margin-bottom: 16px">
+                <div style="font-size: 13px; font-weight: 600">이체 요약</div>
+                <div class="flex justify-between">
+                  <span class="muted text-sm">받는 분</span
+                  ><span class="text-sm">홍길동 (110-234-567)</span>
+                </div>
+                <div class="flex justify-between">
+                  <span class="muted text-sm">금액</span
+                  ><span class="text-sm mono">₩50,000</span>
+                </div>
+              </div>
+
+              <div
+                class="error-msg"
+                role="alert"
+                data-testid="error-message"
+                style="
+                  break-inside: avoid;
+                  word-break: break-keep;
+                  margin-bottom: 16px;
+                "
+              >
+                <span>⚠</span>
+                <span data-testid="cb-fallback-msg"
+                  >이체 서비스가 일시적으로 중단되었습니다. 잠시 후 다시
+                  시도해주세요.</span
+                >
+              </div>
+
+              <div class="flex gap-2">
+                <button class="btn btn-outline" style="flex: 1">취소</button>
+                <button
+                  class="btn btn-primary"
+                  style="flex: 1"
+                  data-testid="transfer-retry-btn"
+                >
+                  재시도
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- /screen-grid -->
+    </section>
+
+    <!-- Footer -->
+    <div class="showcase-footer">
+      FIX Design Directions — Created with BMAD UX Workflow Step 9<br />
+      Color tokens: OKLCH · Typography: Apple SD Gothic Neo + Noto Sans KR ·
+      Components: shadcn/ui + Tailwind v4<br />
+      Direction 6 (Hybrid Showcase) → Korean Banking Trust × Architecture
+      Visibility × Modern FinTech
+    </div>
+
+    <script>
+      function showDir(n) {
+        document
+          .querySelectorAll(".direction")
+          .forEach((s) => s.classList.remove("active"));
+        document
+          .querySelectorAll(".dir-tab")
+          .forEach((t) => t.classList.remove("active"));
+        document.getElementById("dir-" + n).classList.add("active");
+        document.querySelectorAll(".dir-tab")[n - 1].classList.add("active");
+      }
+    </script>
+  </body>
+</html>
