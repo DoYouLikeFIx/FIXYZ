@@ -42,7 +42,7 @@ Six capability domains, all implemented in `channel-service` unless noted:
 7 non-negotiable acceptance scenarios drive CI gate:
 
 1. Same-bank transfer E2E happy path
-2. Concurrent debit (10 threads) → exactly 5 POSTED, balance = ₩0
+2. Concurrent debit (10 threads) → exactly 5 COMPLETED, balance = ₩0
 3. OTP failure blocks transfer
 4. Duplicate `clientRequestId` → idempotent result
 5. FEP timeout → circuit breaker OPEN after 3 failures
@@ -54,7 +54,7 @@ Six capability domains, all implemented in `channel-service` unless noted:
 | Scenario                         | Test Layer                                            | Rationale                                            |
 | -------------------------------- | ----------------------------------------------------- | ---------------------------------------------------- |
 | #1 E2E happy path                | `@SpringBootTest` + MockMvc + Testcontainers          | Full channel→core wiring required                    |
-| #2 Concurrent debit (10 threads) | Testcontainers + `ExecutorService` + `CountDownLatch` | Real InnoDB `SELECT FOR UPDATE` — H2 disqualified    |
+| #2 Concurrent debit (10 threads) | Testcontainers + `ExecutorService` + `CountDownLatch` | Real InnoDB `select ... for update` — EAGER mode     |
 | #3 OTP failure blocks            | Unit test, `TransferSessionService`                   | Pure state machine logic, no I/O                     |
 | #4 Idempotency                   | Integration, real MySQL                               | `UNIQUE INDEX` behavior requires real engine         |
 | #5 Circuit breaker OPEN          | Integration + WireMock/FEP stub                       | Resilience4j sliding window config validation        |
@@ -65,7 +65,7 @@ Six capability domains, all implemented in `channel-service` unless noted:
 
 | NFR Category                | Requirement                                                                              | Architectural Impact                                                                                 |
 | --------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| Concurrency                 | `SELECT FOR UPDATE` on balance writes                                                    | Pessimistic lock on account entity; QueryDSL daily-limit runs inside lock scope                      |
+| Concurrency                 | `SELECT FOR UPDATE` on balance writes                                                    | Pessimistic lock on account entity (EAGER mode); QueryDSL daily-limit runs inside lock scope         |
 | Concurrent session race     | `AUTHED→EXECUTING` state transition must be atomic                                       | Redis `SET txn-lock:{sessionId} NX EX 30` before CoreBanking call; `NX` failure → `CORE-003`         |
 | Security                    | HttpOnly + Secure + SameSite=Strict cookie, CSRF Synchronizer Token, PII masking, step-up OTP | Spring Security + `HttpSessionCsrfTokenRepository` + `AccountNumber.masked()` in `channel-common`    |
 | Resilience                  | Circuit breaker OPEN after 3 FEP timeouts; compensating credit on failure                | Resilience4j on `FepClient`; saga compensation in `InterbankTransferService` (Channel-owned)         |
@@ -509,7 +509,8 @@ _Flat reference for implementers. Every named decision, rule, and ADR. Reference
 `corebank-service` handles concurrent balance mutations — same-bank transfer debits and credits. Two standard JPA approaches exist: optimistic locking (`@Version` column, retry on `OptimisticLockingFailureException`) and pessimistic locking (`@Lock(LockModeType.PESSIMISTIC_WRITE)`, InnoDB `SELECT FOR UPDATE`).
 
 **Decision:**
-Use `@Lock(LockModeType.PESSIMISTIC_WRITE)` on the `findById` account query in `AccountRepository`. All balance write paths acquire this lock before any mutation. QueryDSL daily-limit aggregate query runs after the account row is locked.
+Use `@Lock(LockModeType.PESSIMISTIC_WRITE)` on the `findById` account query in `AccountRepository` (Default **EAGER** mode). All balance write paths acquire this lock before any mutation. QueryDSL daily-limit aggregate query runs after the account row is locked.
+(Note: **DEFERRED** mode using `last_synced_ledger_ref` is reserved for Phase 2 Hot Accounts).
 
 ```java
 // AccountRepository.java
@@ -599,11 +600,11 @@ Examples:
 | ------ | -------- | --------------- | ------------ | ------------ |
 | 1      | `user`   | `user@fix.com`  | `Test1234!`  | `ROLE_USER`  |
 | 2      | `admin`  | `admin@fix.com` | `Admin1234!` | `ROLE_ADMIN` |
-
-| accountId | userId | accountNumber   | balance    | type                                       |
-| --------- | ------ | --------------- | ---------- | ------------------------------------------ |
-| 1         | 1      | `110-1234-5678` | ₩1,000,000 | 보통예금 (primary concurrency test target) |
-| 2         | 1      | `110-8765-4321` | ₩500,000   | 보통예금 (intra-user transfer destination) |
+status   | mode  |
+| --------- | ------ | --------------- | ---------- | -------- | ----- |
+| 1         | 1      | `110-1234-5678` | ₩1,000,000 | ACTIVE   | EAGER |
+| 2         | 1      | `110-8765-4321` | ₩500,000   | ACTIVE   | EAGER |
+| 3         | 2      | `110-1111-2222` | ₩0         | ACTIVE   | EAGER |
 | 3         | 2      | `110-1111-2222` | ₩0         | 보통예금 (admin account)                   |
 
 ---
