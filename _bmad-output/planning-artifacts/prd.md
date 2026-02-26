@@ -54,7 +54,7 @@ classification:
     - "fep-simulator (port 8082)"
   acceptanceCriteria:
     - "Same-bank transfer E2E happy path (Channel→CoreBanking)"
-    - "Concurrent debit (10 threads) — exactly 5 POSTED, balance = ₩0"
+    - "Concurrent debit (10 threads) — exactly 5 COMPLETED, balance = ₩0"
     - "OTP failure blocks transfer execution"
     - "Duplicate clientRequestId returns idempotent result"
     - "FEP timeout → circuit breaker OPEN after 3 failures"
@@ -145,7 +145,7 @@ All seven must pass in CI before the MVP is considered complete:
 | #   | Scenario                                                        | Layer                 | Architectural Claim Proven                                 |
 | --- | --------------------------------------------------------------- | --------------------- | ---------------------------------------------------------- |
 | 1   | Same-bank transfer E2E happy path                               | Channel → CoreBanking | State machine, distributed REST call, trace ID propagation |
-| 2   | Concurrent debit (10 threads) — exactly 5 POSTED, balance = ₩0  | CoreBanking           | `SELECT FOR UPDATE` InnoDB locking correctness             |
+| 2   | Concurrent debit (10 threads) — exactly 5 COMPLETED, balance = ₩0  | CoreBanking           | `SELECT FOR UPDATE` InnoDB locking correctness             |
 | 3   | OTP failure blocks transfer execution                           | Channel               | Step-up re-authentication enforcement                      |
 | 4   | Duplicate `clientRequestId` returns idempotent result           | CoreBanking           | No double-debit on retry                                   |
 | 5   | FEP timeout → circuit breaker OPEN after 3 failures             | FEP Simulator         | Resilience4j sliding window circuit breaker                |
@@ -192,7 +192,7 @@ All seven must pass in CI before the MVP is considered complete:
 
 **Resolution:** The screen shows: "이체 완료. 거래번호: fix-ch-20260225-a1b2c3." The trace ID is visible. Within 2 seconds, a green SSE notification appears in her notification feed: "₩450,000이 [하우스메이트 계좌 ****4521]로 이체되었습니다."
 
-**Capabilities Revealed:** Session management, TOTP step-up auth, transfer state machine, same-bank ledger atomicity, SSE notification, distributed trace ID.
+**Capabilities Revealed:** Session management, TOTP step-up auth, transfer state machine (REQUESTED → EXECUTING → COMPLETED), same-bank ledger atomicity, SSE notification, distributed trace ID.
 
 ---
 
@@ -259,7 +259,7 @@ Opens GitHub repo → clicks CI badge → sees Testcontainers concurrent transfe
 | ------------------------------------------------------- | ------------------- |
 | Session management (Redis externalization)              | J1, J3, J4          |
 | TOTP step-up OTP                                        | J1, J2              |
-| Transfer state machine (REQUESTED→AUTHED→POSTED/FAILED) | J1, J2              |
+| Transfer state machine (REQUESTED→EXECUTING→COMPLETED)  | J1, J2              |
 | Same-bank atomic ledger transaction                     | J1                  |
 | FEP interbank routing + timeout                         | J2                  |
 | Resilience4j circuit breaker + sliding window           | J2, J4              |
@@ -323,7 +323,8 @@ Phase 3 — Execute
   → Requires session in AUTHED state (403 TRF-005 if REQUESTED or FAILED)
   → CoreBanking acquires @Lock(PESSIMISTIC_WRITE) on source account row
   → Ledger debit + credit posted atomically within @Transactional
-  → Session status → POSTED or FAILED
+  → Transfer Status: REQUESTED → EXECUTING → COMPLETED (or FAILED)
+  → Session status → COMPLETED or FAILED
 ```
 
 The OTP simulator replaces a real HSM-backed token device with a `SecureRandom`-generated 6-digit code stored in Redis. The interface contract is faithful; the trust anchor is replaced for portfolio use.
@@ -348,8 +349,9 @@ The OTP simulator replaces a real HSM-backed token device with a `SecureRandom`-
 
 **Transfer State Machine:**
 
-```
-REQUESTED → AUTHED → POSTED
+```(Session)
+                  ↘ EXECUTING (Transfer) → COMPLETED
+                                      ↘ FAILED (interbank FEP failure, OTP exhaust
                   ↘ FAILED (interbank FEP failure, OTP exhausted, session TTL expired)
 ```
 
@@ -370,7 +372,7 @@ BEGIN TRANSACTION
   5. SELECT account WHERE id=dest FOR UPDATE
   6. INSERT ledger_entry (CREDIT, dest, amount)
   7. UPDATE account SET balance += amount WHERE id=dest
-  8. INSERT transfer_record (status=POSTED)
+  8. INSERT transfer_record (status=COMPLETED)
 COMMIT
 ```
 
@@ -492,18 +494,18 @@ Long todayTotal = query
 
 ### Transfer State Machine Test Matrix
 
-| Test Case | Scenario                                         | Expected Result                   |
-| --------- | ------------------------------------------------ | --------------------------------- |
-| TC-TRF-01 | Happy path — `REQUESTED → AUTHED → POSTED`       | 200, balance debited              |
+| Test Case | Scenario                  EXECUTING → COMPLETED` | 200, balance debited              |
 | TC-TRF-02 | OTP wrong 1× — session stays `AUTHED`            | 4xx, session intact               |
 | TC-TRF-03 | OTP wrong 3× — session → `FAILED`                | 4xx TRF-005, session locked       |
 | TC-TRF-04 | Execute on `REQUESTED` (skip OTP)                | 403 TRF-005 Session not authed    |
-| TC-TRF-05 | Execute on `POSTED` (already done)               | 409 TRF-006 Already confirmed     |
+| TC-TRF-05 | Execute on `COMPLETED` (already done)            | 409 TRF-006 Already confirmed     |
 | TC-TRF-06 | Prepare after session TTL expired                | 410 TRF-005 Session expired       |
-| TC-TRF-07 | `clientRequestId` reuse (idempotency)            | 200 with original POSTED response |
-| TC-TRF-08 | Concurrent execute (2 threads, same `sessionId`) | Exactly 1 POSTED, 1 CORE-003      |
+| TC-TRF-07 | `clientRequestId` reuse (idempotency)            | 200 with original COMPLETED response|
+| TC-TRF-08 | Concurrent execute (2 threads, same `sessionId`) | Exactly 1 COMPLETED, 1 CORE-003   |
 
-**TC-TRF-08 implementation note:** `CountDownLatch` fires both threads simultaneously. Assert `resultStream.filter(r -> r.status == POSTED).count() == 1`. Requires Testcontainers (MySQL + Redis) + `ExecutorService`.
+**TC-TRF-08 implementation note:** `CountDownLatch` fires both threads simultaneously. Assert `resultStream.filter(r -> r.status == COMPLE
+
+**TC-TRF-08 implementation note:** `CountDownLatch` fires both threads simultaneously. Assert `resultStream.filter(r -> r.status == COMPLETED).count() == 1`. Requires Testcontainers (MySQL + Redis) + `ExecutorService`.
 
 ---
 
@@ -566,6 +568,11 @@ Long todayTotal = queryDslLedgerRepository.sumTodayDebits(accountId);
 - Optimistic lock retry cost with user re-authentication: 30–120 seconds
 - Retry requiring OTP re-entry is unacceptable UX in a banking transfer flow
 - `@Version`-based optimistic locking is the wrong choice for this domain — a justified, documented decision
+
+**Future-Proofing (Hot Account Strategy):**
+The schema anticipates high-concurrency "Hot Accounts" (e.g., charity fund collection) via `balance_update_mode` ENUM (`EAGER`, `DEFERRED`).
+- **MVP (EAGER):** Standard pessimistic locking (User A waits for User B). Simple, correct, proven.
+- **Phase 2 (DEFERRED):** Insert-only ledger for deposits; balance updated asynchronously. The schema supports this via `update_mode` column, but MVP implementation is strictly `EAGER` to prove deadlock-free concurrency first.
 
 This deliberate tool-boundary decision mirrors production Korean banking systems. Most junior portfolios use JPA or QueryDSL, not both with documented rationale for each.
 
@@ -647,7 +654,7 @@ FinTech Interviewer path:
 
 | Innovation Claim               | Supporting Test                                                              | What It Proves                                                                |
 | ------------------------------ | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| QueryDSL + locking composition | `TransferConcurrencyTest` (10 threads, exactly 5 POSTED, balance = ₩0)       | Lock prevents phantom reads; real InnoDB via Testcontainers — H2 disqualified |
+| QueryDSL + locking composition | `TransferConcurrencyTest` (10 threads, exactly 5 COMPLETED, balance = ₩0)       | Lock prevents phantom reads; real InnoDB via Testcontainers — H2 disqualified |
 | FEP chaos endpoint             | `FepChaosIntegrationTest` — triggers OPEN state, asserts Actuator response   | Circuit breaker config correct, not accidental                                |
 | Double-entry ledger            | `LedgerBalanceIntegrityTest` — `SUM(DEBIT) == SUM(CREDIT)` after N transfers | No orphan entries, no half-posted state                                       |
 | Simulation boundary narrative  | README "Architecture Decisions" pre-empts interviewer objection              | —                                                                             |
@@ -655,9 +662,9 @@ FinTech Interviewer path:
 
 **`TransferConcurrencyTest` specification (Fixed 5):**
 
-- 10 threads × ₩200,000 debit on account with ₩1,000,000 balance
+- 10 threads × ₩200,COMPLE debit on account with ₩1,000,000 balance
 - `CountDownLatch` fires all threads simultaneously
-- Assert: exactly 5 POSTED, final balance = ₩0, 0 negative balance results
+- Assert: exactly 5 COMPLETED, final balance = ₩0, 0 negative balance results
 - Real InnoDB via `MySQLContainer("mysql:8.0")` — H2 does not implement `SELECT FOR UPDATE` equivalently
 
 **`LedgerBalanceIntegrityTest` — 7th Acceptance Scenario:**
@@ -725,7 +732,7 @@ GET    /api/v1/accounts/{accountId}                  → account detail + masked
 # Transfers
 POST   /api/v1/transfers/prepare                     → create TransferSession (REQUESTED)
 POST   /api/v1/transfers/{sessionId}/verify-otp      → validate OTP → AUTHED
-POST   /api/v1/transfers/{sessionId}/execute         → execute transfer → POSTED/FAILED
+POST   /api/v1/transfers/{sessionId}/execute         → execute transfer → COMPLETED/FAILED
 GET    /api/v1/transfers/{sessionId}                 → session status query
 
 # Notifications (SSE)
@@ -804,11 +811,12 @@ services:
 
 **core_db tables:**
 
-| Table              | Storage | Notes                                                                                            |
-| ------------------ | ------- | ------------------------------------------------------------------------------------------------ |
-| `accounts`         | MySQL   | id, user_id, account_number, account_type, balance, status, bank_code                            |
-| `ledger_entries`   | MySQL   | id, account_id, entry_type(DEBIT/CREDIT), amount, transfer_id, created_at                        |
-| `transfer_records` | MySQL   | id, client_request_id(UNIQUE), source/dest account_id, amount, status, transfer_type, created_at |
+| Table                         | Storage | Notes                                                                                                    |
+| ----------------------------- | ------- | -------------------------------------------------------------------------------------------------------- |
+| `accounts`                    | MySQL   | id, user_id, account_number, balance, status(ACTIVE/FROZEN/CLOSED), update_mode(EAGER/DEFERRED)          |
+| `ledger_entries`              | MySQL   | id, account_id, entry_type(DEBIT/CREDIT), amount, transfer_id, created_at                                |
+| `transfer_records`            | MySQL   | id, client_request_id(UNIQUE), status(REQUESTED/EXECUTING/COMPLETED/FAILED/COMPENSATED), transfer_type   |
+| `transfer_record_diagnostics` | MySQL   | transfer_record_id, detail (TEXT) — long error messages/stack traces separated to optimize row size      |
 
 ---
 
@@ -980,7 +988,7 @@ The MVP is complete when every architectural claim in FIX is backed by a passing
 
 **Core User Journeys Supported:**
 
-- Journey 1: 지수 — Same-bank transfer happy path (REQUESTED → AUTHED → POSTED)
+- Journey 1: 지수 — Same-bank transfer happy path (REQUESTED → EXECUTING → COMPLETED)
 - Journey 2: 지수 — Interbank FEP failure + circuit breaker (REQUESTED → FAILED)
 - Journey 3: 현석 — Admin force-logout (Redis session bulk invalidation)
 - Journey 4: Portfolio reviewer — GitHub scan → demo → Actuator verification
@@ -990,7 +998,7 @@ The MVP is complete when every architectural claim in FIX is backed by a passing
 | Category       | MVP Included                                                                 |
 | -------------- | ---------------------------------------------------------------------------- |
 | Auth           | Login, logout, session (Redis), OTP step-up, force-logout                    |
-| Transfers      | Prepare → verify-OTP → execute state machine (same-bank + interbank)         |
+| Transfers      | Prepare → verify-OTP → execute state machine (REQUESTED → EXECUTING → COMPLETED)|
 | Ledger         | Double-entry `ledger_entry` pair per transfer                                |
 | Idempotency    | `clientRequestId` UNIQUE index + app-layer check                             |
 | Resilience     | Resilience4j circuit breaker + retry (FEP path)                              |
@@ -1012,7 +1020,7 @@ All seven must pass in CI before MVP is complete:
 | #   | Scenario                                                        | Layer                 | Claim Proven                       |
 | --- | --------------------------------------------------------------- | --------------------- | ---------------------------------- |
 | 1   | Same-bank transfer E2E happy path                               | Channel → CoreBanking | State machine, trace propagation   |
-| 2   | Concurrent debit (10 threads) — exactly 5 POSTED, balance = ₩0  | CoreBanking           | `SELECT FOR UPDATE` InnoDB locking |
+| 2   | Concurrent debit (10 threads) — exactly 5 COMPLETED, balance = ₩0  | CoreBanking           | `SELECT FOR UPDATE` InnoDB locking |
 | 3   | OTP failure blocks transfer execution                           | Channel               | Step-up re-auth enforcement        |
 | 4   | Duplicate `clientRequestId` returns idempotent result           | CoreBanking           | No double-debit on retry           |
 | 5   | FEP timeout → circuit breaker OPEN after 3 failures             | FEP Simulator         | Resilience4j sliding window        |

@@ -174,7 +174,7 @@ Monolith이지만 MSA로 “쪼개지기 쉬운 모놀리식”을 목표로 한
 - `account` : 계좌(계좌상태, 상품유형, 통화, 한도)
 - `balance` : 잔액(가용/지급가능/보류금) — 단순화 가능
 - `ledger_entry` : 원장 분개(차변/대변, 금액, 기준시각, 참조거래)
-- `transfer` : 이체 거래(상태 머신: REQUESTED → AUTHED → POSTED/FAILED)
+- `transfer` : 이체 거래(상태 머신: REQUESTED → EXECUTING → COMPLETED/FAILED)
 
 “원장(ledger_entry)을 별도로 둔다”는 건 학습용이지만, 트랜잭션 추적·감사에 유리하고, 면접에서 ‘정합성을 어떻게 보장했는지’ 설명하기 쉽다(설계 선택).
 
@@ -195,7 +195,7 @@ MySQL InnoDB는 트랜잭션이 ACID 모델을 따르며(row-level locking, cons
 - 타행 이체:
   - 1. “외부 송금 요청 생성(REQUESTED)”을 먼저 기록
   - 2. FEP 시뮬레이터 호출(타임아웃/재시도/서킷브레이커 적용)
-  - 3. 결과에 따라 “POSTED/FAILED”로 상태 전이 + 원장 반영(또는 보류금 모델로 2단계 반영)
+  - 3. 결과에 따라 “COMPLETED/FAILED”로 상태 전이 + 원장 반영(또는 보류금 모델로 2단계 반영)
 
 이 구조는 “외부가 실패해도 내부 원장이 꼬이지 않게” 설계하는 학습 목적이다.
 
