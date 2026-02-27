@@ -98,7 +98,6 @@ DB 레벨 목표:
 
 ### 3.2 otp_verifications (이체 OTP 시도 관리)
 | 컬럼 | 타입 | NULL | 제약 | 설명 |
-
 | --- | --- | --- | --- | --- |
 | id | BIGINT UNSIGNED | N | PK(AUTO) | 내부 PK |
 | token_uuid | CHAR(36) | N | UK | 토큰 외부 참조 ID |
