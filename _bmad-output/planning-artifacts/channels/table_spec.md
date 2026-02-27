@@ -39,42 +39,9 @@
 
 ---
 
-## 2) `refresh_tokens` (JWT Refresh Token 관리)
+## 2) `otp_verifications` (이체 OTP 시도 관리)
 
 ### 2.1 테이블 목적
-
-`refresh_tokens`는 **JWT Refresh Token의 수명 주기를 DB에서 강제**하는 테이블이다.
-
-- Token rotation(갱신 시 이전 토큰 리보크) 구현의 근거
-- 강제 로그아웃/계정 잠금 → `revoked_at`으로 전체 세션 무효화
-- 멀티 디바이스 세션 조회 지원 (`member_id` 기준 다건 조회)
-
-### 2.2 컬럼 명세
-
-| 컬럼 | 필요 이유(설계 의도) |
-| --- | --- |
-| `id` (PK) | 내부 정렬/관리용 숫자 PK. |
-| `token_uuid` (UK) | 토큰 외부 참조 ID. 로그/감사에서 토큰 특정 시 사용. |
-| `member_id` (FK) | 어느 회원의 토큰인지 명시. 전체 세션 리보크(`WHERE member_id=?`)에 필수. |
-| `token_hash` (UK) | **원문 저장 금지** — SHA-256 해시만 저장. 탈취 시 원문 복원 불가. |
-| `device_info` | 멀티 디바이스 세션 목록("내 로그인 기기" 화면) 제공용. |
-| `ip_address` | 발급 IP 기록. 비정상 지역 로그인 탐지. |
-| `expires_at` | 만료 시각. 유효성 검증의 1차 기준. 만료된 토큰은 거부. |
-| `revoked_at` | 명시적 리보크 시각. 로그아웃/강제 종료 시 설정. `NULL`이면 아직 유효. |
-| `created_at` | 발급 시각. 감사/운영 추적. |
-
-### 2.3 인덱스 필요 이유
-
-- `UK(token_hash)`: 인증 요청마다 토큰 해시로 단건 조회 → 가장 빈번한 경로
-- `IDX(member_id, revoked_at)`: 특정 회원의 유효 토큰 목록 조회 및 전체 리보크
-- `IDX(member_id, expires_at)`: 만료 임박 토큰 회원별 조회
-- `IDX(expires_at)`: 만료 토큰 주기적 배치 삭제 대상 식별
-
----
-
-## 3) `otp_verifications` (이체 OTP 시도 관리)
-
-### 3.1 테이블 목적
 
 `otp_verifications`는 이체 Step-up 인증에서 **OTP 시도 횟수와 검증 상태를 영속 관리**하는 테이블이다.
 
@@ -255,3 +222,27 @@
 - `IDX(member_id, occurred_at)`: 특정 회원의 보안 이벤트 타임라인
 - `IDX(event_type, occurred_at)`: 이벤트 유형별 집계 (레이트 리밋 패턴 분석 등)
 - `IDX(admin_member_id)`: 관리자별 처리 이력 조회
+
+---
+
+## 8. Cross-System Integrity Strategy (채널-코어 정합성)
+
+### 8.1 Logical Foreign Key Validation
+*   **문제**: `channel_db`는 `member_id`, `account_id`를 물리 FK 없이 저장한다.
+*   **전략**:
+    *   **Pre-check**: `transfer_sessions` 생성 시점(API)에 반드시 Core/Auth 서비스를 호출해 식별자 유효성을 확인한다.
+    *   **Graceful Degradation**: Core 장애 시, 이체 요청은 거부되지만, 단순 조회(History)는 `channel_db` 데이터만으로 응답 가능해야 한다.
+
+### 8.2 State Mapping & Reconciliation
+*   **문제**: Channel(`EXECUTING`)↔Core(`POSTED`) 상태 불일치 (Timeout 등).
+*   **전략**:
+    *   **Mapping**: `status_machine.md`에 정의된 상태 매핑 테이블을 준수.
+    *   **Recovery**: `client_request_id`를 멱등 키로 사용하여, Channel이 Core의 상태를 재조회(GetTransaction)하고 자신의 상태를 동기화한다.
+    *   **Self-Healing**: `EXECUTING` 상태로 30초 이상 경과한 세션은 스케줄러가 자동으로 정합성을 맞춘다.
+
+### 8.3 Soft Delete Handling
+*   **문제**: Channel 회원이 탈퇴(`delete_at`)해도 Core 원장은 영구 보존되어야 한다.
+*   **전략**:
+    *   **Immutable Ledger**: Core의 `journal_entries`는 회원 상태와 무관하게 기록을 유지한다.
+    *   **History Access**: 탈퇴 회원의 이체 내역 조회 요청 시, Channel은 `deleted_at` 회원의 접근을 차단하되, 내부 감사/CS 도구에서는 조회 가능하도록 필터를 적용한다.
+

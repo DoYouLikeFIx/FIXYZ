@@ -55,9 +55,9 @@ DB 레벨 목표:
 | 테이블 | 적용 여부 | 이유 |
 | --- | --- | --- |
 | MEMBERS | ✅ `deleted_at` | 회원 탈퇴 후 이력 보존 필요 |
-| REFRESH_TOKENS | ❌ | 만료/리보크 컬럼으로 수명 주기 관리 |
 | OTP_VERIFICATIONS | ❌ | 시도 이력은 보안 증거, 상태 컬럼으로 관리 |
 | TRANSFER_SESSIONS | ❌ | 금융 증거, 불변 |
+
 | NOTIFICATIONS | ✅ `deleted_at` | 사용자 숨김/삭제 제공 |
 | AUDIT_LOGS | ❌ | 포렌식 불변 레코드 |
 | SECURITY_EVENTS | ❌ | 포렌식 불변 레코드 |
@@ -96,8 +96,9 @@ DB 레벨 목표:
 
 ---
 
-### 3.2 refresh_tokens (JWT Refresh Token 관리)
+### 3.2 otp_verifications (이체 OTP 시도 관리)
 | 컬럼 | 타입 | NULL | 제약 | 설명 |
+
 | --- | --- | --- | --- | --- |
 | id | BIGINT UNSIGNED | N | PK(AUTO) | 내부 PK |
 | token_uuid | CHAR(36) | N | UK | 토큰 외부 참조 ID |

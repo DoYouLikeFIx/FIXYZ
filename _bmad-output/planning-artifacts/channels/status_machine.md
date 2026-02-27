@@ -26,14 +26,19 @@
 
 ## 1.2 전이 규칙
 
+```mermaid
+stateDiagram-v2
+    [*] --> ACTIVE
+    ACTIVE --> LOCKED: login_fail_count >= MAX
+    LOCKED --> ACTIVE: Admin Unlock
 ```
-ACTIVE  ──[실패 횟수 >= 임계치]──▶  LOCKED
-LOCKED  ──[Admin 잠금 해제]────▶  ACTIVE
-```
+
+### 전이 상세
 
 | 전이 | 트리거 | 부작용 |
 | --- | --- | --- |
 | `ACTIVE → LOCKED` | `login_fail_count >= 정책 임계치` | `locked_at` 기록, SECURITY_EVENTS 생성(`ACCOUNT_LOCKED`), **NOTIFICATIONS 생성(`ACCOUNT_LOCKED`, UNREAD)** |
+
 | `LOCKED → ACTIVE` | Admin 잠금 해제 API 호출 | `login_fail_count = 0`, `locked_at = NULL`, AUDIT_LOGS 기록(`ACCOUNT_UNLOCKED`), SECURITY_EVENTS 전이(`RESOLVED`) |
 
 ## 1.3 Lazy Reset 정책
@@ -61,15 +66,24 @@ LOCKED  ──[Admin 잠금 해제]────▶  ACTIVE
 
 ## 2.2 전이 규칙
 
+```mermaid
+stateDiagram-v2
+    [*] --> PENDING
+    PENDING --> VERIFIED: OTP Valid
+    PENDING --> EXHAUSTED: attempts >= MAX
+    PENDING --> EXPIRED: expires_at < NOW
+    
+    VERIFIED --> [*]
+    EXHAUSTED --> [*]
+    EXPIRED --> [*]
 ```
-PENDING ──[올바른 코드 입력]──────────▶ VERIFIED
-        ──[attempt_count >= max_attempts]▶ EXHAUSTED
-        ──[현재 시각 > expires_at]───────▶ EXPIRED (배치 또는 검증 시 판정)
-```
+
+### 전이 상세
 
 | 전이 | 트리거 | 부작용 |
 | --- | --- | --- |
 | `PENDING → VERIFIED` | OTP 코드 검증 성공 | `verified_at` 기록, `TRANSFER_SESSIONS.status → AUTHED` 가능 상태 |
+
 | `PENDING → EXHAUSTED` | `attempt_count++` 후 `>= max_attempts` | SECURITY_EVENTS 생성(`OTP_MAX_ATTEMPTS`) |
 | `PENDING → EXPIRED` | 검증 시도 시 `expires_at < NOW()` or 배치 판정 | TRANSFER_SESSIONS도 `EXPIRED` 전이 |
 
@@ -95,16 +109,22 @@ PENDING ──[올바른 코드 입력]──────────▶ VERIFIE
 
 ## 3.2 전이 규칙
 
-```
-OTP_PENDING ──[OTP VERIFIED]──▶ AUTHED
-            ──[expires_at 만료]▶ EXPIRED
-
-AUTHED ──[이체 실행 시작]────▶ EXECUTING
-       ──[expires_at 만료]────▶ EXPIRED  (인증만 하고 실행하지 않은 경우)
-
-EXECUTING ──[코어 성공 응답]──▶ COMPLETED
-          ──[명확한 실패]────▶ FAILED
-          ──[timeout 판정]───▶ FAILED (Core API 재조회 후 판정)
+```mermaid
+stateDiagram-v2
+    [*] --> OTP_PENDING
+    
+    OTP_PENDING --> AUTHED: OTP Verified
+    OTP_PENDING --> EXPIRED: Timeout
+    
+    AUTHED --> EXECUTING: Transfer Start
+    AUTHED --> EXPIRED: Timeout
+    
+    EXECUTING --> COMPLETED: Core OK
+    EXECUTING --> FAILED: Core FAIL / Timeout
+    
+    COMPLETED --> [*]
+    FAILED --> [*]
+    EXPIRED --> [*]
 ```
 
 ## 3.3 전이별 상세 규칙
@@ -153,14 +173,21 @@ EXECUTING ──[코어 성공 응답]──▶ COMPLETED
 
 ## 4.2 전이 규칙
 
+```mermaid
+stateDiagram-v2
+    [*] --> UNREAD
+    UNREAD --> READ: User Action
+    UNREAD --> EXPIRED: Policy
+    READ --> EXPIRED: Policy
+    
+    EXPIRED --> [*]
 ```
-UNREAD ──[사용자 읽음 액션]──▶ READ
-UNREAD ──[보존 만료 배치]───▶ EXPIRED
-READ   ──[보존 만료 배치]───▶ EXPIRED
-```
+
+### 전이 상세
 
 | 전이 | 트리거 | 부작용 |
 | --- | --- | --- |
+
 | `UNREAD → READ` | 사용자 명시적 읽음 처리 | `read_at` 기록 |
 | `UNREAD/READ → EXPIRED` | 보존 정책 배치 (`expires_at < NOW()`) | 이후 배치 삭제 대상 |
 
@@ -184,13 +211,22 @@ READ   ──[보존 만료 배치]───▶ EXPIRED
 
 ## 5.2 전이 규칙
 
-```
-OPEN ──[Admin 확인]──▶ ACKNOWLEDGED
-ACKNOWLEDGED ──[Admin 종결]──▶ RESOLVED
-OPEN ──[Admin 직접 종결]────▶ RESOLVED
+```mermaid
+stateDiagram-v2
+    [*] --> OPEN
+    
+    OPEN --> ACKNOWLEDGED: Admin Ack
+    OPEN --> RESOLVED: Admin Close
+    
+    ACKNOWLEDGED --> RESOLVED: Admin Done
+    
+    RESOLVED --> [*]
 ```
 
+### 전이 상세
+
 | 전이 | 조건 | 부작용 |
+
 | --- | --- | --- |
 | `OPEN → ACKNOWLEDGED` | Admin API 호출 | `admin_member_id` 기록, AUDIT_LOGS 추가 |
 | `ACKNOWLEDGED → RESOLVED` | Admin API 호출 | `resolved_at` 기록 |
@@ -277,3 +313,29 @@ OPEN ──[Admin 직접 종결]────▶ RESOLVED
     → 성공 확인: TRANSFER_SESSIONS(EXECUTING → COMPLETED) + 스냅샷
     → 실패/연결 단절: TRANSFER_SESSIONS(EXECUTING → FAILED, failure_reason_code='EXECUTION_TIMEOUT')
 ```
+
+---
+
+# 7. 계정계(Core) 상태 매핑 전략
+
+**목표**: `channel_db.transfer_sessions`와 `core_db.journal_entries`/`transfer_records` 간의 상태 정합성 보장.
+
+## 7.1 상태 매핑 테이블
+
+| Channel Session Status | Core Journal Status | Core Record Status | 설명 |
+| --- | --- | --- | --- |
+| `OTP_PENDING` | (없음) | (없음) | 채널 내부 인증 단계 |
+| `AUTHED` | (없음) | (없음) | 인증 완료, Core 호출 전 |
+| `EXECUTING` | (없음) or `PENDING` | (없음) or `PENDING` | Core 호출 중 / 처리 중 |
+| `COMPLETED` | `POSTED` | `COMPLETED` | **최종 성공 동기화** |
+| `FAILED` | `FAILED` | `FAILED` | **최종 실패 동기화** |
+
+## 7.2 불일치 해소 (Reconciliation)
+
+*   **상황**: Channel은 `EXECUTING`인데, Core 응답을 못 받음 (Timeout).
+*   **전략**:
+    *   Channel은 `client_request_id`로 Core `GetTransaction` API 조회.
+    *   **Case 1 (Core 성공)**: Core가 `POSTED`라면 Channel도 `COMPLETED`로 전이.
+    *   **Case 2 (Core 실패)**: Core가 `FAILED`라면 Channel도 `FAILED`로 전이.
+    *   **Case 3 (Core 없음)**: Core에 기록조차 없다면 (네트워크 유실), Channel은 `FAILED` 처리 (또는 안전한 재시도 정책 적용).
+
