@@ -12,7 +12,7 @@ So that accounting integrity can be continuously verified.
 
 ## Acceptance Criteria
 
-1. Given completed transfer set When integrity query runs Then debit/credit(+compensate) invariants hold.
+1. Given completed order set When integrity query runs Then debit/credit(+compensate) invariants hold.
 2. Given detected mismatch When integrity check fails Then anomaly is reported with traceable identifiers.
 3. Given scheduled integrity job When executed Then summary metrics are stored for operations.
 4. Given release gate When ledger integrity test fails Then build is blocked.

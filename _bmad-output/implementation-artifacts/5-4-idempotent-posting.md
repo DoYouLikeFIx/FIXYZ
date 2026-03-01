@@ -6,7 +6,7 @@ Status: ready-for-dev
 
 ## Story
 
-As a transaction safety owner,
+As a order safety owner,
 I want duplicate execution suppression,
 So that repeated client/system calls do not double-post.
 

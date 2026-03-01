@@ -14,7 +14,7 @@ So that operational recovery confidence is proven.
 
 1. Given timeout and failure drill setup When test run executes Then CB open behavior is verified.
 2. Given recovery drill scenario When downstream recovers Then state closes and normal flow resumes.
-3. Given replay/requery drill When unresolved transaction simulated Then recovery workflow converges or escalates as designed.
+3. Given replay/requery drill When unresolved order simulated Then recovery workflow converges or escalates as designed.
 4. Given drill evidence requirement When drill completes Then report/log artifacts are attached.
 
 ## Tasks / Subtasks

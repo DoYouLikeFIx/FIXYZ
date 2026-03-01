@@ -6,7 +6,7 @@ Status: ready-for-dev
 
 ## Story
 
-As a transfer user,
+As an order user,
 I want transparent degraded-state guidance,
 So that I understand delays and recovery behavior.
 

@@ -7,14 +7,14 @@ Status: ready-for-dev
 ## Story
 
 As a platform consumer,
-I want normalized transfer terminal states,
+I want normalized order terminal states,
 So that clients can render outcomes without service-specific branching.
 
 ## Acceptance Criteria
 
 1. Given branch-specific outcomes When response is normalized Then terminal states follow common contract.
-2. Given failed transfer When failure code is set Then reason taxonomy matches documented categories.
-3. Given completed transfer When response returned Then transaction reference is always present.
+2. Given failed order When failure code is set Then reason taxonomy matches documented categories.
+3. Given completed order When response returned Then order reference is always present.
 4. Given state contract regression When tests run Then schema mismatch fails CI.
 
 ## Tasks / Subtasks

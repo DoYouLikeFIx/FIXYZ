@@ -22,7 +22,7 @@ Users can log in and maintain their session via Spring Session Redis (JSESSIONID
 
 As a **new user**,  
 I want to register with my email, password, and name,  
-So that I can create an account and immediately have a bank account ready to use.
+So that I can create an account and immediately have a trading account ready to use.
 
 ### Acceptance Criteria
 
@@ -31,10 +31,10 @@ So that I can create an account and immediately have a bank account ready to use
 **Then** member record is created with `ROLE_USER`, `ACTIVE` status  
 **And** password is stored as BCrypt hash (≥12 rounds)  
 **And** Register API always assigns `ROLE_USER` (`ROLE_ADMIN` is only created via direct DB seed)  
-**And** corebank-service `POST /internal/v1/accounts` is called to auto-create one default current account (FR-52)  
+**And** corebank-service `POST /internal/v1/portfolio` is called to auto-create one default trading account (FR-52)  
 **And** HTTP 201 returned: `{ memberId, email, name, createdAt }`
 
-**Given** corebank `POST /internal/v1/accounts` call fails with 5xx or timeout  
+**Given** corebank `POST /internal/v1/portfolio` call fails with 5xx or timeout  
 **When** exception occurs  
 **Then** member save is also rolled back, HTTP 503 `{ code: "ACCOUNT_CREATION_FAILED" }` returned
 
@@ -146,14 +146,14 @@ So that my session is securely terminated and I can extend it if needed.
 
 As a **logged-in user**,  
 I want to view my account list and real-time balances,  
-So that I know how much money I have before initiating a transfer.
+So that I know how much money I have before initiating an order.
 
 **Depends On:** Story 0.1 (corebank startup), Story 1.2 (Spring Session authentication)
 
 ### Acceptance Criteria
 
-**Given** `GET /api/v1/accounts` call (valid JSESSIONID cookie)  
-**When** channel-service → corebank-service `GET /internal/v1/members/{memberId}/accounts` call  
+**Given** `GET /api/v1/portfolio` call (valid JSESSIONID cookie)  
+**When** channel-service → corebank-service `GET /internal/v1/members/{memberId}/portfolio` call  
 **Then** request includes `X-Internal-Secret: {INTERNAL_API_SECRET}` header (NFR-S4)  
 **And** corebank-service returns HTTP 403 for internal API requests without the header  
 **And** HTTP 200: `[ { accountId, accountNumber, balance, currency, createdAt } ]`  
@@ -163,10 +163,10 @@ So that I know how much money I have before initiating a transfer.
 **When** request processed  
 **Then** HTTP 200, empty array `[]` returned
 
-**Given** `GET /api/v1/accounts/{accountId}/balance` call (own account)  
+**Given** `GET /api/v1/portfolio/{accountId}/balance` call (own account)  
 **When** request processed  
 **Then** HTTP 200: `{ accountId, balance, pendingAmount, currency, asOf }`  
-**And** `balance` is available balance after deducting PENDING transfers, `pendingAmount` is the amount pending withdrawal
+**And** `balance` is available balance after deducting PENDING orders, `pendingAmount` is the amount reserved for pending orders
 
 **Given** query by account ID owned by another member  
 **When** ownership verification fails  
@@ -174,41 +174,40 @@ So that I know how much money I have before initiating a transfer.
 
 ---
 
-## Story 1.5: Transfer History Inquiry
+## Story 1.5: Order History Inquiry
 
 As a **logged-in user**,  
-I want to view my transfer history in a paginated and filterable list,  
+I want to view my order history in a paginated and filterable list,  
 So that I can track my financial activity.
 
 **Depends On:** Story 1.4
 
 ### Acceptance Criteria
 
-**Given** `GET /api/v1/transfers?page=0&size=20` call (valid JSESSIONID cookie)  
-**When** channel-service queries the transfer_session table  
+**Given** `GET /api/v1/orders?page=0&size=20` call (valid JSESSIONID cookie)  
+**When** channel-service queries the order_session table  
 **Then** HTTP 200: `{ content: [...], totalElements, totalPages, page, size }`  
-**And** each item: `{ transferId, fromAccount, toAccount, amount, status, createdAt }`  
+**And** each item: `{ orderId, symbol, side, quantity, price, status, createdAt }`  
 **And** sorted by `createdAt DESC`
 
-**Given** `GET /api/v1/transfers/{transferId}` call (own transfer)  
+**Given** `GET /api/v1/orders/{orderId}` call (own order)  
 **When** ownership check passes  
-**Then** HTTP 200: full details including `{ ..., fepReferenceId, completedAt, failReason }`
+**Then** HTTP 200: full details including `{ ..., clOrdID, completedAt, failReason }`
 
-**Given** query by another member's transfer ID  
+**Given** query by another member's order ID  
 **When** ownership verification fails  
 **Then** HTTP 403 returned
 
-**Given** `GET /api/v1/transfers?status=COMPLETED`  
+**Given** `GET /api/v1/orders?status=FILLED`  
 **When** query executes  
-**Then** only COMPLETED status transfers returned
+**Then** only FILLED status orders returned
 
-**Given** `GET /api/v1/transfers?direction=SENT` or `direction=RECEIVED`  
+**Given** `GET /api/v1/orders?symbol=005930`  
 **When** query executes  
-**Then** `SENT` → returns only transfers where `fromAccountId` is own account  
-**And** `RECEIVED` → returns only transfers where `toAccountId` is own account  
-**And** all transfers returned when `direction` not specified
+**Then** only orders for symbol 005930 returned  
+**And** all orders returned when `symbol` not specified
 
-**Given** `GET /api/v1/transfers?page=-1` or `size=0`  
+**Given** `GET /api/v1/orders?page=-1` or `size=0`  
 **When** request processed  
 **Then** HTTP 400 returned (invalid page parameters)
 
@@ -270,13 +269,13 @@ So that unauthenticated users cannot access protected sections of the app.
 **Then** name, email, password fields displayed  
 **And** on success, redirect to `/login`
 
-**Given** `<PrivateRoute>` wrapping routes requiring authentication (`/`, `/transfers`, etc.)  
+**Given** `<PrivateRoute>` wrapping routes requiring authentication (`/`, `/orders`, etc.)  
 **When** an unauthenticated user accesses  
 **Then** redirect to `/login` (optionally saving returnTo)
 
 **Given** `<NavBar>` renders (authenticated user)  
 **When** displayed  
-**Then** contains username, account list link, transfer history link, logout button  
+**Then** contains username, account list link, order history link, logout button  
 **And** on logout click, `POST /api/v1/auth/logout` called then `useAuthStore` member reset to null
 
 ---
@@ -285,7 +284,7 @@ So that unauthenticated users cannot access protected sections of the app.
 
 As an **authenticated user**,  
 I want to register my Google Authenticator app to my account,  
-So that I can use TOTP-based step-up authentication when initiating transfers.
+So that I can use TOTP-based step-up authentication when initiating orders.
 
 **Depends On:** Story 1.2 (Spring Session authentication), Story 1.6 (password verification pattern)
 

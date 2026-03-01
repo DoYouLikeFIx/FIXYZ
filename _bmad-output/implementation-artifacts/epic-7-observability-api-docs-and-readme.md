@@ -1,5 +1,8 @@
 # Epic 7: Observability, API Docs & README
 
+> **⚠️ Epic Numbering Note**: This supplemental file was numbered from the securities-order domain and corresponds to **Epic 8 in epics.md: Cross-system Security, Audit, Observability (partial)**. The canonical story authority is always `_bmad-output/planning-artifacts/epics.md`.
+
+
 ## Summary
 
 Swagger UI documents all Channel APIs, X-Correlation-Id propagates through logs of all 3 services, and structured JSON logs allow request chain reconstruction. README provides immediate answers for two interview tracks (Banking/FinTech).
@@ -87,12 +90,12 @@ So that a complete request chain can be reconstructed from logs across services.
 **Then** entire request chain reconstructable using same `correlationId` (NFR-L1)
 
 **Given** `CorrelationIdPropagationTest` (Integration Test)  
-**When** execute E2E transfer request  
+**When** execute E2E order request  
 **Then** Verify headers in Channel → CoreBank WireMock:
 ```java
-channelWireMock.verify(postRequestedFor(urlEqualTo("/internal/v1/transfers"))
+channelWireMock.verify(postRequestedFor(urlEqualTo("/internal/v1/orders"))
     .withHeader("X-Correlation-Id", matching("[a-f0-9\\-]{36}")));
-fepWireMock.verify(postRequestedFor(urlEqualTo("/fep/v1/transfer"))
+fepWireMock.verify(postRequestedFor(urlEqualTo("/fep/v1/orders"))
     .withHeader("X-Correlation-Id", matching("[a-f0-9\\-]{36}")));
 ```
 **And** verify same `correlationId` UUID propagated 3-hops (Channel → CoreBank → FEP)
@@ -123,19 +126,19 @@ docker compose up
 **Given** Bank Interviewer Track section (README)  
 **When** Reading  
 **Then** "Why Pessimistic Lock?" → Summary of ADR-001 + interview speaking points  
-**And** "How does OTP work?" → Explanation of simulation boundary (SecureRandom vs HSM)  
-**And** "Ledger Integrity?" → Link to Scenario #7 (SUM(DEBIT)==SUM(CREDIT))  
+**And** "How does OTP work?" → Explanation of simulation boundary (TOTP RFC 6238 via Google Authenticator vs production HSM-backed token device; secret replaceability via Vault)  
+**And** "Position Integrity?" → Link to Scenario #7 (SUM(BUY executed_qty) − SUM(SELL executed_qty) == positions.quantity)  
 **And** 5-minute Demo Script:
 ```bash
-# 1. Normal Transfer
+# 1. Normal Order
 curl -X POST .../auth/login → Get JSESSIONID
-curl -X POST .../transfers/sessions → sessionId
+curl -X POST .../orders/sessions → sessionId
 curl -X POST .../otp/verify (Valid TOTP)
 curl -X POST .../execute → COMPLETED
 # 2. OTP Failure x3 → FAILED
 curl -X POST .../otp/verify (Wrong Code) ×3 → AUTH-005
 # 3. Admin Session Invalidation
-curl -X DELETE .../admin/members/{id}/sessions (admin@fix.com)
+curl -X DELETE .../admin/members/{memberId}/sessions (admin@fix.com)
 ```
 
 **Given** FinTech Interviewer Track section (README)  
@@ -144,12 +147,20 @@ curl -X DELETE .../admin/members/{id}/sessions (admin@fix.com)
 **And** DevTools verification guide: Network tab → Check `EventStream`  
 **And** Actuator Circuit Breaker Demo Script:
 ```bash
-# Force Trigger CB OPEN
-curl -X POST "http://localhost:8082/fep-internal/simulate-failures?count=3" \
-     -H "X-Internal-Secret: $FEP_INTERNAL_SECRET"
-# Check CB State
-curl http://localhost:8080/actuator/circuitbreakers
+# Step 1: Configure FEP Simulator → TIMEOUT mode (all FEP calls will timeout after 3000ms)
+curl -X PUT "http://localhost:8082/fep-internal/rules" \
+     -H "Content-Type: application/json" \
+     -d '{"action_type":"TIMEOUT","delay_ms":3000,"failure_rate":1.0}'
+# Step 2: Trigger 3 order executions via FIX web UI (or via channel-service execute endpoint)
+#         Each will ReadTimeoutException → Resilience4j records failure; slidingWindowSize=3
+#         After 3rd failure: CB transitions CLOSED → OPEN
+# Step 3: Check CB State (corebank-service — Resilience4j @CircuitBreaker(name="fep") lives here)
+curl http://localhost:8081/actuator/circuitbreakers
 # → confirm fep.state: "OPEN"
+# Step 4: Restore FEP Simulator to normal
+curl -X PUT "http://localhost:8082/fep-internal/rules" \
+     -H "Content-Type: application/json" \
+     -d '{"action_type":"IGNORE","delay_ms":0,"failure_rate":0.0}'
 ```
 
 **Given** ADR File Organization  

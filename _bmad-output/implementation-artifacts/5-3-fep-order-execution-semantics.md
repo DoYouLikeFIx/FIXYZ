@@ -1,4 +1,4 @@
-# Story 4.4: [FE] Web Transfer Step A/B
+# Story 5.3: [AC] FEP Order Execution Semantics
 
 Status: ready-for-dev
 
@@ -6,16 +6,16 @@ Status: ready-for-dev
 
 ## Story
 
-As a web user,
-I want step-based transfer input and OTP preparation flow,
-So that transfer setup is clear and reversible.
+As a FEP execution owner,
+I want deterministic posting semantics for external orders,
+So that local ledger stays consistent with external processing lifecycle.
 
 ## Acceptance Criteria
 
-1. Given step A transfer form When user submits valid input Then session initiation API is called successfully.
-2. Given invalid form data When validation runs Then client-side and server-side errors are shown.
-3. Given transition to step B When session enters OTP_PENDING Then OTP input UI becomes active.
-4. Given API/network error When request fails Then user receives retry guidance.
+1. Given FEP-routed order execution request When pre-posting/debit occurs Then order state records external linkage metadata.
+2. Given external failure requiring compensation When compensation path runs Then compensating credit is recorded with traceable linkage.
+3. Given external unknown outcome When settlement deferred Then ledger state remains reconcilable for later recovery.
+4. Given FEP order FILLED When finalized Then final order status (FILLED) and clOrdID references are consistent.
 
 ## Tasks / Subtasks
 
@@ -32,9 +32,9 @@ So that transfer setup is clear and reversible.
 
 ### Developer Context Section
 
-- Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 4.
-- Supplemental artifact `_bmad-output/implementation-artifacts/epic-4-transfer-execution-and-ledger-integrity.md` has different scope/numbering; use it only as technical reference, not story ID authority.
-- Depends on: Story 4.1, Story 2.4.
+- Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 5.
+- Supplemental artifact `_bmad-output/implementation-artifacts/epic-5-real-time-notifications.md` has different scope/numbering; use it only as technical reference, not story ID authority.
+- Depends on: Story 5.1, Story 3.2, Story 4.3.
 
 ### Technical Requirements
 
@@ -55,14 +55,14 @@ So that transfer setup is clear and reversible.
 ### Story Completion Status
 
 - Status set to `ready-for-dev`.
-- Completion note: Epic 4 story context prepared from canonical planning artifact.
+- Completion note: Epic 5 story context prepared from canonical planning artifact.
 
 ### References
 
-- `_bmad-output/planning-artifacts/epics.md` (Epic 4, Story 4.4)
+- `_bmad-output/planning-artifacts/epics.md` (Epic 5, Story 5.3)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
-- `_bmad-output/implementation-artifacts/epic-4-transfer-execution-and-ledger-integrity.md` (supplemental only)
+- `_bmad-output/implementation-artifacts/epic-5-real-time-notifications.md` (supplemental only)
 
 ## Dev Agent Record
 
@@ -72,7 +72,7 @@ GPT-5 Codex (Codex desktop)
 
 ### Debug Log References
 
-- Generated from canonical planning artifact for Epic 4.
+- Generated from canonical planning artifact for Epic 5.
 
 ### Completion Notes List
 
@@ -80,4 +80,4 @@ GPT-5 Codex (Codex desktop)
 
 ### File List
 
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/4-4-web-transfer-step-a-b.md
+- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/5-3-fep-order-execution-semantics.md

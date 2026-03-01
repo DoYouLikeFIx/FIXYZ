@@ -35,16 +35,16 @@ So that I have a verified foundation to build all subsequent features on.
 
 **Given** Flyway is configured for channel-service and corebank-service  
 **When** services start  
-**Then** `V1__create_transfer_session_table.sql` runs against channel_db without error  
+**Then** `V1__create_order_session_table.sql` runs against channel_db without error  
 **And** `V1__create_member_table.sql` runs against core_db without error  
 **And** `R__seed_data.sql` runs on local/test profile and creates seed data including:
 - `admin@fix.com` account with ROLE_ADMIN
 - `user@fix.com` account with ROLE_USER
-- Each account has at least one bank account with non-zero balance
+- Each account has at least one trading account with non-zero balance
 
 **Given** `docker-compose.override.yml` exists at project root  
 **When** `docker compose up` is run locally  
-**Then** `mysql:3306`, `redis:6379`, `corebank-service:8081`, `fep-service:8082` ports are accessible from the host machine  
+**Then** `mysql:3306`, `redis:6379`, `corebank-service:8081`, `fep-simulator:8082` ports are accessible from the host machine  
 **And** DBeaver / Redis Insight can connect to each service directly
 
 **Given** `curl localhost:8081/actuator/health` is run from the host machine without override  
@@ -62,7 +62,7 @@ So that I have a verified foundation to build all subsequent features on.
 **Then** `InternalSecretFilter` (`OncePerRequestFilter`) is applied to the `/internal/**` path  
 **And** requests without the header → HTTP 403 (scaffold implementation — detailed logic completed in Story 6.3)  
 **And** the secret is externalized via env var `COREBANK_INTERNAL_SECRET` (`application.yml: ${COREBANK_INTERNAL_SECRET:dev-secret}`)  
-**And** `fep-service:8082/fep-internal/**` follows the same pattern with a `FepInternalSecretFilter` scaffold  
+**And** `fep-simulator:8082/fep-internal/**` follows the same pattern with a `FepInternalSecretFilter` scaffold  
 **And** Story 6.3 `SecurityBoundaryTest` is guaranteed to pass on top of this scaffold
 
 ---

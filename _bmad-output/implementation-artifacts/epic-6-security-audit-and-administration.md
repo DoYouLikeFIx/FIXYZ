@@ -1,5 +1,8 @@
 # Epic 6: Security, Audit & Administration
 
+> **⚠️ Epic Numbering Note**: This supplemental file was numbered from the securities-order domain and corresponds to **Epic 8 in epics.md: Cross-system Security, Audit, Observability**. The canonical story authority is always `_bmad-output/planning-artifacts/epics.md`.
+
+
 ## Summary
 
 All user actions are recorded in audit logs, and administrators can force session invalidation and view audit history. PII (account numbers, passwords) is not exposed in logs. CSRF protection, Rate Limiting, and Account Lockout are all functional.
@@ -15,18 +18,18 @@ As a **system**,
 I want every significant user action to be recorded in an audit log with actor, action, target, and timestamp,  
 So that security investigations can reconstruct the complete event chain.
 
-**Depends On:** Story 1.2 (Authentication), Story 4.1 (Transfer)
+**Depends On:** Story 1.2 (Authentication), Story 4.1 (Order execution)
 
 ### Acceptance Criteria
 
-**Given** User login success/failure, logout, transfer session creation, OTP issuance/verification, transfer execution, account inquiry  
+**Given** User login success/failure, logout, order session creation, OTP issuance/verification, order execution, account inquiry  
 **When** Each action executes  
 **Then** `AuditEvent` domain event publish → processed by `AuditLogEventListener` via `@TransactionalEventListener(phase = AFTER_COMMIT)` + `@Async`  
-**And** Audit INSERT after transfer TX commit → independent of transfer rollback (best-effort)  
+**And** Audit INSERT after order TX commit → independent of order rollback (best-effort)  
 **And** `channel_db.audit_logs` INSERT  
 **And** Fields: `id, member_id, action (ENUM), target_id, ip_address, user_agent, created_at`  
-**And** `action` ENUM: `LOGIN_SUCCESS, LOGIN_FAILURE, LOGOUT, TRANSFER_INITIATED, OTP_ISSUED, OTP_VERIFIED, OTP_FAILED, TRANSFER_EXECUTED, TRANSFER_FAILED, TRANSFER_COMPENSATED`  
-**And** `TRANSFER_COMPENSATED`: Recorded when Story 4.3 RecoveryScheduler executes compensating transaction  
+**And** `action` ENUM: `LOGIN_SUCCESS, LOGIN_FAILURE, LOGOUT, ORDER_INITIATED, OTP_ISSUED, OTP_VERIFIED, OTP_FAILED, ORDER_EXECUTED, ORDER_FAILED, ORDER_COMPENSATED`  
+**And** `ORDER_COMPENSATED`: Recorded when Story 4.3 RecoveryScheduler executes compensating transaction  
 **And** Mandatory logging on `@Async` failure: `log.error("AUDIT_FAIL: action={}, memberId={}", event.getAction(), event.getMemberId(), ex)`
 
 **Given** Security-critical events (account lockout, OTP limit exceeded, forced session invalidation)  
@@ -40,7 +43,7 @@ So that security investigations can reconstruct the complete event chain.
 **And** Delete records where `security_events.created_at` < now - 180 days (FR-46)
 
 **Given** Application log output (Logback)  
-**When** Transfer execution log recorded  
+**When** Order execution log recorded  
 **Then** Full account number (`^\d{10,14}$` pattern) not output in logs — `MaskingUtils.maskAccountNumber()` applied (NFR-S2, FR-36)  
 **And** Password, OTP values, JSESSIONID values not output in logs  
 **And** Account number masking format: `110-****-5678` (first 3 digits + ** + last 4 digits)
@@ -115,8 +118,8 @@ So that abuse, CSRF attacks, and network bypass attempts are all rejected.
 **When** Check configuration  
 **Then** Applied only to 3 endpoints:
 - `POST /api/v1/auth/login`: 5 req/min/IP
-- `POST /api/v1/transfers/sessions/{id}/otp/verify`: 3 times/session
-- `POST /api/v1/transfers/sessions`: 10 req/min/userId
+- `POST /api/v1/orders/sessions/{id}/otp/verify`: 3 times/session
+- `POST /api/v1/orders/sessions`: 10 req/min/userId
 
 **Given** Rate limit exceeded  
 **When** Request received  
@@ -144,14 +147,14 @@ So that abuse, CSRF attacks, and network bypass attempts are all rejected.
 **Then** `X-XSRF-TOKEN` header automatically injected (CSRF Double-Submit Cookie)  
 **And** Request without `X-XSRF-TOKEN` header → HTTP 403 (FR-35)
 
-**Given** `curl corebank-service:8081/internal/v1/accounts` (No X-Internal-Secret header)  
+**Given** `curl corebank-service:8081/internal/v1/portfolio` (No X-Internal-Secret header)  
 **When** Request sent  
 **Then** HTTP 403 returned (NFR-S4, FR-52)
 
 **Given** `SecurityBoundaryTest` (`@Nested` — Scenario #8)  
 **When** Direct call to internal API without X-Internal-Secret  
 **Then** `corebank-service:8081/internal/**` → 403 verification  
-**And** `fep-service:8082/fep/**` → 403 verification  
+**And** `fep-simulator:8082/fep/**` → 403 verification  
 **And** With correct X-Internal-Secret → Success verification
 
 **Given** `RateLimitIntegrationTest` (Testcontainers Redis)  
@@ -182,7 +185,7 @@ So that TOTP secrets are never exposed even in the event of a database breach.
 **And** `vault-init` container starts after `depends_on: vault` + `healthcheck` complete  
 **And** `vault-init.sh` — idempotent script:
   - Skip if `vault kv get secret/fix/config` succeeds, otherwise run `vault secrets enable -path=secret kv-v2`
-  - Seed user (`memberId=1`) TOTP secret conditional injection: `vault kv put ... secret="JBSWY3DPEHPK3PXP"` only if 404
+  - Seed user (`memberId=1`) TOTP secret conditional injection: `vault kv put secret/fix/member/1/totp-secret secret="JBSWY3DPEHPK3PXP"` only if 404
   - **Safe to re-run on restart (Idempotency guaranteed)**
 **And** `channel-service` starts after `depends_on: vault` health check passes
 

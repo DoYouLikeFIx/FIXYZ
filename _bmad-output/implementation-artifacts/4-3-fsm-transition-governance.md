@@ -7,12 +7,12 @@ Status: ready-for-dev
 ## Story
 
 As a domain owner,
-I want explicit transfer session transition rules,
+I want explicit order session transition rules,
 So that invalid state progression cannot occur.
 
 ## Acceptance Criteria
 
-1. Given transfer FSM definition When state transition command is applied Then only allowed transitions are accepted.
+1. Given order FSM definition When state transition command is applied Then only allowed transitions are accepted.
 2. Given invalid transition request When attempted Then deterministic conflict/error is returned.
 3. Given state persistence event When transition completes Then status and timestamps are stored consistently.
 4. Given API status response When serialized Then optional fields follow status-specific contract.
@@ -33,7 +33,7 @@ So that invalid state progression cannot occur.
 ### Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 4.
-- Supplemental artifact `_bmad-output/implementation-artifacts/epic-4-transfer-execution-and-ledger-integrity.md` has different scope/numbering; use it only as technical reference, not story ID authority.
+- Supplemental artifact `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` has different scope/numbering; use it only as technical reference, not story ID authority.
 - Depends on: Story 4.2.
 
 ### Technical Requirements
@@ -62,7 +62,7 @@ So that invalid state progression cannot occur.
 - `_bmad-output/planning-artifacts/epics.md` (Epic 4, Story 4.3)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
-- `_bmad-output/implementation-artifacts/epic-4-transfer-execution-and-ledger-integrity.md` (supplemental only)
+- `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` (supplemental only)
 
 ## Dev Agent Record
 

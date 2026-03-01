@@ -8,7 +8,7 @@ Status: ready-for-dev
 
 As a notification backend owner,
 I want SSE stream lifecycle management,
-So that users receive transfer outcomes in real time.
+So that users receive order outcomes in real time.
 
 ## Acceptance Criteria
 

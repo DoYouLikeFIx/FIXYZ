@@ -1,4 +1,4 @@
-# Story 5.2: [AC] Same-bank Ledger Posting
+# Story 5.2: [AC] Order Execution & Position Update
 
 Status: ready-for-dev
 
@@ -6,16 +6,16 @@ Status: ready-for-dev
 
 ## Story
 
-As a ledger engine,
-I want atomic debit/credit posting for same-bank transfers,
-So that ledger integrity is preserved.
+As a position engine,
+I want atomic position deduction and cash settlement for FEP-routed FILLED orders,
+So that portfolio integrity is preserved.
 
 ## Acceptance Criteria
 
-1. Given authorized transfer execution When posting occurs Then paired debit/credit entries are committed atomically.
-2. Given posting failure mid-transaction When transaction aborts Then neither partial ledger entry persists.
-3. Given insufficient balance condition When posting pre-check fails Then no ledger mutation occurs.
-4. Given successful posting When response is built Then transaction reference is included.
+1. Given authorized FILLED order When position update occurs Then stock quantity deducted and cash settled atomically.
+2. Given posting failure mid-transaction When transaction aborts Then neither partial position nor cash mutation persists.
+3. Given insufficient position condition When pre-check fails Then no position mutation occurs.
+4. Given successful position update When response is built Then clOrdID and filled quantity are included.
 
 ## Tasks / Subtasks
 
@@ -80,4 +80,4 @@ GPT-5 Codex (Codex desktop)
 
 ### File List
 
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/5-2-same-bank-ledger-posting.md
+- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/5-2-order-execution-and-position-update.md

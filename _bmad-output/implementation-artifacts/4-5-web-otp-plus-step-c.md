@@ -8,7 +8,7 @@ Status: ready-for-dev
 
 As a web user,
 I want OTP verification and final confirmation/result screens,
-So that I can complete transfer with clear status feedback.
+So that I can complete order with clear status feedback.
 
 ## Acceptance Criteria
 
@@ -33,7 +33,7 @@ So that I can complete transfer with clear status feedback.
 ### Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 4.
-- Supplemental artifact `_bmad-output/implementation-artifacts/epic-4-transfer-execution-and-ledger-integrity.md` has different scope/numbering; use it only as technical reference, not story ID authority.
+- Supplemental artifact `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` has different scope/numbering; use it only as technical reference, not story ID authority.
 - Depends on: Story 4.2, Story 4.3, Story 4.4.
 
 ### Technical Requirements
@@ -62,7 +62,7 @@ So that I can complete transfer with clear status feedback.
 - `_bmad-output/planning-artifacts/epics.md` (Epic 4, Story 4.5)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
-- `_bmad-output/implementation-artifacts/epic-4-transfer-execution-and-ledger-integrity.md` (supplemental only)
+- `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` (supplemental only)
 
 ## Dev Agent Record
 

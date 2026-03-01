@@ -6,15 +6,15 @@ Status: ready-for-dev
 
 ## Story
 
-As a transfer user,
+As an order user,
 I want limit/balance/result failures clearly explained,
 So that I can take the correct next action.
 
 ## Acceptance Criteria
 
 1. Given insufficient balance/limit errors When FE/MOB receives codes Then both clients show aligned actionable guidance.
-2. Given transfer failure reason code When rendered Then reason category is distinguishable (internal/external/validation).
-3. Given successful transfer completion When result rendered Then reference and updated balance context are shown where required.
+2. Given order failure reason code When rendered Then reason category is distinguishable (internal/external/validation).
+3. Given successful order completion When result rendered Then reference and updated balance context are shown where required.
 
 ## Tasks / Subtasks
 

@@ -6,7 +6,7 @@ Status: ready-for-dev
 
 ## Story
 
-As an authenticated transfer initiator,
+As an authenticated order initiator,
 I want robust OTP verification controls,
 So that step-up authentication is secure and abuse-resistant.
 
@@ -33,7 +33,7 @@ So that step-up authentication is secure and abuse-resistant.
 ### Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 4.
-- Supplemental artifact `_bmad-output/implementation-artifacts/epic-4-transfer-execution-and-ledger-integrity.md` has different scope/numbering; use it only as technical reference, not story ID authority.
+- Supplemental artifact `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` has different scope/numbering; use it only as technical reference, not story ID authority.
 - Depends on: Story 4.1, Story 1.2.
 
 ### Technical Requirements
@@ -62,7 +62,7 @@ So that step-up authentication is secure and abuse-resistant.
 - `_bmad-output/planning-artifacts/epics.md` (Epic 4, Story 4.2)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
-- `_bmad-output/implementation-artifacts/epic-4-transfer-execution-and-ledger-integrity.md` (supplemental only)
+- `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` (supplemental only)
 
 ## Dev Agent Record
 

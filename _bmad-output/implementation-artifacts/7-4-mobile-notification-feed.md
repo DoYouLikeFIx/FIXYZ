@@ -8,7 +8,7 @@ Status: ready-for-dev
 
 As a mobile user,
 I want in-app notification feed and reconnection,
-So that transfer outcomes remain visible on mobile.
+So that order outcomes remain visible on mobile.
 
 ## Acceptance Criteria
 

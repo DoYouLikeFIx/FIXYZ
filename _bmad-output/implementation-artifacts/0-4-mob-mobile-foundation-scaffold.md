@@ -31,6 +31,11 @@ so that mobile features follow the same contract and architecture.
 - [ ] Implement secure session persistence policy (AC: 4)
   - [ ] Store sensitive session material in platform secure storage (not plain async storage)
   - [ ] Keep storage strategy aligned with backend session/cookie model
+- [ ] Add MOB CI workflow (`ci-mobile.yml`) scoped to the MOB lane
+  - [ ] Create `.github/workflows/ci-mobile.yml` triggered on push/PR with path filter `MOB/**`
+  - [ ] Workflow steps: dependency install → TypeScript type-check → lint → `react-native build` (or Metro bundle dry-run)
+  - [ ] Ensure workflow produces a named status check (`ci-mobile`) compatible with branch protection rules
+  - [ ] Run on `ubuntu-latest` using Node.js matrix; skip simulator launch in CI (bundle-only validation is sufficient for foundation)
 
 ## Dev Notes
 
@@ -71,6 +76,7 @@ so that mobile features follow the same contract and architecture.
   - `MOB/src/network/**` (or equivalent shared client location)
   - `MOB/src/config/**` (environment/base URL config)
   - `MOB/src/security/**` (secure storage wrapper)
+  - `/Users/yeongjae/fixyz/.github/workflows/ci-mobile.yml`
 - Keep all mobile baseline logic in reusable modules; avoid duplicating network/auth glue in screen components.
 
 ### Testing Requirements

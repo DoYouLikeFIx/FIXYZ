@@ -55,7 +55,7 @@ development_status:
   epic-2: in-progress
   2-1-schema-and-auto-account-provisioning: ready-for-dev
   2-2-balance-and-available-balance-api: ready-for-dev
-  2-3-transfer-history-api: ready-for-dev
+  2-3-order-history-api: ready-for-dev
   2-4-web-account-dashboard-and-history: ready-for-dev
   2-5-mobile-account-dashboard-and-history: ready-for-dev
   2-6-account-status-contract: ready-for-dev
@@ -71,20 +71,20 @@ development_status:
   epic-3-retrospective: optional
 
   epic-4: in-progress
-  4-1-transfer-session-create-status-plus-ownership: ready-for-dev
+  4-1-order-session-create-status-plus-ownership: ready-for-dev
   4-2-otp-verification-policy: ready-for-dev
   4-3-fsm-transition-governance: ready-for-dev
-  4-4-web-transfer-step-a-b: ready-for-dev
+  4-4-web-order-step-a-b: ready-for-dev
   4-5-web-otp-plus-step-c: ready-for-dev
-  4-6-mobile-transfer-step-a-b: ready-for-dev
+  4-6-mobile-order-step-a-b: ready-for-dev
   4-7-mobile-otp-plus-step-c: ready-for-dev
   4-8-cross-client-fsm-parity-validation: ready-for-dev
   epic-4-retrospective: optional
 
   epic-5: in-progress
   5-1-limit-engine: ready-for-dev
-  5-2-same-bank-ledger-posting: ready-for-dev
-  5-3-interbank-ledger-semantics: ready-for-dev
+  5-2-order-execution-and-position-update: ready-for-dev
+  5-3-fep-order-execution-semantics: ready-for-dev
   5-4-idempotent-posting: ready-for-dev
   5-5-concurrency-control: ready-for-dev
   5-6-ledger-integrity: ready-for-dev

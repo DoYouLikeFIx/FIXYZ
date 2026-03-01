@@ -8,11 +8,11 @@ Status: ready-for-dev
 
 As a corebank integrity owner,
 I want pessimistic locking and race-safe behavior,
-So that concurrent transfers cannot produce negative or corrupted balances.
+So that concurrent orders cannot produce negative or corrupted balances.
 
 ## Acceptance Criteria
 
-1. Given concurrent transfer attempts on same account When lock policy is applied Then final balance never becomes negative.
+1. Given concurrent order attempts on same account When lock policy is applied Then final balance never becomes negative.
 2. Given lock contention When threshold exceeded Then request fails with deterministic conflict/error contract.
 3. Given 10-thread concurrency test When executed in CI Then expected success/failure counts and final balance assertions pass.
 4. Given lock duration observation When measured Then operational threshold alerting is available.

@@ -12,7 +12,7 @@ So that missed events can be recovered.
 
 ## Acceptance Criteria
 
-1. Given transfer terminal event When notification pipeline runs Then notification is persisted before/with dispatch.
+1. Given order terminal event When notification pipeline runs Then notification is persisted before/with dispatch.
 2. Given list API request When pagination params applied Then ordered notifications are returned.
 3. Given read-mark request When notification id belongs to user Then read status is updated.
 4. Given unauthorized notification access When validation fails Then request is denied.

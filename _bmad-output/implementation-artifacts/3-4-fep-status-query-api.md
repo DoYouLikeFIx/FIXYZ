@@ -7,7 +7,7 @@ Status: ready-for-dev
 ## Story
 
 As a recovery scheduler,
-I want status requery for external transactions,
+I want status requery for external orders,
 So that UNKNOWN/EXECUTING outcomes can be reconciled.
 
 ## Acceptance Criteria

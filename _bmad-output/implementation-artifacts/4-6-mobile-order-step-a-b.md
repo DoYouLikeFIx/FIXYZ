@@ -1,4 +1,4 @@
-# Story 5.3: [AC] Interbank Ledger Semantics
+# Story 4.6: [MOB] Mobile Order Step A/B
 
 Status: ready-for-dev
 
@@ -6,16 +6,16 @@ Status: ready-for-dev
 
 ## Story
 
-As an interbank ledger owner,
-I want deterministic posting semantics for external transfers,
-So that local ledger stays consistent with external processing lifecycle.
+As a mobile user,
+I want order input and OTP preparation on mobile flow,
+So that I can initiate order with same capability as web.
 
 ## Acceptance Criteria
 
-1. Given interbank transfer execution request When pre-posting/debit occurs Then transaction state records external linkage metadata.
-2. Given external failure requiring compensation When compensation path runs Then compensating credit is recorded with traceable linkage.
-3. Given external unknown outcome When settlement deferred Then ledger state remains reconcilable for later recovery.
-4. Given interbank completion When finalized Then final transfer status and references are consistent.
+1. Given step A mobile form When submission succeeds Then session is created and step B is shown.
+2. Given invalid amount/account input When validation fails Then contextual error indicators are displayed.
+3. Given OTP pending session When user navigates to OTP step Then remaining session context is preserved.
+4. Given navigation interruption When user returns Then state restoration logic preserves flow continuity.
 
 ## Tasks / Subtasks
 
@@ -32,9 +32,9 @@ So that local ledger stays consistent with external processing lifecycle.
 
 ### Developer Context Section
 
-- Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 5.
-- Supplemental artifact `_bmad-output/implementation-artifacts/epic-5-real-time-notifications.md` has different scope/numbering; use it only as technical reference, not story ID authority.
-- Depends on: Story 5.1, Story 3.2, Story 4.3.
+- Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 4.
+- Supplemental artifact `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` has different scope/numbering; use it only as technical reference, not story ID authority.
+- Depends on: Story 4.1, Story 2.5.
 
 ### Technical Requirements
 
@@ -55,14 +55,14 @@ So that local ledger stays consistent with external processing lifecycle.
 ### Story Completion Status
 
 - Status set to `ready-for-dev`.
-- Completion note: Epic 5 story context prepared from canonical planning artifact.
+- Completion note: Epic 4 story context prepared from canonical planning artifact.
 
 ### References
 
-- `_bmad-output/planning-artifacts/epics.md` (Epic 5, Story 5.3)
+- `_bmad-output/planning-artifacts/epics.md` (Epic 4, Story 4.6)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
-- `_bmad-output/implementation-artifacts/epic-5-real-time-notifications.md` (supplemental only)
+- `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` (supplemental only)
 
 ## Dev Agent Record
 
@@ -72,7 +72,7 @@ GPT-5 Codex (Codex desktop)
 
 ### Debug Log References
 
-- Generated from canonical planning artifact for Epic 5.
+- Generated from canonical planning artifact for Epic 4.
 
 ### Completion Notes List
 
@@ -80,4 +80,4 @@ GPT-5 Codex (Codex desktop)
 
 ### File List
 
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/5-3-interbank-ledger-semantics.md
+- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/4-6-mobile-order-step-a-b.md

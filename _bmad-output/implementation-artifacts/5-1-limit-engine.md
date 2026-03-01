@@ -8,11 +8,11 @@ Status: ready-for-dev
 
 As an account policy engine,
 I want daily amount/count validation,
-So that transfer attempts respect financial policy.
+So that order attempts respect financial policy.
 
 ## Acceptance Criteria
 
-1. Given transfer request with account context When limit check executes Then remaining capacity is computed accurately.
+1. Given order request with account context When limit check executes Then remaining capacity is computed accurately.
 2. Given request exceeds limit When validation fails Then rejection includes remaining-limit metadata.
 3. Given exactly-at-limit request When check runs Then acceptance/rejection behavior follows documented boundary.
 4. Given daily window rollover When date boundary changes Then counters reset according to timezone rule.

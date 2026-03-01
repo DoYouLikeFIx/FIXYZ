@@ -6,7 +6,7 @@ Status: ready-for-dev
 
 ## Story
 
-As a transfer user,
+As an order user,
 I want understandable external-failure messages,
 So that I know whether to retry, wait, or contact support.
 

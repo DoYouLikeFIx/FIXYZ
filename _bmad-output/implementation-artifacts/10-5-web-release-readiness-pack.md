@@ -13,7 +13,7 @@ So that web deployment quality is auditable.
 ## Acceptance Criteria
 
 1. Given FE E2E suite When release pipeline runs Then critical user journeys pass.
-2. Given regression in core transfer/auth paths When detected Then release gate fails.
+2. Given regression in core order/auth paths When detected Then release gate fails.
 3. Given release checklist template When preparing shipment Then checklist items are completed with evidence links.
 4. Given final FE candidate build When validated Then versioned release notes are generated.
 

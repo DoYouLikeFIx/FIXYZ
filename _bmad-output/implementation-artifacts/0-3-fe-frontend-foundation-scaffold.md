@@ -33,6 +33,11 @@ so that product UI features can be implemented consistently.
 - [ ] Implement normalized error handling contract (AC: 4)
   - [ ] Add response interceptor for standard backend error schema
   - [ ] Map transport and contract errors to consistent UI-safe messages
+- [ ] Add FE CI workflow (`ci-frontend.yml`) scoped to the FE lane (AC: 1)
+  - [ ] Create `.github/workflows/ci-frontend.yml` triggered on push/PR with path filter `FE/**`
+  - [ ] Workflow steps: `pnpm install --frozen-lockfile` → `pnpm run type-check` → `pnpm run lint` → `pnpm run build`
+  - [ ] Ensure workflow produces a named status check (`ci-frontend`) compatible with branch protection rules
+  - [ ] Verify `pnpm build` exits with code 0 and produces `dist/` artifact
 
 ## Dev Notes
 
@@ -76,6 +81,7 @@ so that product UI features can be implemented consistently.
   - `FE/src/lib/axios.*`
   - `FE/src/types/**` (if error contract types centralized)
   - `FE/.env.example` or equivalent env docs
+  - `/Users/yeongjae/fixyz/.github/workflows/ci-frontend.yml`
 - Keep API client as single shared source; do not duplicate per-feature clients in foundation story.
 
 ### Testing Requirements
@@ -91,7 +97,7 @@ so that product UI features can be implemented consistently.
 
 - From Story 0.2 context:
   - CI lane separation is expected; keep FE CI signal independent from backend jobs.
-  - Reuse established quality-gate mindset; avoid one-off local scripts with no CI counterpart.
+  - Reuse established quality-gate mindset; avoid one-off local scripts with no CI symbolName.
 
 ### Git Intelligence Summary
 

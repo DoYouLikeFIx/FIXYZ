@@ -7,13 +7,13 @@ Status: ready-for-dev
 ## Story
 
 As a reliability owner,
-I want orchestrated recovery for EXECUTING/UNKNOWN transfers,
-So that stuck transactions eventually converge.
+I want orchestrated recovery for EXECUTING/UNKNOWN orders,
+So that stuck orders eventually converge.
 
 ## Acceptance Criteria
 
-1. Given transfer remains non-terminal beyond threshold When scheduler runs Then recovery sequence is triggered.
-2. Given external requery returns terminal result When reconciliation succeeds Then transfer is closed with normalized state.
+1. Given order remains non-terminal beyond threshold When scheduler runs Then recovery sequence is triggered.
+2. Given external requery returns terminal result When reconciliation succeeds Then order is closed with normalized state.
 3. Given repeated unresolved attempts When max tries exceeded Then manual recovery queue entry is created.
 4. Given recovery execution When audited Then attempt history is queryable.
 

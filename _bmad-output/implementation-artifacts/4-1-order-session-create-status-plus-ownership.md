@@ -1,4 +1,4 @@
-# Story 4.1: [CH] Transfer Session Create/Status + Ownership
+# Story 4.1: [CH] Order Session Create/Status + Ownership
 
 Status: ready-for-dev
 
@@ -7,12 +7,12 @@ Status: ready-for-dev
 ## Story
 
 As a channel API owner,
-I want transfer session creation and status queries with ownership checks,
+I want order session creation and status queries with ownership checks,
 So that unauthorized access and invalid session usage are blocked.
 
 ## Acceptance Criteria
 
-1. Given valid transfer initiation request When session API is called Then session is created with OTP_PENDING status and TTL.
+1. Given valid order initiation request When session API is called Then session is created with PENDING_NEW status and TTL.
 2. Given status query for owned session When endpoint is called Then current session state is returned.
 3. Given non-owner session access When query or action occurs Then forbidden error is returned.
 4. Given expired session When status/action is requested Then not-found/expired contract is returned.
@@ -33,7 +33,7 @@ So that unauthorized access and invalid session usage are blocked.
 ### Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 4.
-- Supplemental artifact `_bmad-output/implementation-artifacts/epic-4-transfer-execution-and-ledger-integrity.md` has different scope/numbering; use it only as technical reference, not story ID authority.
+- Supplemental artifact `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` has different scope/numbering; use it only as technical reference, not story ID authority.
 - Depends on: Story 1.2, Story 2.2.
 
 ### Technical Requirements
@@ -62,7 +62,7 @@ So that unauthorized access and invalid session usage are blocked.
 - `_bmad-output/planning-artifacts/epics.md` (Epic 4, Story 4.1)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
-- `_bmad-output/implementation-artifacts/epic-4-transfer-execution-and-ledger-integrity.md` (supplemental only)
+- `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` (supplemental only)
 
 ## Dev Agent Record
 
@@ -80,4 +80,4 @@ GPT-5 Codex (Codex desktop)
 
 ### File List
 
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/4-1-transfer-session-create-status-plus-ownership.md
+- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/4-1-order-session-create-status-plus-ownership.md

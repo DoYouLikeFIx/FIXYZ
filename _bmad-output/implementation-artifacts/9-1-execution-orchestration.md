@@ -7,12 +7,12 @@ Status: ready-for-dev
 ## Story
 
 As an integration owner,
-I want unified orchestration for same-bank and interbank execution,
-So that transfer paths are controlled through a single domain flow.
+I want unified orchestration for FEP-routed execution,
+So that order paths are controlled through a single domain flow.
 
 ## Acceptance Criteria
 
-1. Given AUTHED transfer session When execute command issued Then orchestration selects same-bank or interbank branch correctly.
+1. Given AUTHED order session When execute command issued Then orchestration selects FEP-routed branch correctly.
 2. Given branch execution completed When results returned Then channel state reflects downstream outcome deterministically.
 3. Given downstream timeout/failure When execution path fails Then recovery-eligible state is assigned.
 4. Given orchestration logic update When integration tests run Then both branches remain green.
