@@ -62,6 +62,7 @@ So that order setup is clear and reversible.
 - `_bmad-output/planning-artifacts/epics.md` (Epic 4, Story 4.4)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
+- `_bmad-output/planning-artifacts/channels/api-spec.md` (채널계 API 명세)
 - `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` (supplemental only)
 
 ## Dev Agent Record

@@ -59,6 +59,7 @@ So that one client does not diverge from core order rules.
 - `_bmad-output/planning-artifacts/epics.md` (Epic 4, Story 4.8)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
+- `_bmad-output/planning-artifacts/channels/api-spec.md` (채널계 API 명세)
 - `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` (supplemental only)
 
 ## Dev Agent Record

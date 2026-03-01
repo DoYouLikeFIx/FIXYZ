@@ -52,7 +52,25 @@ So that portfolio integrity is preserved.
 - Validate all acceptance criteria with automated tests (unit/integration/e2e as appropriate).
 - Ensure negative paths and validation/authorization/error flows are covered.
 
-### Story Completion Status
+#### TC-5.2-PARTIAL-FILL: 일부 체결 포지션 반영
+
+- GIVEN FEP Simulator가 `ExecType=1 (PARTIAL_FILL)` ExecutionReport 리턴 (`executedQty=5`, `leavesQty=5`)
+- WHEN `corebank-service`가 `OrderSession` 포지션 업데이트 실행
+- THEN `position_holding.quantity` 증가량이 `executedQty(5)` 만큼만 반영됨 (전량 체결 아님)
+- AND `cash_account.balance` 괐리량이 `executedQty × executedPrice` 에 해당하는 금액만큼만 차감됨
+- AND `order_session.execution_result = PARTIAL_FILL`, `status = COMPLETED`
+- AND 잔여 수량 `leavesQty(5)` 분은 포지션에 반영되지 않음 (AC 1 원자성)
+- NOTE 참고: `channels/api-spec.md` §2.3 PARTIAL_FILL 정책
+
+#### TC-5.2-PARTIAL-FILL-CANCEL: 일부 체결 후 잔량 자동 취소 포지션 처리
+
+- GIVEN FEP Simulator가 `PARTIAL_FILL_CANCEL` ExecutionReport 리턴 (`executedQty=5`, `canceledQty=5`)
+- WHEN `corebank-service`가 체결분+취소분을 분리 시도
+- THEN `position_holding.quantity` 증가량이 `executedQty(5)` 만 처리됨
+- AND `canceledQty × executedPrice` 상당액은 `cash_account.balance` 환원됨
+- AND `order_session.execution_result = PARTIAL_FILL_CANCEL`, `status = COMPLETED`
+- AND 환원 전후로 `order_history` 테이블에 `filled_qty=5`, `canceled_qty=5` 모두 기록됨 (AC 4 추적성)
+- NOTE 참고: `fep-gateway/api-spec.md` §3.3 PARTIAL_FILL_CANCEL 정책
 
 - Status set to `ready-for-dev`.
 - Completion note: Epic 5 story context prepared from canonical planning artifact.
@@ -62,6 +80,8 @@ So that portfolio integrity is preserved.
 - `_bmad-output/planning-artifacts/epics.md` (Epic 5, Story 5.2)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
+- `_bmad-output/planning-artifacts/channels/api-spec.md` (채널계 API 명세)
+- `_bmad-output/planning-artifacts/fep-gateway/api-spec.md` (대외계 API 명세)
 - `_bmad-output/implementation-artifacts/epic-5-real-time-notifications.md` (supplemental only)
 
 ## Dev Agent Record

@@ -52,7 +52,25 @@ So that invalid state progression cannot occur.
 - Validate all acceptance criteria with automated tests (unit/integration/e2e as appropriate).
 - Ensure negative paths and validation/authorization/error flows are covered.
 
-### Story Completion Status
+#### TC-4.3-FSM-BOUNDARY: ORD-009 FSM 불법 상태 전이 전체 열거
+
+아래 모든 전이를 단위 테스트로 검증해야 한다 (AC 2):
+
+| 현재 상태 | 시도한 전이 | 예상 결과 |
+|---|---|---|
+| `PENDING` | OTP없이 바로 execute | HTTP 409 `ORD-009` |
+| `PENDING` | 주문 준비 없이 execute 직접 호출 (`PENDING`에서 마논 단계 생략) | HTTP 409 `ORD-009` |
+| `PENDING` | 동일 `PENDING` 유지 요청 | HTTP 409 `ORD-009` |
+| `AUTHED` | 다시 OTP 호출 | HTTP 409 `ORD-009` |
+| `EXECUTING` | execute 재호출 | HTTP 409 `ORD-009` (상태 전이 불가) 또는 `ORD-010` (락 충돌) — 순서 아래 참고 |
+| `COMPLETED` | OTP 또는 execute | HTTP 409 `ORD-009` |
+| `FAILED` | execute | HTTP 409 `ORD-009` |
+| `ESCALATED` | execute | HTTP 409 `ORD-009` |
+
+- **판단 순서 (CRITICAL)**: 상태 검증(`ORD-009`)이 Redis SETNX 락 획득(`ORD-010`)보다 **항상 먼저** 실행된다.  
+  따라서 `EXECUTING` 상태에서 execute 재호출 시: 상태 검증 선행 → `ORD-009` 반환 (락 획득 시도 안 함).  
+  `AUTHED` 상태에서 동시 2개 요청 경쟁 시에만 `ORD-010` 발생 가능.
+- NOTE 허용 전이만 열거: `PENDING→AUTHED(OTP성공)`, `AUTHED→EXECUTING(execute)`, `EXECUTING→COMPLETED/FAILED(FEP응답)`, 참고: `channels/api-spec.md` §2.3
 
 - Status set to `ready-for-dev`.
 - Completion note: Epic 4 story context prepared from canonical planning artifact.
@@ -62,6 +80,7 @@ So that invalid state progression cannot occur.
 - `_bmad-output/planning-artifacts/epics.md` (Epic 4, Story 4.3)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
+- `_bmad-output/planning-artifacts/channels/api-spec.md` (채널계 API 명세)
 - `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` (supplemental only)
 
 ## Dev Agent Record
