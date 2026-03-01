@@ -44,7 +44,7 @@ erDiagram
     OTP_VERIFICATIONS {
         BIGINT id PK
         CHAR36 otp_uuid UK
-        BIGINT transfer_session_id FK_UK
+        BIGINT order_session_id FK_UK
         BIGINT member_id FK
         INT attempt_count
         INT max_attempts
@@ -55,22 +55,23 @@ erDiagram
         DATETIME updated_at
     }
 
-    TRANSFER_SESSIONS {
+    ORDER_SESSIONS {
         BIGINT id PK
         CHAR36 session_uuid UK
         BIGINT member_id FK
         CHAR36 correlation_uuid
-        VARCHAR64 client_request_id UK
-        VARCHAR20 status "OTP_PENDING|AUTHED|EXECUTING|COMPLETED|FAILED|EXPIRED"
+        VARCHAR64 client_request_id UK "idempotency key - FIX Tag 11 ClOrdID source"
+        VARCHAR20 status "PENDING_NEW|AUTHED|EXECUTING|COMPLETED|FAILED|EXPIRED"
         BIGINT from_account_id "logical FK -> COREBANK_ACCOUNTS.id"
         VARCHAR14 from_account_number "nullable - snapshot for history N+1 prevention"
-        BIGINT receiver_account_id "nullable logical FK"
-        VARCHAR14 receiver_account_number
-        VARCHAR100 receiver_name "nullable - snapshot at transfer time"
-        VARCHAR16 to_bank_code
-        DECIMAL194 amount
-        CHAR36 transaction_uuid
-        VARCHAR50 fep_reference_id
+        VARCHAR20 symbol "FIX Tag 55 - e.g. 005930"
+        VARCHAR10 side "FIX Tag 54 - BUY|SELL"
+        VARCHAR10 ord_type "FIX Tag 40 - LIMIT|MARKET"
+        BIGINT order_qty "FIX Tag 38"
+        DECIMAL194 price "FIX Tag 44 - nullable for MARKET orders"
+        VARCHAR64 cl_ord_id "FIX Tag 11 assigned by FEP"
+        CHAR36 ledger_uuid
+        VARCHAR50 fep_reference_id "FIX Tag 37 OrderID"
         VARCHAR50 failure_reason_code
         DECIMAL194 post_execution_balance
         DATETIME executing_started_at "nullable - EXECUTING entry time for timeout"
@@ -84,8 +85,8 @@ erDiagram
         BIGINT id PK
         CHAR36 notification_uuid UK
         BIGINT member_id FK
-        BIGINT transfer_session_id FK
-        VARCHAR50 type "TRANSFER_COMPLETED|TRANSFER_FAILED|SESSION_EXPIRY|SECURITY_ALERT|ACCOUNT_LOCKED"
+        BIGINT order_session_id FK
+        VARCHAR50 type "ORDER_FILLED|ORDER_REJECTED|ORDER_CANCELLED|SESSION_EXPIRY|SECURITY_ALERT|ACCOUNT_LOCKED|POSITION_UPDATED"
         VARCHAR20 status "UNREAD|READ|EXPIRED"
         VARCHAR100 title
         TEXT message
@@ -100,8 +101,8 @@ erDiagram
         BIGINT id PK
         CHAR36 audit_uuid UK
         BIGINT member_id FK
-        BIGINT transfer_session_id FK
-        VARCHAR50 action "LOGIN_SUCCESS|LOGIN_FAILURE|LOGOUT|TRANSFER_INITIATED|OTP_VERIFIED|TRANSFER_EXECUTED|TRANSFER_FAILED|TRANSFER_COMPENSATED|ACCOUNT_LOCKED|ACCOUNT_UNLOCKED|TOTP_ENROLLED|PASSWORD_CHANGED"
+        BIGINT order_session_id FK
+        VARCHAR50 action "LOGIN_SUCCESS|LOGIN_FAILURE|LOGOUT|OTP_VERIFIED|ACCOUNT_LOCKED|ACCOUNT_UNLOCKED|TOTP_ENROLLED|PASSWORD_CHANGED|ORDER_SUBMITTED|ORDER_EXECUTED|ORDER_FAILED|ORDER_COMPENSATED|ORDER_FILLED|ORDER_REJECTED|ORDER_CANCELLED"
         VARCHAR50 target_type
         VARCHAR100 target_id
         VARCHAR45 ip_address
@@ -115,8 +116,8 @@ erDiagram
         CHAR36 security_event_uuid UK
         BIGINT member_id FK
         BIGINT admin_member_id FK
-        BIGINT transfer_session_id FK
-        VARCHAR50 event_type "ACCOUNT_LOCKED|OTP_MAX_ATTEMPTS|FORCED_LOGOUT|ACCOUNT_UNLOCKED|RATE_LIMIT_LOGIN|RATE_LIMIT_OTP|RATE_LIMIT_TRANSFER"
+        BIGINT order_session_id FK
+        VARCHAR50 event_type "ACCOUNT_LOCKED|OTP_MAX_ATTEMPTS|FORCED_LOGOUT|ACCOUNT_UNLOCKED|RATE_LIMIT_LOGIN|RATE_LIMIT_OTP|RATE_LIMIT_ORDER"
         VARCHAR20 status "OPEN|ACKNOWLEDGED|RESOLVED"
         VARCHAR10 severity "LOW|MEDIUM|HIGH|CRITICAL"
         TEXT detail
@@ -133,7 +134,7 @@ erDiagram
         CHAR36 public_id UK
         BIGINT member_id "logical ref to channel members"
         VARCHAR14 account_number UK
-        VARCHAR16 bank_code
+        VARCHAR16 exchange_code
         VARCHAR20 status "ACTIVE|FROZEN|CLOSED"
         DATETIME closed_at
         CHAR3 currency_code
@@ -147,20 +148,21 @@ erDiagram
 
     MEMBERS ||--o{ REFRESH_TOKENS : issues
     MEMBERS ||--o{ OTP_VERIFICATIONS : attempts
-    MEMBERS ||--o{ TRANSFER_SESSIONS : initiates
+    MEMBERS ||--o{ ORDER_SESSIONS : initiates
     MEMBERS ||--o{ NOTIFICATIONS : receives
     MEMBERS ||--o{ AUDIT_LOGS : acts
     MEMBERS ||--o{ SECURITY_EVENTS : triggers
     MEMBERS ||--o{ SECURITY_EVENTS : administers
 
-    TRANSFER_SESSIONS ||--|| OTP_VERIFICATIONS : requires
-    TRANSFER_SESSIONS ||--o{ NOTIFICATIONS : emits
-    TRANSFER_SESSIONS ||--o{ AUDIT_LOGS : traced_by
-    TRANSFER_SESSIONS ||--o{ SECURITY_EVENTS : escalates
+    ORDER_SESSIONS ||--|| OTP_VERIFICATIONS : requires
+    ORDER_SESSIONS ||--o{ NOTIFICATIONS : emits
+    ORDER_SESSIONS ||--o{ AUDIT_LOGS : traced_by
+    ORDER_SESSIONS ||--o{ SECURITY_EVENTS : escalates
 
-    COREBANK_ACCOUNTS ||--o{ TRANSFER_SESSIONS : source_account
-    COREBANK_ACCOUNTS ||--o{ TRANSFER_SESSIONS : receiver_account
+    COREBANK_ACCOUNTS ||--o{ ORDER_SESSIONS : source_account
 ```
+
+> **⚠️ Cross-Schema Boundary — `COREBANK_ACCOUNTS`**: This entity belongs to `core_db` (계정계), **not** `channel_db`. It is rendered in this diagram for cross-service reference clarity only. The channel layer has **no direct DB access** to this table — all reads and writes go through the CoreBanking service API. Relationship lines to `ORDER_SESSIONS` represent **logical FKs**, not physical DB foreign keys.
 
 ## Status-driven lifecycle rules
 
@@ -173,9 +175,9 @@ erDiagram
   - `PENDING -> EXHAUSTED` when `attempt_count >= max_attempts`.
   - `PENDING -> EXPIRED` when `expires_at < NOW()`.
 
-- `TRANSFER_SESSIONS.status`
-  - `OTP_PENDING -> AUTHED -> EXECUTING -> COMPLETED|FAILED|EXPIRED`.
-  - `OTP_PENDING|AUTHED -> EXPIRED` by session expiry batch when `expires_at < NOW()`.
+- `ORDER_SESSIONS.status` *(FIX 4.2 주문 세션 — FindingR4-R9)*
+  - `PENDING_NEW -> AUTHED -> EXECUTING -> COMPLETED|FAILED|EXPIRED`.
+  - `PENDING_NEW|AUTHED -> EXPIRED` by session expiry batch when `expires_at < NOW()`.
   - `EXECUTING -> FAILED` by explicit core failure response or timeout when `executing_started_at < NOW()-30s`.
   - Transition authority is service logic; timestamps are audit evidence, not primary state.
 
@@ -192,7 +194,7 @@ erDiagram
 - Every table uses:
   - `id` (BIGINT UNSIGNED PK, internal join/performance)
   - `*_uuid` or `*_hash` (CHAR(36)/CHAR(64) UK, external API reference/idempotency-safe exposure)
-- Cross-schema references (`TRANSFER_SESSIONS` → `COREBANK_ACCOUNTS`) are logical FKs by service boundary.
+- Cross-schema references (`ORDER_SESSIONS` → `COREBANK_ACCOUNTS`) are logical FKs by service boundary.
 - TOTP secret is not stored in DB (Vault-managed); DB keeps only enrollment state (`totp_enabled`, `totp_enrolled_at`).
 - OTP code values are not stored in DB — validated in-memory (Redis/cache) only.
 - `REFRESH_TOKENS.token_hash` stores SHA-256 hash only; raw token value never persisted.
@@ -200,16 +202,16 @@ erDiagram
 - `DATETIME(6)` used consistently for microsecond precision.
 - Soft delete (`deleted_at`) is applied selectively:
   - Applied: `MEMBERS`, `NOTIFICATIONS`
-  - Not applied (immutable/forensic record): `TRANSFER_SESSIONS`, `AUDIT_LOGS`, `SECURITY_EVENTS`
+  - Not applied (immutable/forensic record): `ORDER_SESSIONS`, `AUDIT_LOGS`, `SECURITY_EVENTS`
   - Lifecycle by status column: `REFRESH_TOKENS` (revoked_at), `OTP_VERIFICATIONS` (status)
-  - Snapshot fields in `TRANSFER_SESSIONS`:
-    - `from_account_number`, `receiver_name` — captured at request time to avoid cross-schema N+1 in history queries.
+  - Snapshot fields in `ORDER_SESSIONS`:
+    - `from_account_number`, `symbol` — captured at request time to avoid cross-schema N+1 in history queries.
   - Soft delete means `deleted_at IS NOT NULL`.
   - Default read query must include `deleted_at IS NULL`.
   - Physical delete is allowed only by explicit retention/archival job.
 - `MEMBERS`
   - Soft deleted member cannot authenticate and is excluded from normal member queries.
-  - Existing transfer/audit/security history remains preserved by design.
+  - Existing order/audit/security history remains preserved by design.
 - `NOTIFICATIONS`
   - User-side hide/delete action can set `deleted_at`; history retained for ops retention window.
 
@@ -291,13 +293,13 @@ erDiagram
 ### 3) `OTP_VERIFICATIONS`
 
 - Purpose
-  - Tracks OTP attempt count and verification state per transfer session (1:1).
+  - Tracks OTP attempt count and verification state per order session (1:1).
   - Ensures max-attempt enforcement and EXHAUSTED → Security Event escalation.
 - PK + UUID usage
   - `id`: internal key.
   - `otp_uuid`: stable audit reference for a specific OTP event.
 - Important columns
-  - `transfer_session_id`: unique — one session has exactly one OTP record.
+  - `order_session_id`: unique — one session has exactly one OTP record.
   - `attempt_count`: current tally against `max_attempts`.
   - `status`: verification state machine source of truth.
   - OTP code itself is NOT stored — validated in-memory (Redis/cache) only.
@@ -306,7 +308,7 @@ erDiagram
   - `PENDING → EXHAUSTED`: `attempt_count >= max_attempts`.
   - `PENDING → EXPIRED`: `expires_at < NOW()`.
 - Integrity rules
-  - `UK(transfer_session_id)` ensures duplicate OTP issuance is impossible at DB level.
+  - `UK(order_session_id)` ensures duplicate OTP issuance is impossible at DB level.
 
 #### Field Specifications
 
@@ -314,40 +316,41 @@ erDiagram
 | :--- | :--- | :--- | :--- | :--- |
 | `id` | BIGINT UNSIGNED | PK | NO | Internal key |
 | `otp_uuid` | CHAR(36) | UK | NO | External OTP event reference |
-| `transfer_session_id` | BIGINT UNSIGNED | UK + FK | NO | Parent transfer session (1:1) |
+| `order_session_id` | BIGINT UNSIGNED | UK + FK | NO | Parent order session (1:1) |
 | `member_id` | BIGINT UNSIGNED | FK | NO | Attempting member |
 | `attempt_count` | INT UNSIGNED | | NO | Current attempt tally |
-| `max_attempts` | INT UNSIGNED | | NO | Policy ceiling (default 5) |
+| `max_attempts` | INT UNSIGNED | | NO | Policy ceiling (default 3) |
 | `status` | VARCHAR(20) | | NO | `PENDING`, `VERIFIED`, `EXHAUSTED`, `EXPIRED` |
 | `expires_at` | DATETIME(6) | | NO | OTP validity deadline |
 | `verified_at` | DATETIME(6) | | YES | Successful verification timestamp |
 | `created_at` | DATETIME(6) | | NO | Record creation |
 | `updated_at` | DATETIME(6) | | NO | Last state change |
 
-### 4) `TRANSFER_SESSIONS`
+### 4) `ORDER_SESSIONS`
 
 - Purpose
-  - Main transfer workflow aggregate for the channel layer.
-  - Represents request intent, OTP gate, execution, and final result.
+  - Main order workflow aggregate for the channel layer.
+  - Represents FIX 4.2 order intent, OTP gate, execution, and final result.
 - PK + UUID usage
   - `id`: relational joins and paging.
-  - `session_uuid`: public transfer-session reference.
+  - `session_uuid`: public order-session reference.
 - Important columns
-  - `status`: transfer state machine.
-  - `client_request_id`: idempotency key (duplicate prevention).
-  - `from_account_id`, `receiver_account_id`: logical account refs (cross-schema).
-  - `amount`, `to_bank_code`: execution routing context.
-  - `transaction_uuid`, `fep_reference_id`: completion and interbank traceability.
+  - `status`: order state machine.
+  - `client_request_id`: idempotency key (duplicate prevention) — source for FIX Tag 11 ClOrdID.
+  - `from_account_id`: logical sender account ref (cross-schema).
+  - `symbol`, `side`, `ord_type`, `order_qty`, `price`: FIX 4.2 order parameters.
+  - `cl_ord_id`: FIX Tag 11 ClOrdID assigned by FEP after order submission.
+  - `ledger_uuid`, `fep_reference_id`: completion and exchange traceability.
   - `failure_reason_code`: structured failure reason.
   - `post_execution_balance`: completed response replay without recalculation.
   - `expires_at`: session validity boundary.
 - Status policy
-  - `OTP_PENDING -> AUTHED -> EXECUTING -> COMPLETED|FAILED|EXPIRED`.
+  - `PENDING_NEW -> AUTHED -> EXECUTING -> COMPLETED|FAILED|EXPIRED`.
   - State transitions are explicit service operations, not timestamp inference.
 - Integrity rules
   - `client_request_id` unique.
-  - Must keep status/result fields consistent (e.g., `COMPLETED` requires `transaction_uuid`).
-  - No soft delete: transfer execution history is treated as immutable financial evidence.
+  - Must keep status/result fields consistent (e.g., `COMPLETED` requires `ledger_uuid`).
+  - No soft delete: order execution history is treated as immutable financial evidence. (FindingR3-R9)
 
 #### Field Specifications
 
@@ -358,16 +361,17 @@ erDiagram
 | `member_id` | BIGINT UNSIGNED | FK | NO | References `MEMBERS.id` |
 | `correlation_uuid` | CHAR(36) | | NO | Trace ID for observability |
 | `client_request_id` | VARCHAR(64) | UK | NO | Idempotency key from client |
-| `status` | VARCHAR(20) | | NO | `OTP_PENDING`, `AUTHED`, `EXECUTING`, `COMPLETED`, `FAILED`, `EXPIRED` |
+| `status` | VARCHAR(20) | | NO | `PENDING_NEW`, `AUTHED`, `EXECUTING`, `COMPLETED`, `FAILED`, `EXPIRED` |
 | `from_account_id` | BIGINT UNSIGNED | | NO | Sender account (logical ref to core_db.accounts.id) |
-| `from_account_number` | VARCHAR(14) | | YES | Sender account number snapshot at transfer time; avoids Core API re-query for history display |
-| `receiver_account_id` | BIGINT UNSIGNED | | YES | Internal receiver account (same-bank only; NULL = interbank) |
-| `receiver_account_number` | VARCHAR(14) | | NO | Receiver account number (digits only, 10~14 chars) |
-| `receiver_name` | VARCHAR(100) | | YES | Receiver name snapshot at transfer time (avoids N+1 lookup) |
-| `to_bank_code` | VARCHAR(16) | | NO | Destination bank routing code |
-| `amount` | DECIMAL(19,4) | | NO | Transfer amount — consistent with core_db DECIMAL type |
-| `transaction_uuid` | CHAR(36) | | YES | CoreBank ledger transaction ID (on success) |
-| `fep_reference_id` | VARCHAR(50) | | YES | External payment gateway reference |
+| `from_account_number` | VARCHAR(14) | | YES | Sender account number snapshot at order time; avoids Core API re-query for history display |
+| `symbol` | VARCHAR(20) | | NO | Stock symbol — FIX Tag 55 (e.g. 005930) |
+| `side` | VARCHAR(10) | | NO | Order direction — FIX Tag 54: BUY or SELL |
+| `ord_type` | VARCHAR(10) | | NO | Order type — FIX Tag 40: LIMIT or MARKET |
+| `order_qty` | BIGINT UNSIGNED | | NO | Order quantity — FIX Tag 38 |
+| `price` | DECIMAL(19,4) | | YES | Order price — FIX Tag 44; required for LIMIT, NULL for MARKET |
+| `cl_ord_id` | VARCHAR(64) | | YES | FIX Tag 11 ClOrdID assigned by FEP after order submission |
+| `ledger_uuid` | CHAR(36) | | YES | Ledger posting UUID (on success) |
+| `fep_reference_id` | VARCHAR(50) | | YES | Exchange/FEP order reference — FIX Tag 37 OrderID |
 | `failure_reason_code` | VARCHAR(50) | | YES | Standardized error code if FAILED |
 | `post_execution_balance` | DECIMAL(19,4) | | YES | Sender balance snapshot for idempotent response replay |
 | `executing_started_at` | DATETIME(6) | | YES | Timestamp when session entered EXECUTING state; independent timeout baseline (not overridden by other `updated_at` changes) |
@@ -385,9 +389,9 @@ erDiagram
   - `id`: fast pagination/order operations.
   - `notification_uuid`: external-safe event reference.
 - Important columns
-  - `type`: domain event classification (`TRANSFER_COMPLETED`, `TRANSFER_FAILED`, `SESSION_EXPIRY`, `SECURITY_ALERT`).
+  - `type`: domain event classification (`ORDER_FILLED`, `ORDER_REJECTED`, `ORDER_CANCELLED`, `SESSION_EXPIRY`, `SECURITY_ALERT`, `ACCOUNT_LOCKED`, `POSITION_UPDATED`).
   - `status`: read lifecycle (`UNREAD`, `READ`, `EXPIRED`).
-  - `transfer_session_id`: optional linkage to transfer context.
+  - `order_session_id`: optional linkage to order session context.
   - `read_at`, `expires_at`: read/retention control points.
   - `deleted_at`: user/admin soft delete marker.
 - Status policy
@@ -404,7 +408,7 @@ erDiagram
 | `id` | BIGINT UNSIGNED | PK | NO | Internal index/join key |
 | `notification_uuid` | CHAR(36) | UK | NO | Public reference ID |
 | `member_id` | BIGINT UNSIGNED | FK | NO | Recipient member |
-| `transfer_session_id` | BIGINT UNSIGNED | FK | YES | Associated transfer session if applicable |
+| `order_session_id` | BIGINT UNSIGNED | FK | YES | Associated order session if applicable |
 | `type` | VARCHAR(50) | | NO | Event category identifier |
 | `status` | VARCHAR(20) | | NO | `UNREAD`, `READ`, `EXPIRED` |
 | `title` | VARCHAR(100) | | NO | Notification summary/headline |
@@ -423,7 +427,7 @@ erDiagram
   - `id`: efficient chronological paging.
   - `audit_uuid`: stable external log reference.
 - Important columns
-  - `action`: normalized action taxonomy (login/otp/transfer lifecycle).
+  - `action`: normalized action taxonomy (login/otp/order lifecycle).
   - `member_id`: actor identity.
   - `target_type`, `target_id`: target object linkage.
   - `correlation_uuid`: cross-service request chain.
@@ -440,9 +444,9 @@ erDiagram
 | `id` | BIGINT | PK | NO | Chronological key |
 | `audit_uuid` | CHAR(36) | UK | NO | Compliance reference |
 | `member_id` | BIGINT UNSIGNED | FK | YES | Actor (NULL if system action) |
-| `transfer_session_id` | BIGINT UNSIGNED | FK | YES | Related transfer session |
-| `action` | VARCHAR(50) | | NO | `LOGIN_SUCCESS`, `TRANSFER_EXECUTED`, etc. |
-| `target_type` | VARCHAR(50) | | YES | Entity affected (e.g., `MEMBER`, `TRANSFER`) |
+| `order_session_id` | BIGINT UNSIGNED | FK | YES | Related order session |
+| `action` | VARCHAR(50) | | NO | `LOGIN_SUCCESS`, `ORDER_SUBMITTED`, `ORDER_EXECUTED`, `ORDER_FILLED`, `ORDER_REJECTED`, `ORDER_CANCELLED`, etc. |
+| `target_type` | VARCHAR(50) | | YES | Entity affected (e.g., `MEMBER`, `ORDER`) |
 | `target_id` | VARCHAR(100) | | YES | ID of the target entity |
 | `ip_address` | VARCHAR(45) | | YES | Client IP (IPv4/IPv6) |
 | `user_agent` | TEXT | | YES | Client device/browser signature |
@@ -481,7 +485,7 @@ erDiagram
 | `severity` | VARCHAR(10) | | NO | `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` |
 | `member_id` | BIGINT UNSIGNED | FK | YES | Subject member (if applicable) |
 | `admin_member_id` | BIGINT UNSIGNED | FK | YES | Admin who took action (if applicable) |
-| `transfer_session_id` | BIGINT UNSIGNED | FK | YES | Related transfer event (if applicable) |
+| `order_session_id` | BIGINT UNSIGNED | FK | YES | Related order session event (if applicable) |
 | `detail` | TEXT | | YES | JSON or text dump of incident context |
 | `ip_address` | VARCHAR(45) | | YES | Source IP of the event |
 | `correlation_uuid` | CHAR(36) | | YES | Trace identifier |
@@ -493,14 +497,14 @@ erDiagram
 ### 8) `COREBANK_ACCOUNTS` (Referenced External Domain — core_db)
 
 - Purpose
-  - CoreBank-owned account table (`core_db.accounts`) referenced logically by channel transfer sessions.
+  - CoreBank-owned account table (`core_db.accounts`) referenced logically by channel order sessions.
   - Shown here for cross-schema clarity; channel does NOT own or directly mutate this table.
 - PK + UUID usage
   - `id`: internal relational key in `core_db`.
   - `public_id`: external-safe account reference (matches `core_db.accounts.public_id`).
 - Important columns
   - `balance`: DECIMAL(19,4) derived cache; channel reads via Core API, never writes directly.
-  - `daily_limit`: per-account daily transfer limit (validated in core_db via ledger SUM).
+  - `daily_limit`: per-account daily trading limit (validated in core_db via ledger SUM).
   - `status`: account availability (`ACTIVE`, `FROZEN`, `CLOSED`).
   - `balance_update_mode`: `EAGER` vs `DEFERRED` — Hot Account strategy flag.
 - Integration policy
@@ -514,13 +518,13 @@ erDiagram
 | `id` | BIGINT UNSIGNED | PK | NO | Core ledger internal ID |
 | `public_id` | CHAR(36) | UK | NO | Public account identifier (external-safe UUID) |
 | `member_id` | BIGINT UNSIGNED | | NO | Owner member (logical ref to channel `members.id`) |
-| `account_number` | VARCHAR(14) | UK | NO | Unique bank account number (digits only, 10~14) |
-| `bank_code` | VARCHAR(16) | | NO | Bank/institution code |
+| `account_number` | VARCHAR(14) | UK | NO | Unique account number (digits only, 10~14) |
+| `exchange_code` | VARCHAR(16) | | NO | Exchange code (FIX Tag 207 SecurityExchange). e.g. KRX, KOSDAQ |
 | `status` | VARCHAR(20) | | NO | `ACTIVE`, `FROZEN`, `CLOSED` |
 | `closed_at` | DATETIME(6) | | YES | Account closure timestamp |
 | `currency_code` | CHAR(3) | | NO | Currency (default `KRW`) |
 | `balance` | DECIMAL(19,4) | | NO | Derived balance cache (CHECK >= 0) |
-| `daily_limit` | DECIMAL(19,4) | | NO | Max daily withdrawal cap (CHECK > 0) |
+| `daily_limit` | DECIMAL(19,4) | | NO | Max daily sell order value cap (CHECK > 0) |
 | `balance_update_mode` | VARCHAR(10) | | NO | `EAGER` or `DEFERRED` (Hot Account strategy) |
 | `last_synced_ledger_ref` | BIGINT UNSIGNED | | YES | DEFERRED mode watermark for Read-Repair |
 | `created_at` | DATETIME(6) | | NO | Account creation date |

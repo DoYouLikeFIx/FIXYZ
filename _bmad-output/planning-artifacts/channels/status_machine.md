@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | `members` | `status` | 서비스 로직만 (Admin 잠금 해제 포함) |
 | `otp_verifications` | `status` | 서비스 로직만 |
-| `transfer_sessions` | `status` | 서비스 로직만 |
+| `order_sessions` | `status` | 서비스 로직만 |
 | `notifications` | `status` | 사용자 액션(READ) / 배치 정책(EXPIRED) |
 | `security_events` | `status` | Admin 전용 워크플로 |
 
@@ -49,7 +49,7 @@ stateDiagram-v2
 ## 1.4 소프트 삭제와 상태의 관계
 
 - `deleted_at IS NOT NULL` 회원은 상태와 무관하게 인증 차단
-- 삭제된 회원의 이체/감사 이력은 보존: `members.deleted_at`은 채널 레이어 필터이지, `audit_logs` / `transfer_sessions`의 삭제가 아님
+- 삭제된 회원의 주문/감사 이력은 보존: `members.deleted_at`은 채널 레이어 필터이지, `audit_logs` / `order_sessions`의 삭제가 아님
 
 ---
 
@@ -82,10 +82,10 @@ stateDiagram-v2
 
 | 전이 | 트리거 | 부작용 |
 | --- | --- | --- |
-| `PENDING → VERIFIED` | OTP 코드 검증 성공 | `verified_at` 기록, `TRANSFER_SESSIONS.status → AUTHED` 가능 상태 |
+| `PENDING → VERIFIED` | OTP 코드 검증 성공 | `verified_at` 기록, `ORDER_SESSIONS.status → AUTHED` 가능 상태 |
 
 | `PENDING → EXHAUSTED` | `attempt_count++` 후 `>= max_attempts` | SECURITY_EVENTS 생성(`OTP_MAX_ATTEMPTS`) |
-| `PENDING → EXPIRED` | 검증 시도 시 `expires_at < NOW()` or 배치 판정 | TRANSFER_SESSIONS도 `EXPIRED` 전이 |
+| `PENDING → EXPIRED` | 검증 시도 시 `expires_at < NOW()` or 배치 판정 | ORDER_SESSIONS도 `EXPIRED` 전이 |
 
 ## 2.3 OTP 코드 값은 DB에 저장하지 않는다
 
@@ -94,15 +94,15 @@ stateDiagram-v2
 
 ---
 
-# 3. `transfer_sessions.status` 상태 머신
+# 3. `order_sessions.status` 상태 머신
 
 ## 3.1 상태 정의
 
 | 상태 | 의미 |
 | --- | --- |
-| `OTP_PENDING` | OTP 인증 대기 |
+| `PENDING_NEW` | OTP 인증 대기 |
 | `AUTHED` | OTP 검증 완료, 실행 승인 |
-| `EXECUTING` | 코어 이체 실행 중 |
+| `EXECUTING` | 코어 주문 실행 중 |
 | `COMPLETED` | 정상 완료 |
 | `FAILED` | 명확한 실패 |
 | `EXPIRED` | 세션 만료 |
@@ -111,12 +111,12 @@ stateDiagram-v2
 
 ```mermaid
 stateDiagram-v2
-    [*] --> OTP_PENDING
+    [*] --> PENDING_NEW
     
-    OTP_PENDING --> AUTHED: OTP Verified
-    OTP_PENDING --> EXPIRED: Timeout
+    PENDING_NEW --> AUTHED: OTP Verified
+    PENDING_NEW --> EXPIRED: Timeout
     
-    AUTHED --> EXECUTING: Transfer Start
+    AUTHED --> EXECUTING: Order Submit
     AUTHED --> EXPIRED: Timeout
     
     EXECUTING --> COMPLETED: Core OK
@@ -131,26 +131,26 @@ stateDiagram-v2
 
 | 전이 | 조건 | 부작용 |
 | --- | --- | --- |
-| `OTP_PENDING → AUTHED` | `OTP_VERIFICATIONS.status = VERIFIED` 확인 (4.11 원자적 트랜잭션) | AUDIT_LOGS 기록(`OTP_VERIFIED`) |
-| `OTP_PENDING → EXPIRED` | `expires_at < NOW()` | NOTIFICATIONS 생성(`SESSION_EXPIRY`) |
-| `AUTHED → EXECUTING` | 이체 실행 API 진입 | AUDIT_LOGS 기록(`TRANSFER_INITIATED`), `executing_started_at` 기록 |
+| `PENDING_NEW → AUTHED` | `OTP_VERIFICATIONS.status = VERIFIED` 확인 (4.11 원자적 트랜잭션) | AUDIT_LOGS 기록(`OTP_VERIFIED`) |
+| `PENDING_NEW → EXPIRED` | `expires_at < NOW()` | NOTIFICATIONS 생성(`SESSION_EXPIRY`) |
+| `AUTHED → EXECUTING` | 주문 실행 API 진입 | AUDIT_LOGS 기록(`ORDER_SUBMITTED`), `executing_started_at` 기록 |
 | `AUTHED → EXPIRED` | `expires_at < NOW()` (배치 수행) | NOTIFICATIONS 생성(`SESSION_EXPIRY`) |
-| `EXECUTING → COMPLETED` | 코어 성공 응답 수신 | `transaction_uuid` 저장, `post_execution_balance` 스냅샷, NOTIFICATIONS 생성(`TRANSFER_COMPLETED`), AUDIT_LOGS(`TRANSFER_EXECUTED`) |
-| `EXECUTING → FAILED` | 코어 명확한 실패 응답 또는 timeout 판정 | `failure_reason_code` 저장, NOTIFICATIONS 생성(`TRANSFER_FAILED`), AUDIT_LOGS(`TRANSFER_FAILED`) |
+| `EXECUTING → COMPLETED` | 코어 성공 응답 수신 | `ledger_uuid` 저장, `post_execution_balance` 스냅샷, NOTIFICATIONS 생성(`ORDER_FILLED`), AUDIT_LOGS(`ORDER_EXECUTED`) |
+| `EXECUTING → FAILED` | 코어 명확한 실패 응답 또는 timeout 판정 | `failure_reason_code` 저장, NOTIFICATIONS 생성(`ORDER_REJECTED`), AUDIT_LOGS(`ORDER_FAILED`) |
 
 ## 3.4 멱등(Idempotency) — 채널 레이어
 
 - `client_request_id UNIQUE`: DB 1차 방어선
 - 동일 `client_request_id` 재요청 → 기존 세션 조회 → 현재 `status`와 스냅샷으로 응답 재현
-- `COMPLETED` 상태면 `post_execution_balance` + `transaction_uuid`로 동일 응답 재구성
+- `COMPLETED` 상태면 `post_execution_balance` + `ledger_uuid`로 동일 응답 재구성
 
 ## 3.5 상태 조합 매트릭스 (전체)
 
-| transfer_session.status | otp_verifications.status | 의미 | 허용 여부 |
+| order_session.status | otp_verifications.status | 의미 | 허용 여부 |
 | --- | --- | --- | --- |
-| OTP_PENDING | PENDING | 정상 — OTP 입력 대기 중 | ✅ 관리 대상 |
-| OTP_PENDING | EXHAUSTED | 비정상 — OTP 소진, 세션 EXPIRED 전이 필요 | ⚠️ 즉시 처리 |
-| OTP_PENDING | EXPIRED | 비정상 — OTP 만료, 세션도 EXPIRED 전이 | ⚠️ 즉시 처리 |
+| PENDING_NEW | PENDING | 정상 — OTP 입력 대기 중 | ✅ 관리 대상 |
+| PENDING_NEW | EXHAUSTED | 비정상 — OTP 소진, 세션 EXPIRED 전이 필요 | ⚠️ 즉시 처리 |
+| PENDING_NEW | EXPIRED | 비정상 — OTP 만료, 세션도 EXPIRED 전이 | ⚠️ 즉시 처리 |
 | AUTHED | VERIFIED | 정상 — 실행 가능 상태 | ✅ |
 | AUTHED | VERIFIED | 만료 배치 진입 시 EXPIRED 전이 대상 | ⚠️ 만료 배치 대상 |
 | EXECUTING | VERIFIED | 정상 — 실행 중 | ✅ |
@@ -242,32 +242,32 @@ stateDiagram-v2
 | `ACCOUNT_UNLOCKED` | `members.status → ACTIVE` (Admin 해제) | LOW |
 | `RATE_LIMIT_LOGIN` | 로그인 레이트 리밋 초과 | MEDIUM |
 | `RATE_LIMIT_OTP` | OTP 레이트 리밋 초과 | MEDIUM |
-| `RATE_LIMIT_TRANSFER` | 이체 레이트 리밋 초과 | MEDIUM |
+| `RATE_LIMIT_ORDER` | 주문 레이트 리밋 초과 | MEDIUM |
 
 ---
 
 # 6. 전체 상태 연동 흐름
 
-## 6.1 정상 이체 시나리오
+## 6.1 정상 주문 시나리오
 
 ```
-[1] POST /transfers/sessions
-    → TRANSFER_SESSIONS 생성 (OTP_PENDING)
+[1] POST /orders/sessions
+    → ORDER_SESSIONS 생성 (PENDING_NEW)
     → OTP_VERIFICATIONS 생성 (PENDING)
-    → AUDIT_LOGS(TRANSFER_INITIATED)
+    → AUDIT_LOGS(ORDER_SUBMITTED)
 
 [2] POST /otp/verify
     → OTP_VERIFICATIONS(PENDING → VERIFIED)
-    → TRANSFER_SESSIONS(OTP_PENDING → AUTHED)
+    → ORDER_SESSIONS(PENDING_NEW → AUTHED)
     → AUDIT_LOGS(OTP_VERIFIED)
 
-[3] POST /transfers/execute
-    → TRANSFER_SESSIONS(AUTHED → EXECUTING)
+[3] POST /orders/execute
+    → ORDER_SESSIONS(AUTHED → EXECUTING)
     → [Core API 호출]
-    → 성공: TRANSFER_SESSIONS(EXECUTING → COMPLETED)
+    → 성공: ORDER_SESSIONS(EXECUTING → COMPLETED)
              post_execution_balance 스냅샷
-             NOTIFICATIONS 생성(TRANSFER_COMPLETED, UNREAD)
-             AUDIT_LOGS(TRANSFER_EXECUTED)
+             NOTIFICATIONS 생성(ORDER_FILLED, UNREAD)
+             AUDIT_LOGS(ORDER_EXECUTED)
 ```
 
 ## 6.2 OTP 소진 시나리오
@@ -277,7 +277,7 @@ stateDiagram-v2
     → attempt_count++
     → N번째: OTP_VERIFICATIONS(PENDING → EXHAUSTED)
               SECURITY_EVENTS 생성(OTP_MAX_ATTEMPTS, OPEN, HIGH)
-              TRANSFER_SESSIONS(OTP_PENDING → EXPIRED)
+              ORDER_SESSIONS(PENDING_NEW → EXPIRED)
               NOTIFICATIONS 생성(SESSION_EXPIRY, UNREAD)
 ```
 
@@ -285,46 +285,46 @@ stateDiagram-v2
 
 ```
 [배치/정책 스캔]
-    → TRANSFER_SESSIONS WHERE status IN ('OTP_PENDING','AUTHED') AND expires_at < NOW()
-    → TRANSFER_SESSIONS(OTP_PENDING|AUTHED → EXPIRED)
+    → ORDER_SESSIONS WHERE status IN ('PENDING_NEW','AUTHED') AND expires_at < NOW()
+    → ORDER_SESSIONS(PENDING_NEW|AUTHED → EXPIRED)
     → OTP_VERIFICATIONS(PENDING → EXPIRED)
     → NOTIFICATIONS 생성(SESSION_EXPIRY, UNREAD)
 ```
 
-## 6.4 이체 실패 시나리오
+## 6.4 주문 실패 시나리오
 
 ```
-[3] POST /transfers/execute
-    → TRANSFER_SESSIONS(AUTHED → EXECUTING), executing_started_at 기록
+[3] POST /orders/execute
+    → ORDER_SESSIONS(AUTHED → EXECUTING), executing_started_at 기록
     → [Core API 호출 실패]
-    → TRANSFER_SESSIONS(EXECUTING → FAILED)
+    → ORDER_SESSIONS(EXECUTING → FAILED)
        failure_reason_code 저장
-       NOTIFICATIONS 생성(TRANSFER_FAILED, UNREAD)
-       AUDIT_LOGS(TRANSFER_FAILED)
+       NOTIFICATIONS 생성(ORDER_REJECTED, UNREAD)
+       AUDIT_LOGS(ORDER_FAILED)
 ```
 
 ## 6.5 EXECUTING timeout 복구 시나리오
 
 ```
 [복구 대시보드/스케줄러]
-    → TRANSFER_SESSIONS WHERE status='EXECUTING'
+    → ORDER_SESSIONS WHERE status='EXECUTING'
          AND executing_started_at < NOW()-30s
-    → 채널 서비스: Core API 재조회 (transaction_uuid 또는 실패 확인)
-    → 성공 확인: TRANSFER_SESSIONS(EXECUTING → COMPLETED) + 스냅샷
-    → 실패/연결 단절: TRANSFER_SESSIONS(EXECUTING → FAILED, failure_reason_code='EXECUTION_TIMEOUT')
+    → 채넓 서비스: Core API 재조회 (ledger_uuid 또는 실패 확인)
+    → 성공 확인: ORDER_SESSIONS(EXECUTING → COMPLETED) + 스냅샷
+    → 실패/연결 단절: ORDER_SESSIONS(EXECUTING → FAILED, failure_reason_code='EXECUTION_TIMEOUT')
 ```
 
 ---
 
 # 7. 계정계(Core) 상태 매핑 전략
 
-**목표**: `channel_db.transfer_sessions`와 `core_db.journal_entries`/`transfer_records` 간의 상태 정합성 보장.
+**목표**: `channel_db.order_sessions`와 `core_db.journal_entries`/`order_records` 간의 상태 정합성 보장.
 
 ## 7.1 상태 매핑 테이블
 
 | Channel Session Status | Core Journal Status | Core Record Status | 설명 |
 | --- | --- | --- | --- |
-| `OTP_PENDING` | (없음) | (없음) | 채널 내부 인증 단계 |
+| `PENDING_NEW` | (없음) | (없음) | 채널 내부 인증 단계 |
 | `AUTHED` | (없음) | (없음) | 인증 완료, Core 호출 전 |
 | `EXECUTING` | (없음) or `PENDING` | (없음) or `PENDING` | Core 호출 중 / 처리 중 |
 | `COMPLETED` | `POSTED` | `COMPLETED` | **최종 성공 동기화** |
@@ -334,7 +334,7 @@ stateDiagram-v2
 
 *   **상황**: Channel은 `EXECUTING`인데, Core 응답을 못 받음 (Timeout).
 *   **전략**:
-    *   Channel은 `client_request_id`로 Core `GetTransaction` API 조회.
+    *   Channel은 `client_request_id`로 Core `GetOrder` API 조회.
     *   **Case 1 (Core 성공)**: Core가 `POSTED`라면 Channel도 `COMPLETED`로 전이.
     *   **Case 2 (Core 실패)**: Core가 `FAILED`라면 Channel도 `FAILED`로 전이.
     *   **Case 3 (Core 없음)**: Core에 기록조차 없다면 (네트워크 유실), Channel은 `FAILED` 처리 (또는 안전한 재시도 정책 적용).

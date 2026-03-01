@@ -2,21 +2,21 @@
 
 ## 1. 목적과 범위
 
-`core_db`는 FIX 프로젝트의 **계정계(CoreBanking)** 원장/전표/이체업무의 **단일 진실 원천**이다.
+`core_db`는 FIX 프로젝트의 **계정계(CoreBanking)** 원장/전표/주문·체결업무의 **단일 진실 원천**이다.
 
 DB 레벨 목표:
 *   Double-entry ledger 기반 원장 무결성
 *   Idempotency(client_request_id) 중복 처리 방지
-*   Deferred compensation(타행 timeout 불확실) 복구 가능
+*   Deferred compensation(FIX Simulator timeout 불확실) 복구 가능 
 *   Recovery 스케줄러가 상태를 정확히 판별 가능한 조회 구조
 *   계좌번호 정규화(숫자만 저장) + DB 레벨 강제(CHECK REGEXP)
 *   balance 음수 방지(DB 제약)
 *   멱등 응답 안정성(당시 결과 스냅샷) - JSON Blob 제거 및 정규화
 *   외부 노출 식별자 분리(public_id UUID)
-*   **동시성 제어는 Pessimistic Lock(SELECT … FOR UPDATE)만 사용(출금 기준)**
+*   **동시성 제어는 Pessimistic Lock(SELECT … FOR UPDATE)만 사용(주문 처리 기준)**
 *   **일일 한도는 DB 상태 컬럼 없이, 당일 DEBIT 원장을 실시간 SUM 집계로 검증**
 *   **ledger_entries 장기 성능: 월 단위 파티셔닝 + 보관/아카이빙 정책**
-*   **Hot Account: 입금 Insert-Only(선택) + 출금 Read-Repair(직렬화 전제)**
+*   **Hot Account: 매수 Insert-Only(선택) + 매도 Read-Repair(직렬화 전제)**
 *   **금액 타입: DECIMAL(19,4)로 통일 (글로벌 확장 대비)**
 
 ---
@@ -25,20 +25,20 @@ DB 레벨 목표:
 
 ### 2.1 일일 한도 검증 정책
 *   `accounts`에 사용량 컬럼을 두지 않는다.
-*   한도 검증은 **당일 출금 원장(ledger_entries.direction='DEBIT')** 을 **실시간 SUM 집계**로 수행한다.
+*   한도 검증은 **당일 DEBIT 원장(ledger_entries.direction='DEBIT')** 을 **실시간 SUM 집계**로 수행한다.
 
 ### 2.2 락 정책
 *   Optimistic Lock(version) 금지
-*   **출금은 accounts row를 SELECT … FOR UPDATE로 직렬화**
-*   데드락 방지를 위해 당행 이체 시 두 계좌는 `min(id) → max(id)` 순서로 잠금
+*   **주문 처리는 accounts row를 SELECT … FOR UPDATE로 직렬화**
+*   데드락 방지를 위해 주문 정산 시 단일 투자자 계좌(`from_account_id`)를 `SELECT FOR UPDATE`로 직렬화 — 양방향 락 불요
 
 ### 2.3 Hot Account(Deferred Mode) 정책
 *   `balance_update_mode`:
     *   `EAGER`: 기존 방식(모든 변동 시 accounts.balance 갱신)
-    *   `DEFERRED`: **입금은 ledger INSERT-only**, 출금 시 Read-Repair로 정산 후 accounts.balance 갱신
+    *   `DEFERRED`: **매수 체결은 ledger INSERT-only**, 매도 체결 시 Read-Repair로 정산 후 accounts.balance 갱신
 *   **Read-Repair 기준은 created_at이 아니라 “정산 워터마크(last_synced_ledger_ref)”로 관리**한다.
 *   단, MySQL에서는 “커밋 순서 워터마크”를 DB만으로 안전하게 만들기 어렵기 때문에, **DEFERRED 계좌는 반드시 ‘계좌 키 단일 라이터(인메모리 큐/디스럽터/actor)’를 통해 처리한다**는 운영 전제를 문서에 고정한다.
-    *   전제: DEFERRED 계좌의 입금/출금 이벤트는 **account_id 기준 단일 소비자**가 순서대로 처리 → Read-Repair 워터마크가 절대 앞질러 가지 않음.
+    *   전제: DEFERRED 계좌의 매수/매도 이벤트는 **account_id 기준 단일 소비자**가 순서대로 처리 → Read-Repair 워터마크가 절대 앞질러 가지 않음.
 
 ### 2.4 파티셔닝/아카이빙 정책
 *   `ledger_entries`: **월 단위 Range Partition(created_at)**
@@ -49,13 +49,13 @@ DB 레벨 목표:
 
 ### 2.5 금액 타입 정책
 *   금액/잔액/한도는 **DECIMAL(19,4)** 로 통일한다.
-*   계좌는 `currency_code CHAR(3)`를 가진다(기본 KRW). 동일 계좌 간 이체는 동일 통화만 허용(앱 레벨).
+*   계좌는 `currency_code CHAR(3)`를 가진다(기본 KRW). 동일 계좌 간 정산은 동일 통화만 허용(앱 레벨).
 
 ### 2.6 멱등 응답/에러 저장 정책
 *   응답/검색에 필요한 최소 필드는 컬럼화:
     *   `result_code`, `result_message(255)`, `post_execution_balance`, `completed_at`
 *   상세 진단(긴 메시지/스택 등)은 **별도 테이블**로 분리하여 기본 조회 row size를 키우지 않는다:
-    *   `transfer_record_diagnostics.detail TEXT` (필요 시에만 1:1 저장)
+    *   `order_record_diagnostics.detail TEXT` (필요 시에만 1:1 저장)
 
 ---
 
@@ -68,12 +68,12 @@ DB 레벨 목표:
 | public_id | CHAR(36) | N | UK | 외부 노출 UUID |
 | member_id | BIGINT UNSIGNED | N | IDX | 회원 식별자(논리 참조) |
 | account_number | VARCHAR(14) | N | UK + CHECK | 숫자만(10~14) |
-| bank_code | VARCHAR(16) | N |  | 은행코드 |
+| exchange_code | VARCHAR(16) | N |  | 거래소 코드 (FIX Tag 207 SecurityExchange). 예: KRX, KOSDAQ. |
 | status | ENUM('ACTIVE','FROZEN','CLOSED') | N |  | 계좌 상태 |
 | closed_at | DATETIME(6) | Y |  | 해지 시각 |
 | currency_code | CHAR(3) | N | DEFAULT 'KRW' | 통화 코드 |
 | balance | DECIMAL(19,4) | N | CHECK(balance>=0) | derived cache |
-| daily_limit | DECIMAL(19,4) | N | CHECK(daily_limit>0) | 일일 출금 한도 |
+| daily_limit | DECIMAL(19,4) | N | CHECK(daily_limit>0) | 일일 매매 한도 |
 | balance_update_mode | ENUM('EAGER','DEFERRED') | N | DEFAULT 'EAGER' | 잔액 갱신 전략 |
 | last_synced_ledger_ref | BIGINT UNSIGNED | Y |  | **DEFERRED 정산 워터마크(큐 직렬화 전제)** |
 | created_at | DATETIME(6) | N |  | 생성 |
@@ -87,34 +87,32 @@ DB 레벨 목표:
 | --- | --- | --- | --- | --- |
 | id | BIGINT UNSIGNED | N | PK(AUTO) |  |
 | public_id | CHAR(36) | N | UK | 외부 전표 참조 |
-| transaction_id | CHAR(36) | N | UK | 거래 ID |
+| trade_ref_id | CHAR(36) | N | UK | 주문 참조 ID |
 | client_request_id | CHAR(36) | N | UK | 멱등키 |
-| original_transaction_id | CHAR(36) | Y | IDX | 원본 거래 |
+| original_trade_ref_id | CHAR(36) | Y | IDX | 원본 주문 |
 | original_journal_entry_id | BIGINT UNSIGNED | Y | IDX | 원본 전표 참조(논리) |
-| journal_type | VARCHAR(32) | N | CHECK | SAME/INTER/COMPENSATION/ADJUSTMENT |
+| journal_type | VARCHAR(32) | N | CHECK | BUY_ORDER/SELL_ORDER/COMPENSATION/ADJUSTMENT |
 | journal_status | VARCHAR(16) | N | CHECK | PENDING/POSTED/FAILED |
 | failure_reason | VARCHAR(255) | Y |  | 실패/불확실 사유 |
 | created_at | DATETIME(6) | N |  |  |
 
-*   **인덱스**: `IDX(journal_status, created_at)`, `IDX(journal_type, created_at)`, `IDX(original_transaction_id, created_at)`, `IDX(original_journal_entry_id, created_at)`
+*   **인덱스**: `IDX(journal_status, created_at)`, `IDX(journal_type, created_at)`, `IDX(original_trade_ref_id, created_at)`, `IDX(original_journal_entry_id, created_at)`
 
-### 3.3 transfer_records (업무 레코드)
+### 3.3 order_records (업무 레코드)
 | 컬럼 | 타입 | NULL | 제약 | 설명 |
 | --- | --- | --- | --- | --- |
 | id | BIGINT UNSIGNED | N | PK(AUTO) |  |
-| public_id | CHAR(36) | N | UK | 외부 이체 참조 |
-| client_request_id | CHAR(36) | N | UK | 멱등키 |
-| transaction_id | CHAR(36) | N | IDX | 거래 ID |
-| transfer_type | VARCHAR(16) | N | CHECK | SAME_BANK/INTERBANK |
-| status | VARCHAR(16) | N | CHECK | REQUESTED/EXECUTING/COMPLETED/FAILED/COMPENSATED |
+| public_id | CHAR(36) | N | UK | 외부 주문 참조 |
+| client_request_id | CHAR(36) | N | UK | 멱등키 (채널계 order_sessions.client_request_id 대응) |
+| trade_ref_id | CHAR(36) | N | IDX | 주문 참조 ID |
+| order_side | VARCHAR(16) | N | CHECK | BUY\|SELL |
+| status | VARCHAR(20) | N | CHECK | NEW\|PENDING_NEW\|EXECUTING\|PARTIALLY_FILLED\|FILLED\|CANCELLED\|REJECTED\|COMPENSATED |
 | failure_reason | VARCHAR(255) | Y |  | 내부 분기 사유 |
 | amount | DECIMAL(19,4) | N | CHECK(amount>0) | 금액 |
 | currency_code | CHAR(3) | N | DEFAULT 'KRW' | 통화 코드 |
 | from_account_id | BIGINT UNSIGNED | N | FK |  |
-| to_account_id | BIGINT UNSIGNED | Y | FK | 당행일 때만 |
-| to_account_number | VARCHAR(14) | N | CHECK | 숫자만 |
-| to_bank_code | VARCHAR(16) | N |  |  |
-| fep_reference_id | CHAR(36) | Y |  |  |
+| order_id | BIGINT UNSIGNED | Y | FK | orders.id 참조. 주문이 생성된 경우 연결 |
+| fep_reference_id | CHAR(36) | Y |  | FEP 참조 ID (FIX Tag 37 OrderID) |
 | post_execution_balance | DECIMAL(19,4) | Y |  | 응답용 스냅샷 |
 | result_code | VARCHAR(32) | Y |  | 응답 코드 |
 | result_message | VARCHAR(255) | Y |  | 사용자 메시지 |
@@ -123,13 +121,12 @@ DB 레벨 목표:
 | created_at | DATETIME(6) | N |  |  |
 | updated_at | DATETIME(6) | N |  |  |
 
-*   **인덱스**: `IDX(transaction_id)`, `IDX(status, updated_at)`, `IDX(status, executing_started_at)`, `IDX(from_account_id, created_at)`, `IDX(to_account_number, created_at)`
-*   **CHECK**: `to_account_number REGEXP '^[0-9]{10,14}$'`
+*   **인덱스**: `IDX(trade_ref_id)`, `IDX(status, updated_at)`, `IDX(status, executing_started_at)`, `IDX(from_account_id, created_at)`, `IDX(order_id)`
 
-### 3.4 transfer_record_diagnostics (진단/상세 메시지 분리)
+### 3.4 order_record_diagnostics (진단/상세 메시지 분리)
 | 컬럼 | 타입 | NULL | 제약 | 설명 |
 | --- | --- | --- | --- | --- |
-| transfer_record_id | BIGINT UNSIGNED | N | PK/FK | transfer_records 1:1 |
+| order_record_id | BIGINT UNSIGNED | N | PK/FK | order_records 1:1 |
 | detail | TEXT | Y |  | 긴 메시지/스택/원문 응답(필요 시만) |
 | created_at | DATETIME(6) | N |  |  |
 
@@ -139,14 +136,14 @@ DB 레벨 목표:
 | id | BIGINT UNSIGNED | N | PK(AUTO) | 내부 식별 |
 | public_id | CHAR(36) | N |  | 외부 참조(UNIQUE 미강제) |
 | journal_entry_id | BIGINT UNSIGNED | N | FK |  |
-| transaction_id | CHAR(36) | N | IDX |  |
+| trade_ref_id | CHAR(36) | N | IDX |  |
 | account_id | BIGINT UNSIGNED | N | FK |  |
 | direction | VARCHAR(8) | N | CHECK | DEBIT/CREDIT |
 | amount | DECIMAL(19,4) | N | CHECK(amount>0) |  |
 | currency_code | CHAR(3) | N | DEFAULT 'KRW' |  |
 | created_at | DATETIME(6) | N |  |  |
 
-*   **인덱스**: `IDX(transaction_id, direction)`, `IDX(account_id, direction, created_at)`
+*   **인덱스**: `IDX(trade_ref_id, direction)`, `IDX(account_id, direction, created_at)`
 *   **파티셔닝**: 월 단위 Range Partition by `created_at`
 
 ### 3.6 ledger_entry_refs (public_id point lookup용)
@@ -155,7 +152,88 @@ DB 레벨 목표:
 | public_id | CHAR(36) | N | PK | 전역 유니크 보장 |
 | ledger_entry_id | BIGINT UNSIGNED | N |  | ledger_entries.id |
 | ledger_created_at | DATETIME(6) | N | IDX | 파티션 프루닝을 위한 힌트 |
+### 3.7 orders (주식 주문 레코드) — Finding #2
+> **📌 설계 의도**: `ClOrdID UK`로 FIX 4.2 주문 멱등성을 DB 레벨에서 강제. 비타협 시나리오 #4 "Duplicate ClOrdID → idempotent result"의 물리적 기반.
 
+| 컬럼 | 타입 | NULL | 제약 | 설명 |
+| --- | --- | --- | --- | --- |
+| id | BIGINT UNSIGNED | N | PK(AUTO) | 내부 PK |
+| public_id | CHAR(36) | N | UK | 외부 주문 참조 UUID |
+| cl_ord_id | VARCHAR(64) | N | UK | FIX 4.2 ClOrdID (tag 11) — 클라이언트 멱등 키 |
+| member_id | BIGINT UNSIGNED | N | IDX | 회원 식별자(논리 참조) |
+| account_id | BIGINT UNSIGNED | N | FK | accounts.id — 주문 실행 계좌 |
+| symbol | VARCHAR(20) | N |  | 종목코드 (FIX tag 55, 예: `005930`) |
+| side | VARCHAR(10) | N | CHECK | BUY\|SELL (FIX tag 54: 1=BUY, 2=SELL) |
+| ord_type | VARCHAR(20) | N | CHECK | MARKET\|LIMIT (FIX tag 40) |
+| price | DECIMAL(19,4) | Y |  | 지정가(LIMIT일 때 필수, MARKET이면 NULL, FIX tag 44) |
+| ord_qty | BIGINT UNSIGNED | N | CHECK(ord_qty>0) | 주문 수량 (FIX tag 38) |
+| status | VARCHAR(20) | N | CHECK | NEW\|PENDING_NEW\|EXECUTING\|PARTIALLY_FILLED\|FILLED\|CANCELLED\|REJECTED\|COMPENSATED |
+| cum_qty | BIGINT UNSIGNED | N | DEFAULT 0 | 누적 체결 수량 (FIX tag 14) |
+| avg_px | DECIMAL(19,4) | Y |  | 평균 체결가 (FIX tag 6) |
+| leaves_qty | BIGINT UNSIGNED | N | DEFAULT 0 | 미체결 잔량 (FIX tag 151) |
+| fep_reference_id | VARCHAR(64) | Y |  | FEP 주문 참조 ID |
+| failure_reason | VARCHAR(255) | Y |  | 실패/거절 사유 코드 |
+| executing_started_at | DATETIME(6) | Y |  | EXECUTING 전이 시각(timeout 판정 독립 기준) |
+| completed_at | DATETIME(6) | Y |  | 최종 상태 도달 시각 |
+| created_at | DATETIME(6) | N |  | 주문 생성 |
+| updated_at | DATETIME(6) | N |  | 최종 상태 변경 |
+
+*   **인덱스**: `UK(public_id)`, `UK(cl_ord_id)`, `IDX(member_id, created_at)`, `IDX(account_id, symbol, created_at)`, `IDX(symbol, status)`, `IDX(status, executing_started_at)`, `IDX(status, updated_at)`
+*   **CHECK**: `(ord_type = 'LIMIT' AND price IS NOT NULL) OR ord_type = 'MARKET'`
+*   **CHECK**: `leaves_qty + cum_qty = ord_qty` — 앱 레이어 강제 (체결 수량 합산 정합성)
+
+### 3.8 positions (포지션 원장) — Finding #3
+> **📌 설계 의도**: `SELECT FOR UPDATE on (account_id, symbol)` — 비타협 시나리오 #2 "10-thread concurrent sell → exactly 5 FILLED, available_qty = 0"의 락 타깃. 동시 매도 과매도 방어의 물리적 기반.
+
+| 컬럼 | 타입 | NULL | 제약 | 설명 |
+| --- | --- | --- | --- | --- |
+| id | BIGINT UNSIGNED | N | PK(AUTO) | 내부 PK |
+| account_id | BIGINT UNSIGNED | N | FK | accounts.id — 락 조인 키 |
+| symbol | VARCHAR(20) | N |  | 종목코드 |
+| quantity | BIGINT UNSIGNED | N | DEFAULT 0, CHECK(>=0) | 총 보유 수량 (양수 강제) |
+| available_qty | BIGINT UNSIGNED | N | DEFAULT 0, CHECK(>=0) | 주문 가능 수량 (`quantity` 이하, 미체결 주문 차감 후) |
+| avg_cost | DECIMAL(19,4) | Y |  | 평균 매입 단가 (SELL 시에도 보존) |
+| created_at | DATETIME(6) | N |  | 최초 포지션 생성 |
+| updated_at | DATETIME(6) | N |  | 마지막 체결/변경 시각 |
+
+*   **인덱스**: `UK(account_id, symbol)` (락 타깃 유니크 조합), `IDX(symbol)`, `IDX(account_id, available_qty)`
+*   **락 정책**: 출매도 주문 실행 시 `SELECT ... FOR UPDATE WHERE account_id = ? AND symbol = ?` — `@Lock(PESSIMISTIC_WRITE)` via QueryDSL/JPA
+*   **CHECK**: `available_qty <= quantity`
+
+### 3.9 executions (체결 이력, FIX 4.2 ExecutionReport) — Finding #4
+> **📌 설계 의도**: FEP Simulator로부터 수신한 `ExecutionReport(35=8)`의 모든 체결 이벤트를 Append-Only로 기록. `SUM(BUY executed_qty) − SUM(SELL executed_qty) == positions.quantity` 정합성 검증(시나리오 #7)의 진실 원천.
+
+| 컬럼 | 타입 | NULL | 제약 | 설명 |
+| --- | --- | --- | --- | --- |
+| id | BIGINT UNSIGNED | N | PK(AUTO) | 내부 PK |
+| public_id | CHAR(36) | N | UK | 외부 체결 참조 UUID |
+| exec_id | VARCHAR(64) | N | UK | FEP의 ExecID (FIX tag 17) — 외부 체결 멱등 키 |
+| order_id | BIGINT UNSIGNED | N | FK | orders.id |
+| cl_ord_id | VARCHAR(64) | N | IDX | FIX tag 11 (주문-체결 역방향 조회용) |
+| exec_type | VARCHAR(10) | N | CHECK | NEW\|TRADE\|CANCELLED\|REJECTED\|REPLACE (FIX tag 150) |
+| ord_status | VARCHAR(20) | N | CHECK | NEW\|PARTIALLY_FILLED\|FILLED\|CANCELLED\|REJECTED (FIX tag 39) |
+| symbol | VARCHAR(20) | N |  | 종목코드 (FIX tag 55) |
+| side | VARCHAR(10) | N | CHECK | BUY\|SELL (FIX tag 54) |
+| last_qty | BIGINT UNSIGNED | N | DEFAULT 0 | 이번 체결 수량 (FIX tag 32, TRADE 외에는 0) |
+| last_px | DECIMAL(19,4) | Y |  | 이번 체결가 (FIX tag 31, TRADE일 때만 non-NULL) |
+| cum_qty | BIGINT UNSIGNED | N | DEFAULT 0 | 누적 체결 수량 (FIX tag 14) |
+| leaves_qty | BIGINT UNSIGNED | N | DEFAULT 0 | 미체결 잔량 (FIX tag 151) |
+| fep_reference_id | VARCHAR(64) | Y |  | FEP/Simulator 참조 ID |
+| created_at | DATETIME(6) | N |  | 체결 보고 수신 시각 (Append-Only) |
+
+*   **인덱스**: `UK(exec_id)`, `IDX(order_id, created_at)`, `IDX(cl_ord_id, created_at)`, `IDX(symbol, side, created_at)` (시나리오 #7 정합성 검증 쿼리용)
+*   **불변 정책**: Append-Only — UPDATE/DELETE 금지. 체결 취소는 `exec_type = 'CANCELLED'` 신규 행으로 기록.
+*   **시나리오 #7 검증 쿼리**:
+    ```sql
+    SELECT
+        SUM(CASE WHEN side = 'BUY'  AND exec_type = 'TRADE' THEN last_qty ELSE 0 END)
+      - SUM(CASE WHEN side = 'SELL' AND exec_type = 'TRADE' THEN last_qty ELSE 0 END)
+        AS expected_qty
+    FROM executions
+    WHERE symbol = ?
+      AND order_id IN (SELECT id FROM orders WHERE account_id = ?);
+    -- expected_qty == positions.quantity (해당 account_id, symbol 기준)
+    ```
 ---
 
 ## 4. “당일 DEBIT SUM” 기반 한도 검증 쿼리 규격
@@ -171,17 +249,17 @@ WHERE account_id = ?
 
 ---
 
-## 5. Hot Account(DEFERRED) 출금 Read-Repair 규격
+## 5. Hot Account(DEFERRED) 주문 처리 Read-Repair 규격
 
 *   **전제:** DEFERRED 계좌는 account_id 기준 단일 라이터(큐/디스럽터)로 처리한다.
 
-**출금 시:**
+**주문 체결 시:**
 1.  `SELECT ... FOR UPDATE`로 accounts lock
 2.  워터마크 이후 반영:
     *   워터마크는 `accounts.last_synced_ledger_ref` (accounts.balance에 마지막으로 반영된 ledger_entries.id 등의 기준값)
 3.  `accounts.balance`를 최신화하고 워터마크 갱신
 4.  DEBIT ledger insert
-5.  `transfer_records` 완료 스냅샷 저장
+5.  `order_records` 주문 체결 결과 스냅샷 저장 (FIX ExecutionReport 기반, FindingR4-R11)
 
 ---
 

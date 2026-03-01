@@ -1,0 +1,126 @@
+Project mock_network_fep_db {
+  database_type: 'MySQL'
+  Note: '''Mock Bank Network & Virtual Counterpart FEP Database Schema (v1.2)
+  
+  CONTRACT: mock_bank_topology.code MUST match fep_institutions.org_code in fep-gateway.
+  Both systems must be seeded from the same institution master list.
+  '''  
+}
+
+// 1. Network Topology & Entities
+Table mock_bank_topology {
+  id uuid [pk]
+  name varchar(100) [not null]
+  code varchar(10) [not null, note: 'Bank Code (004, 088)']
+  protocol_type varchar(20) [not null, note: 'HTTP_REST, ISO8583_TCP']
+  host varchar(255)
+  port int
+  is_active boolean [not null, default: true]
+  echo_interval_seconds int [not null, default: 30, note: 'Simulator local Echo send interval (seconds). Must be manually aligned with Gateway keep_alive_interval at deploy time.']
+  created_at timestamp [default: `now()`]
+}
+
+// 2. FEP Connectivity State (New Layer)
+Table virtual_fep_connectivity {
+  bank_id uuid [pk, ref: - mock_bank_topology.id]
+  connection_status varchar(20) [not null, note: 'ENUM: OFFLINE | LISTENING | CONNECTED | SIGNED_ON | TIMEOUT — Default: OFFLINE. Row auto-created on mock_bank_topology INSERT. TIMEOUT: triggered when consecutive_echo_fail_count >= echo_timeout_threshold. Auto-reconnect attempted. Aligns with status_machine.md TIMEOUT state definition.']
+  last_echo_in timestamp
+  last_echo_out timestamp
+  sequence_check_mode varchar(20) [default: 'STRICT', note: 'ENUM: STRICT | PERMISSIVE']
+  key_exchange_status varchar(20) [default: 'NONE', note: 'ENUM: NONE | EXCHANGED | EXPIRED']
+  consecutive_echo_fail_count int [not null, default: 0, note: 'Echo 0810 miss counter. Triggers TIMEOUT when >= echo_timeout_threshold. Reset to 0 on success.']
+  echo_timeout_threshold int [not null, default: 3, note: 'Configurable per-bank. Align with Gateway keep_alive_interval × N at deploy time.']
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+}
+
+// 3. Low-Level Protocol Log (New Layer)
+Table virtual_fep_messages {
+  id uuid [pk]
+  bank_id uuid [not null, ref: > mock_bank_topology.id]
+  session_id varchar(100)
+  direction varchar(10) [not null, note: 'IN, OUT']
+  msg_type varchar(20) [not null, note: '0800, 0200, GET /health']
+  raw_payload text [note: 'HEX or JSON']
+  parsing_status varchar(20) [not null, note: 'ENUM: SUCCESS | ERROR | MALFORMED']
+  created_at timestamp [default: `now()`]
+}
+
+// 4. Protocol & Simulator Configuration
+Table simulator_endpoints {
+  id uuid [pk]
+  bank_id uuid [not null, ref: > mock_bank_topology.id]
+  msg_type varchar(20) [not null, note: 'Message type or HTTP route. e.g. "0200", "0800", "/v1/transfer"']
+  direction varchar(10) [not null, note: 'ENUM: INBOUND | OUTBOUND — INBOUND: Simulator receives (95% case). OUTBOUND: Simulator proactively sends (Chaos/Unsolicited only).']
+  latency_ms_default int [default: 0, note: 'Base response delay in ms']
+  is_supported boolean [not null, default: true]
+
+  indexes {
+    (bank_id, msg_type, direction) [unique, name: 'uk_endpoint']
+  }
+}
+
+// 5. Core Banking Simulation (Ledger)
+Table virtual_accounts {
+  id uuid [pk]
+  bank_id uuid [not null, ref: > mock_bank_topology.id]
+  account_number varchar(50) [not null]
+  account_name varchar(50)
+  balance decimal(19,4) [not null, default: 0]
+  currency varchar(3) [not null, default: 'KRW']
+  status varchar(20) [not null, default: 'ACTIVE']
+  version int [not null, default: 0, note: 'Optimistic locking. UPDATE WHERE id=? AND version=?. 0 rows affected = concurrent conflict.']
+  created_at timestamp [default: `now()`]
+
+  indexes {
+    (bank_id, account_number) [unique, name: 'uk_bank_account']
+  }
+}
+
+Table virtual_transactions {
+  id uuid [pk]
+  bank_id uuid [not null, ref: > mock_bank_topology.id]
+  trace_id varchar(50) [not null, note: 'System Trace Audit Number']
+  pan_masked varchar(25) [note: 'Masked PAN/account (e.g., 4111-****-****-1234). From request message DE2/DE102.']
+  currency varchar(3) [note: 'ISO 4217 currency code (e.g., KRW, USD). NULL allowed for non-monetary messages (Echo 0800, Sign-on 0600). From request message DE49.']
+  retrieval_ref varchar(20) [note: 'Retrieval Reference Number (RRN) from response DE37. NULL if no response received.']
+  response_message varchar(200) [note: 'Response description text from response DE44. NULL if no response.']
+  result_code varchar(20)
+  amount decimal(19,4)
+  latency_ms int
+  fep_message_id uuid [ref: > virtual_fep_messages.id, note: 'FK to source raw message. NULLABLE — NULL when source message unavailable (e.g., MALFORMED_RESP Chaos scenario). Links business transaction to protocol-level log for Chaos scenario tracing.']
+  created_at timestamp [default: `now()`]
+
+  // MySQL 8.0.13+: Add GENERATED ALWAYS AS (DATE(created_at)) STORED column + UNIQUE KEY uk_trace (bank_id, trace_id, created_date)
+  // MySQL 8.0.12-: Use INDEX idx_trace below only (no uniqueness guarantee across days)
+  indexes {
+    (bank_id, trace_id) [name: 'idx_trace', note: 'Base index for STAN lookup. Upgrade to uk_trace with created_date on MySQL 8.0.13+']
+  }
+}
+
+// 5. Chaos Rules
+Table simulator_rules {
+  id uuid [pk]
+  bank_id uuid [not null, ref: > mock_bank_topology.id]
+  priority int [default: 0, note: 'Higher = applied first']
+  match_msg_type varchar(10) [note: 'Message type to match (e.g., 0200, 0400). NULL = any msg_type.']
+  match_amount_gt decimal(19,4) [note: 'Match when amount > this value. NULL = no lower bound.']
+  match_amount_lte decimal(19,4) [note: 'Match when amount <= this value. NULL = no upper bound.']
+  match_pan_prefix varchar(10) [note: 'Match when PAN starts with this prefix. NULL = any account. ⚠ All-NULL row = matches every request — use with caution.']
+  action_type varchar(20) [not null, note: 'ENUM: APPROVE | DECLINE | IGNORE | DISCONNECT | MALFORMED_RESP']
+  response_template text
+  delay_ms int [default: 0]
+  ttl_seconds int [note: 'NULL = no expiry. Expiry = created_at + INTERVAL ttl_seconds SECOND']
+  expires_at timestamp [note: 'GENERATED ALWAYS AS (created_at + INTERVAL ttl_seconds SECOND) STORED. NULL when ttl_seconds IS NULL (no expiry). Use WHERE expires_at IS NULL OR expires_at > NOW() for active rule lookup. Avoids repeated arithmetic per request.']
+  is_active boolean [not null, default: true]
+  created_at timestamp [default: `now()`, note: 'TTL base time. Required when ttl_seconds IS NOT NULL']
+
+  indexes {
+    (bank_id, is_active, match_msg_type) [name: 'idx_rules_lookup', note: 'B-Tree index for rule lookup. No GENERATED VIRTUAL column needed.']
+    (bank_id, is_active, expires_at) [name: 'idx_rules_expiry', note: 'For TTL-based rule filtering. WHERE expires_at IS NULL OR expires_at > NOW()']
+  }
+  // ⚠ DB-level guard: Add CHECK constraint to prevent all-NULL match (= catch-all rule):
+  // CONSTRAINT chk_not_all_null_match
+  //   CHECK (match_msg_type IS NOT NULL OR match_amount_gt IS NOT NULL OR match_amount_lte IS NOT NULL OR match_pan_prefix IS NOT NULL)
+  // If intentional catch-all is needed, require explicit opt-in column (e.g., match_all BOOLEAN NOT NULL DEFAULT FALSE) instead.
+}

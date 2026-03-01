@@ -249,17 +249,17 @@ LIMIT 1000;
 
 # 3) `otp_verifications`
 
-## 3.1 OTP 레코드 생성 (이체 세션과 1:1)
-**용도**: 이체 세션 생성 시 OTP 발급 레코드 등록
+## 3.1 OTP 레코드 생성 (주문 세션와 1:1)
+**용도**: 주문 세션 생성 시 OTP 발급 레코드 등록
 
 ```sql
 INSERT INTO otp_verifications
-  (otp_uuid, transfer_session_id, member_id,
+  (otp_uuid, order_session_id, member_id,
    attempt_count, max_attempts, status, expires_at, created_at, updated_at)
 VALUES
   (?, ?, ?, 0, ?, 'PENDING', ?, NOW(6), NOW(6));
 ```
-- 제약: `UK(transfer_session_id)` 중복 시 삽입 실패 → 기존 세션 재사용 판단
+- 제약: `UK(order_session_id)` 중복 시 삽입 실패 → 기존 세션 재사용 판단
 
 ---
 
@@ -271,7 +271,7 @@ VALUES
 -- Step 1. Row 잠금으로 동시 시도 직렬화
 SELECT id, attempt_count, max_attempts, status
 FROM otp_verifications
-WHERE transfer_session_id = ?
+WHERE order_session_id = ?
   AND status = 'PENDING'
   AND expires_at > NOW(6)
 FOR UPDATE;
@@ -284,10 +284,10 @@ SET attempt_count = attempt_count + 1,
                       ELSE 'PENDING'
                     END,
     updated_at    = NOW(6)
-WHERE transfer_session_id = ?
+WHERE order_session_id = ?
   AND status = 'PENDING';
 ```
-- 인덱스: `UK(transfer_session_id)`
+- 인덱스: `UK(order_session_id)`
 - **원자성 보장**: 두 쿼리는 반드시 같은 트랜잭션 안에서 실행
 
 ---
@@ -300,7 +300,7 @@ UPDATE otp_verifications
 SET status      = 'VERIFIED',
     verified_at = NOW(6),
     updated_at  = NOW(6)
-WHERE transfer_session_id = ?
+WHERE order_session_id = ?
   AND status = 'PENDING'
   AND expires_at > NOW(6);
 ```
@@ -308,55 +308,53 @@ WHERE transfer_session_id = ?
 ---
 
 ## 3.4 세션별 OTP 상태 조회
-**용도**: 이체 실행 전 OTP가 검증됐는지 확인
+**용도**: 주문 실행 전 OTP가 검증됩는지 확인
 
 ```sql
 SELECT status, attempt_count, max_attempts, expires_at, verified_at
 FROM otp_verifications
-WHERE transfer_session_id = ?;
+WHERE order_session_id = ?;
 ```
-- 인덱스: `UK(transfer_session_id)`
+- 인덱스: `UK(order_session_id)`
 
 ---
 
 ---
 
-# 4) `transfer_sessions`
+# 4) `order_sessions`
 
 ## 4.1 멱등 가드: client_request_id로 기존 세션 조회
 **용도**: 중복 요청 처리 — 이미 존재하면 기존 응답 재구성
 
 ```sql
 SELECT id, session_uuid, status,
-       transaction_uuid, failure_reason_code,
+       ledger_uuid, failure_reason_code,
        post_execution_balance, completed_at, expires_at
-FROM transfer_sessions
+FROM order_sessions
 WHERE client_request_id = ?;
 ```
 - 인덱스: `UK(client_request_id)`
 - **멱등 응답 정책**: `client_request_id` DB UK 충돌 시 `409 Conflict`가 아니라 **기존 세션 상태 그대로 `200 OK` 반환**
-  - `COMPLETED` → `transaction_uuid` + `post_execution_balance` 스냅샷으로 재구성
+  - `COMPLETED` → `ledger_uuid` + `post_execution_balance` 스냅샷으로 재구성
   - `FAILED` → `failure_reason_code` 포함 오류 응답 재구성
-  - `OTP_PENDING/AUTHED` → 현재 세션 상태 반환 (다음 단계 안내)
+  - `PENDING_NEW/AUTHED` → 현재 세션 상태 반환 (다음 단계 안내)
 
 ---
 
-## 4.2 이체 세션 생성 (OTP_PENDING)
-**용도**: 최초 이체 요청
+## 4.2 주문 세션 생성 (PENDING_NEW)
+**용도**: 최신 주문 요청
 
 ```sql
-INSERT INTO transfer_sessions (
+INSERT INTO order_sessions (
   session_uuid, member_id, correlation_uuid, client_request_id,
   status, from_account_id, from_account_number,
-  receiver_account_id, receiver_account_number, receiver_name,
-  to_bank_code, amount, expires_at,
-  created_at, updated_at
+  symbol, side, ord_type, order_qty, price,
+  expires_at, created_at, updated_at
 ) VALUES (
   ?, ?, ?, ?,
-  'OTP_PENDING', ?, ?,
-  ?, ?, ?,
-  ?, ?, ?,
-  NOW(6), NOW(6)
+  'PENDING_NEW', ?, ?,
+  ?, ?, ?, ?, ?,
+  ?, NOW(6), NOW(6)
 );
 ```
 
@@ -366,22 +364,22 @@ INSERT INTO transfer_sessions (
 **용도**: `OTP_VERIFICATIONS.status = VERIFIED` 확인 후 전이
 
 ```sql
-UPDATE transfer_sessions
+UPDATE order_sessions
 SET status     = 'AUTHED',
     updated_at = NOW(6)
 WHERE id = ?
-  AND status = 'OTP_PENDING'
+  AND status = 'PENDING_NEW'
   AND expires_at > NOW(6);
 ```
 
 ---
 
-## 4.4 이체 실행 → EXECUTING 전이
-**용도**: 코어 이체 API 호출 시작 시 기록  
+## 4.4 주문 실행 → EXECUTING 전이
+**용도**: 코어 주문 API 호출 시작 시 기록  
 **중요**: `executing_started_at` 기록 — timeout 판정의 독립적 기준점
 
 ```sql
-UPDATE transfer_sessions
+UPDATE order_sessions
 SET status               = 'EXECUTING',
     executing_started_at = NOW(6),
     updated_at           = NOW(6)
@@ -391,13 +389,13 @@ WHERE id = ?
 
 ---
 
-## 4.5 이체 완료 → COMPLETED 확정 + 스냅샷
-**용도**: 코어 성공 응답 수신 후 최종 결과 저장
+## 4.5 주문 체결 → COMPLETED 확정 + 스냅샷
+**용도**: FEP ExecutionReport(ExecType=FILL) 수신 후 최종 결과 저장
 
 ```sql
-UPDATE transfer_sessions
+UPDATE order_sessions
 SET status                 = 'COMPLETED',
-    transaction_uuid       = ?,
+    ledger_uuid            = ?,
     post_execution_balance = ?,
     completed_at           = NOW(6),
     updated_at             = NOW(6)
@@ -407,14 +405,14 @@ WHERE id = ?
 
 ---
 
-## 4.6 이체 실패 → FAILED 확정
+## 4.6 주문 실패 → FAILED 확정
 **용도**: 코어 명확한 실패 응답
 
 ```sql
-UPDATE transfer_sessions
+UPDATE order_sessions
 SET status              = 'FAILED',
     failure_reason_code = ?,
-    fep_reference_id    = ?,  -- 타행이면 저장
+    fep_reference_id    = ?,  -- FEP 주문 참조이면 저장 (FIX Tag 37 OrderID)
     completed_at        = NOW(6),
     updated_at          = NOW(6)
 WHERE id = ?
@@ -423,15 +421,16 @@ WHERE id = ?
 
 ---
 
-## 4.7 내 이체 내역 조회 (최신순 페이지네이션)
-**용도**: "내 이체 내역" 목록 화면
+## 4.7 내 주문 내역 조회 (최신순 페이지네이션)
+**용도**: "내 주문 내역" 목록 화면
 
 ```sql
-SELECT session_uuid, status, amount,
-       from_account_number, receiver_account_number, receiver_name,
-       to_bank_code, transaction_uuid, failure_reason_code,
+SELECT session_uuid, status,
+       from_account_number, symbol, side, ord_type, order_qty, price,
+       cl_ord_id, fep_reference_id,
+       ledger_uuid, failure_reason_code,
        post_execution_balance, completed_at, created_at
-FROM transfer_sessions
+FROM order_sessions
 WHERE member_id = ?
 ORDER BY created_at DESC
 LIMIT ? OFFSET ?;
@@ -441,23 +440,23 @@ LIMIT ? OFFSET ?;
 ---
 
 ## 4.8 만료 세션 배치 처리
-**용도**: `OTP_PENDING` 및 `AUTHED` 상태에서 만료 시각이 지난 세션 정리  
-**범위 확장**: `AUTHED` 상태도 포함 — 이체 실행 없이 방치된 인증 세션도 만료 처리
+**용도**: `PENDING_NEW` 및 `AUTHED` 상태에서 만료 시각이 지난 세션 정리  
+**범위 확장**: `AUTHED` 상태도 포함 — 주문 실행 없이 방치된 인증 세션도 만료 처리
 
 ```sql
 -- Step 1. 만료 세션 ID 수집
 SELECT id
-FROM transfer_sessions
-WHERE status IN ('OTP_PENDING', 'AUTHED')
+FROM order_sessions
+WHERE status IN ('PENDING_NEW', 'AUTHED')
   AND expires_at < NOW(6)
 LIMIT 500;
 
--- Step 2. transfer_sessions EXPIRED 전이
-UPDATE transfer_sessions
+-- Step 2. order_sessions EXPIRED 전이
+UPDATE order_sessions
 SET status       = 'EXPIRED',
     completed_at = NOW(6),
     updated_at   = NOW(6)
-WHERE status IN ('OTP_PENDING', 'AUTHED')
+WHERE status IN ('PENDING_NEW', 'AUTHED')
   AND expires_at < NOW(6)
 LIMIT 500;
 ```
@@ -470,7 +469,7 @@ LIMIT 500;
 ```sql
 -- Step 1. timeout 초과 EXECUTING 세션 스캔
 SELECT id, session_uuid, fep_reference_id, executing_started_at
-FROM transfer_sessions
+FROM order_sessions
 WHERE status = 'EXECUTING'
   AND executing_started_at < (NOW(6) - INTERVAL 30 SECOND)
 ORDER BY executing_started_at ASC
@@ -482,7 +481,7 @@ LIMIT 100;
 
 ```sql
 -- Step 2. Core 재조회 결과 확인 불가(네트워크 단절 등) 시 FAILED 확정
-UPDATE transfer_sessions
+UPDATE order_sessions
 SET status              = 'FAILED',
     failure_reason_code = 'EXECUTION_TIMEOUT',
     completed_at        = NOW(6),
@@ -494,12 +493,12 @@ WHERE id = ?
 ---
 
 ## 4.10 만료 세션 OTP_VERIFICATIONS 연동 EXPIRED 처리  
-**용도**: 만료된 이체 세션에 연결된 OTP 레코드도 동시에 EXPIRED 전이  
+**용도**: 만료된 주문 세션에 연결된 OTP 레코드도 동시에 EXPIRED 전이  
 **원자성**: 4.8과 같은 배치 실행에서 수행 (동일 트랜잭션 권장)
 
 ```sql
 UPDATE otp_verifications ov
-JOIN transfer_sessions ts ON ts.id = ov.transfer_session_id
+JOIN order_sessions ts ON ts.id = ov.order_session_id
 SET ov.status     = 'EXPIRED',
     ov.updated_at = NOW(6)
 WHERE ov.status IN ('PENDING')
@@ -507,14 +506,14 @@ WHERE ov.status IN ('PENDING')
   AND ts.status = 'EXPIRED'
   AND ts.updated_at >= (NOW(6) - INTERVAL 5 MINUTE);
 ```
-- 인덱스: `IDX(status, expires_at)` (otp_verifications) + `UK(transfer_session_id)`
+- 인덱스: `IDX(status, expires_at)` (otp_verifications) + `UK(order_session_id)`
 - JOIN 패턴 사용: `IN (SELECT ...)` 서브쿼리 대비 MySQL 쿼리 플래너가 더 안정적인 실행 계획 생성
 
 ---
 
 ## 4.11 OTP 검증 성공 → 세션 AUTHED 원자적 전이
 **용도**: OTP VERIFIED + 세션 AUTHED를 **같은 트랜잭션**에서 커밋 — 부분 실패 방지  
-(OTP만 VERIFIED이고 세션이 OTP_PENDING으로 남는 불일치 차단)
+(OTP만 VERIFIED이고 세션이 PENDING_NEW으로 남는 불일치 차단)
 
 ```sql
 -- 같은 트랜잭션 내에서 순서대로 실행
@@ -524,16 +523,16 @@ UPDATE otp_verifications
 SET status      = 'VERIFIED',
     verified_at = NOW(6),
     updated_at  = NOW(6)
-WHERE transfer_session_id = ?
+WHERE order_session_id = ?
   AND status = 'PENDING'
   AND expires_at > NOW(6);
 
 -- Step 2. 전이 성공 확인 후 (affected rows = 1) 세션 AUTHED 전이
-UPDATE transfer_sessions
+UPDATE order_sessions
 SET status     = 'AUTHED',
     updated_at = NOW(6)
 WHERE id = ?
-  AND status = 'OTP_PENDING'
+  AND status = 'PENDING_NEW'
   AND expires_at > NOW(6);
 
 COMMIT;
@@ -547,11 +546,11 @@ COMMIT;
 # 5) `notifications`
 
 ## 5.1 알림 생성
-**용도**: 이체 완료/실패/세션 만료 이벤트 발생 시 생성
+**용도**: 주문 체결/거부/세션 만료 이벤트 발생 시 생성
 
 ```sql
 INSERT INTO notifications
-  (notification_uuid, member_id, transfer_session_id,
+  (notification_uuid, member_id, order_session_id,
    type, status, title, message, expires_at, created_at, updated_at)
 VALUES
   (?, ?, ?, ?, 'UNREAD', ?, ?, ?, NOW(6), NOW(6));
@@ -643,7 +642,7 @@ LIMIT 1000;
 
 ```sql
 INSERT INTO audit_logs
-  (audit_uuid, member_id, transfer_session_id,
+  (audit_uuid, member_id, order_session_id,
    action, target_type, target_id,
    ip_address, user_agent, correlation_uuid, created_at)
 VALUES
@@ -668,16 +667,16 @@ LIMIT 100;
 
 ---
 
-## 6.3 이체 세션 전 과정 이벤트 조회
-**용도**: 단건 이체의 전 과정 감사 추적
+## 6.3 주문 세션 전 과정 이벤트 조회
+**용도**: 단건 주문의 전 과정 감사 추적
 
 ```sql
 SELECT audit_uuid, action, member_id, ip_address, created_at
 FROM audit_logs
-WHERE transfer_session_id = ?
+WHERE order_session_id = ?
 ORDER BY created_at ASC;
 ```
-- 인덱스: `IDX(transfer_session_id, created_at)`
+- 인덱스: `IDX(order_session_id, created_at)`
 
 ---
 
@@ -689,7 +688,7 @@ ORDER BY created_at ASC;
 ```sql
 INSERT INTO security_events
   (security_event_uuid, event_type, status, severity,
-   member_id, transfer_session_id,
+   member_id, order_session_id,
    detail, ip_address, correlation_uuid,
    occurred_at, created_at, updated_at)
 VALUES
@@ -761,31 +760,31 @@ LIMIT 50;
 
 # 8) 트랜잭션 흐름 요약
 
-## 정상 이체 흐름 (채널계 책임)
+## 정상 주문 흐름 (채널계 책임)
 
 ```
-[이체 세션 생성]
-1. transfer_sessions WHERE client_request_id = ?  -- 멱등 가드
-2. INSERT transfer_sessions (OTP_PENDING)
+[주문 세션 생성]
+1. order_sessions WHERE client_request_id = ?  -- 멱등 가드
+2. INSERT order_sessions (PENDING_NEW)
 3. INSERT otp_verifications (PENDING)
-4. INSERT audit_logs (TRANSFER_INITIATED)
+4. INSERT audit_logs (ORDER_SUBMITTED)
 
 [OTP 검증]
-5. SELECT otp_verifications WHERE transfer_session_id = ? FOR UPDATE   -- (선택) 동시 시도 직렬화
+5. SELECT otp_verifications WHERE order_session_id = ? FOR UPDATE   -- (선택) 동시 시도 직렬화
 6. UPDATE otp_verifications (PENDING → VERIFIED)
-7. UPDATE transfer_sessions (OTP_PENDING → AUTHED)
+7. UPDATE order_sessions (PENDING_NEW → AUTHED)
 8. INSERT audit_logs (OTP_VERIFIED)
 
-[이체 실행]
-9.  UPDATE transfer_sessions (AUTHED → EXECUTING)
-10. [Core API 호출 — core_db 책임 영역]
-11a. 성공: UPDATE transfer_sessions (EXECUTING → COMPLETED) + 스냅샷 저장
-         INSERT notifications (TRANSFER_COMPLETED)
-         INSERT audit_logs (TRANSFER_EXECUTED)
-11b. 실패: UPDATE transfer_sessions (EXECUTING → FAILED)
-         INSERT notifications (TRANSFER_FAILED)
-         INSERT audit_logs (TRANSFER_FAILED)
+[주문 실행]
+9.  UPDATE order_sessions (AUTHED → EXECUTING)
+10. [FEP API 호출 — FIX 4.2 NewOrderSingle 전송]
+11a. 체결: UPDATE order_sessions (EXECUTING → COMPLETED) + 스냅샷 저장
+         INSERT notifications (ORDER_FILLED)
+         INSERT audit_logs (ORDER_EXECUTED)
+11b. 거부: UPDATE order_sessions (EXECUTING → FAILED)
+         INSERT notifications (ORDER_REJECTED)
+         INSERT audit_logs (ORDER_FAILED)
 ```
 
 > **불변 규칙**: 채널계는 `core_db.accounts`의 잔액을 직접 수정하지 않는다.
-> 이체 결과는 Core API 응답으로 받아 `post_execution_balance`에 스냅샷으로 저장한다.
+> 주문 체결 결과는 FEP ExecutionReport(Tag 150 ExecType) 응답으로 받아 `post_execution_balance`에 스냅샷으로 저장한다.
