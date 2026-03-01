@@ -28,7 +28,7 @@ Tasks / Subtasks
   - [ ] Ensure default compose exposes only channel externally; keep internal services isolated by default
   - [ ] Add local-only override for host port debugging
 - [ ] Implement baseline Flyway migrations and repeatable local/test seed strategy (AC: 3)
-  - [ ] Add `V1__create_transfer_session_table.sql` for channel schema
+  - [ ] Add `V1__create_order_session_table.sql` for channel schema
   - [ ] Add `V1__create_member_table.sql` for core schema
   - [ ] Add repeatable seed migration for local/test bootstrap accounts
 - [ ] Add internal boundary scaffold filters (AC: 4)
@@ -392,7 +392,7 @@ Previous Story Intelligence
 
 - From Story 0.2 context:
   - CI lane separation is expected; keep FE CI signal independent from backend jobs.
-  - Reuse established quality-gate mindset; avoid one-off local scripts with no CI counterpart.
+  - Reuse established quality-gate mindset; avoid one-off local scripts with no CI symbolName.
 
 Git Intelligence Summary
 
@@ -1070,7 +1070,7 @@ Developer Context Section
 - Supplemental artifact `_bmad-output/implementation-artifacts/epic-1-user-authentication-and-account-access.md` has a different numbering/scope (`1.1`~`1.9`); use it only for technical constraints, not story ID mapping.
 
 - Depends on Story 1.1 + 1.2 + 0.3.
-- Focus is auth UX flow and guarded navigation, not transfer UX.
+- Focus is auth UX flow and guarded navigation, not order UX.
 - Standardization across FE and MOB begins here and is completed in Story 1.6.
 
 Technical Requirements
@@ -1720,7 +1720,7 @@ Dev Notes
 Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 2 (`2.1`~`2.6`).
-- Supplemental artifact `_bmad-output/implementation-artifacts/epic-2-transfer-initiation-and-otp.md` has different scope/numbering; use it only as technical reference, not story ID authority.
+- Supplemental artifact `_bmad-output/implementation-artifacts/epic-2-order-session-and-otp.md` has different scope/numbering; use it only as technical reference, not story ID authority.
 - Depends on Story 0.1 and Story 1.1.
 - This story establishes account-domain baseline for all Epic 2 inquiry APIs.
 
@@ -1778,7 +1778,7 @@ References
 - `_bmad-output/planning-artifacts/epics.md` (Epic 2, Story 2.1)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
-- `_bmad-output/implementation-artifacts/epic-2-transfer-initiation-and-otp.md` (supplemental only)
+- `_bmad-output/implementation-artifacts/epic-2-order-session-and-otp.md` (supplemental only)
 
 Dev Agent Record
 
@@ -1805,7 +1805,7 @@ Story
 
 As an authenticated user,
 I want real-time balance information,
-so that transfer decisions can be made safely.
+so that order decisions can be made safely.
 
 Acceptance Criteria
 
@@ -1835,7 +1835,7 @@ Dev Notes
 Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 2 (`2.1`~`2.6`).
-- Supplemental artifact `_bmad-output/implementation-artifacts/epic-2-transfer-initiation-and-otp.md` has different scope/numbering; use it only as technical reference, not story ID authority.
+- Supplemental artifact `_bmad-output/implementation-artifacts/epic-2-order-session-and-otp.md` has different scope/numbering; use it only as technical reference, not story ID authority.
 - Depends on Story 2.1 and Story 1.2.
 - This story is the read-side contract baseline for FE/MOB dashboard flows.
 
@@ -1893,7 +1893,7 @@ References
 - `_bmad-output/planning-artifacts/epics.md` (Epic 2, Story 2.2)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
-- `_bmad-output/implementation-artifacts/epic-2-transfer-initiation-and-otp.md` (supplemental only)
+- `_bmad-output/implementation-artifacts/epic-2-order-session-and-otp.md` (supplemental only)
 
 Dev Agent Record
 
@@ -1912,26 +1912,26 @@ Completion Notes List
 File List
 
 - /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/2-2-balance-and-available-balance-api.md","bmad","epic-2","story-2-2","lane-mixed","bmad-status-ready-for-dev","FIX-18"
-"Story 2.3: BE Transfer History API","Story","Story 2.3: BE Transfer History API
+"Story 2.3: BE Order History API","Story","Story 2.3: BE Order History API
 
 Status: ready-for-dev
 
 Story
 
 As an authenticated user,
-I want paginated transfer history,
+I want paginated order history,
 so that I can inspect recent financial activity.
 
 Acceptance Criteria
 
-- Given owned account with transaction records, when history API is called, then results are paginated and ordered by created time desc.
+- Given owned account with order records, when history API is called, then results are paginated and ordered by created time desc.
 - Given empty history, when query executes, then empty content contract is returned consistently.
 - Given unauthorized account id, when access check fails, then API returns forbidden error.
 - Given malformed pagination params, when validation runs, then 400 validation error is returned.
 
 Tasks / Subtasks
 
-- [ ] Implement paginated transfer history endpoint for owned accounts (AC: 1)
+- [ ] Implement paginated order history endpoint for owned accounts (AC: 1)
   - [ ] Enforce sort by created time descending
   - [ ] Return stable page metadata and content shape
 - [ ] Implement empty-result consistency handling (AC: 2)
@@ -1947,7 +1947,7 @@ Dev Notes
 Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 2 (`2.1`~`2.6`).
-- Supplemental artifact `_bmad-output/implementation-artifacts/epic-2-transfer-initiation-and-otp.md` has different scope/numbering; use it only as technical reference, not story ID authority.
+- Supplemental artifact `_bmad-output/implementation-artifacts/epic-2-order-session-and-otp.md` has different scope/numbering; use it only as technical reference, not story ID authority.
 - Depends on Story 2.1 and Story 1.2.
 - This story provides backend contract required by web/mobile history UI stories.
 
@@ -1965,13 +1965,13 @@ Architecture Compliance
 
 - Keep query ownership in channel/corebank service boundaries as defined by architecture.
 - Preserve standardized error envelope for forbidden/validation failures.
-- Avoid leaking non-owned transfer metadata in any failure path.
+- Avoid leaking non-owned order metadata in any failure path.
 
 File Structure Requirements
 
 - Expected touched areas:
-  - `BE/channel-service/src/main/**/transfer/**`
-  - `BE/corebank-service/src/main/**/transfer/**` (if delegated query path exists)
+  - `BE/channel-service/src/main/**/order/**`
+  - `BE/corebank-service/src/main/**/order/**` (if delegated query path exists)
   - `BE/*/src/test/**`
 
 Testing Requirements
@@ -1996,14 +1996,14 @@ Quinn Reinforcement Checks
 Story Completion Status
 
 - Status set to `ready-for-dev`.
-- Completion note: Epic 2 transfer-history API guardrails prepared.
+- Completion note: Epic 2 order-history API guardrails prepared.
 
 References
 
 - `_bmad-output/planning-artifacts/epics.md` (Epic 2, Story 2.3)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
-- `_bmad-output/implementation-artifacts/epic-2-transfer-initiation-and-otp.md` (supplemental only)
+- `_bmad-output/implementation-artifacts/epic-2-order-session-and-otp.md` (supplemental only)
 
 Dev Agent Record
 
@@ -2021,15 +2021,15 @@ Completion Notes List
 
 File List
 
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/2-3-transfer-history-api.md","bmad","epic-2","story-2-3","lane-mixed","bmad-status-ready-for-dev","FIX-18"
-"Story 2.4: FE Web Account Dashboard and History","Story","Story 2.4: FE Web Account Dashboard and History
+- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/2-3-order-history-api.md","bmad","epic-2","story-2-3","lane-mixed","bmad-status-ready-for-dev","FIX-18"
+"Story 2.4: FE Web Portfolio Dashboard and History","Story","Story 2.4: FE Web Portfolio Dashboard and History
 
 Status: ready-for-dev
 
 Story
 
 As a web user,
-I want to view my accounts and transfer history,
+I want to view my accounts and order history,
 so that account insights are available in one place.
 
 Acceptance Criteria
@@ -2059,7 +2059,7 @@ Dev Notes
 Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 2 (`2.1`~`2.6`).
-- Supplemental artifact `_bmad-output/implementation-artifacts/epic-2-transfer-initiation-and-otp.md` has different scope/numbering; use it only as technical reference, not story ID authority.
+- Supplemental artifact `_bmad-output/implementation-artifacts/epic-2-order-session-and-otp.md` has different scope/numbering; use it only as technical reference, not story ID authority.
 - Depends on Story 2.2, Story 2.3, and Story 1.3.
 - This story consumes Epic 2 inquiry APIs and exposes them in FE dashboard UX.
 
@@ -2117,7 +2117,7 @@ References
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/ux-design-specification.md`
 - `_bmad-output/planning-artifacts/prd.md`
-- `_bmad-output/implementation-artifacts/epic-2-transfer-initiation-and-otp.md` (supplemental only)
+- `_bmad-output/implementation-artifacts/epic-2-order-session-and-otp.md` (supplemental only)
 
 Dev Agent Record
 
@@ -2136,7 +2136,7 @@ Completion Notes List
 File List
 
 - /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/2-4-web-account-dashboard-and-history.md","bmad","epic-2","story-2-4","lane-mixed","bmad-status-ready-for-dev","FIX-18"
-"Story 2.5: MOB Mobile Account Dashboard and History","Story","Story 2.5: MOB Mobile Account Dashboard and History
+"Story 2.5: MOB Mobile Portfolio Dashboard and History","Story","Story 2.5: MOB Mobile Portfolio Dashboard and History
 
 Status: ready-for-dev
 
@@ -2173,7 +2173,7 @@ Dev Notes
 Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 2 (`2.1`~`2.6`).
-- Supplemental artifact `_bmad-output/implementation-artifacts/epic-2-transfer-initiation-and-otp.md` has different scope/numbering; use it only as technical reference, not story ID authority.
+- Supplemental artifact `_bmad-output/implementation-artifacts/epic-2-order-session-and-otp.md` has different scope/numbering; use it only as technical reference, not story ID authority.
 - Depends on Story 2.2, Story 2.3, and Story 1.4.
 - This story establishes mobile parity for account inquiry UX.
 
@@ -2231,7 +2231,7 @@ References
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/ux-design-specification.md`
 - `_bmad-output/planning-artifacts/prd.md`
-- `_bmad-output/implementation-artifacts/epic-2-transfer-initiation-and-otp.md` (supplemental only)
+- `_bmad-output/implementation-artifacts/epic-2-order-session-and-otp.md` (supplemental only)
 
 Dev Agent Record
 
@@ -2258,12 +2258,12 @@ Story
 
 As an account admin system,
 I want explicit account status contract,
-so that lock/unlock and transfer eligibility can be governed consistently.
+so that lock/unlock and order eligibility can be governed consistently.
 
 Acceptance Criteria
 
 - Given account status model, when status endpoint is queried, then `ACTIVE/LOCKED` and related metadata are returned.
-- Given locked account, when transfer flow requests eligibility, then denial reason code is deterministic.
+- Given locked account, when order flow requests eligibility, then denial reason code is deterministic.
 - Given status transition event, when status changes, then audit/security event is emitted.
 
 Tasks / Subtasks
@@ -2271,7 +2271,7 @@ Tasks / Subtasks
 - [ ] Implement account status query contract (AC: 1)
   - [ ] Expose status response with metadata fields required by callers
   - [ ] Keep enum/value semantics stable (`ACTIVE`, `LOCKED`)
-- [ ] Implement transfer-eligibility evaluation contract (AC: 2)
+- [ ] Implement order-eligibility evaluation contract (AC: 2)
   - [ ] Return deterministic denial reason code for locked/non-eligible states
   - [ ] Ensure caller-visible behavior is consistent across repeated checks
 - [ ] Emit audit/security event on status transitions (AC: 3)
@@ -2284,9 +2284,9 @@ Dev Notes
 Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 2 (`2.1`~`2.6`).
-- Supplemental artifact `_bmad-output/implementation-artifacts/epic-2-transfer-initiation-and-otp.md` has different scope/numbering; use it only as technical reference, not story ID authority.
+- Supplemental artifact `_bmad-output/implementation-artifacts/epic-2-order-session-and-otp.md` has different scope/numbering; use it only as technical reference, not story ID authority.
 - Depends on Story 2.1.
-- This story defines status semantics consumed by later transfer-governance flows.
+- This story defines status semantics consumed by later order-governance flows.
 
 Technical Requirements
 
@@ -2296,7 +2296,7 @@ Technical Requirements
 - Governance:
   - Status transitions must emit traceable audit/security events.
 - Integration:
-  - Downstream transfer logic must be able to consume eligibility contract without interpretation drift.
+  - Downstream order logic must be able to consume eligibility contract without interpretation drift.
 
 Architecture Compliance
 
@@ -2340,7 +2340,7 @@ References
 - `_bmad-output/planning-artifacts/epics.md` (Epic 2, Story 2.6)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
-- `_bmad-output/implementation-artifacts/epic-2-transfer-initiation-and-otp.md` (supplemental only)
+- `_bmad-output/implementation-artifacts/epic-2-order-session-and-otp.md` (supplemental only)
 
 Dev Agent Record
 
@@ -2371,7 +2371,7 @@ So that channel-to-FEP integration is deterministic.
 
 Acceptance Criteria
 
-- Given outbound transfer payload When mapped to FEP DTO Then required fields are validated before send.
+- Given outbound order payload When mapped to FEP DTO Then required fields are validated before send.
 - Given response payload from FEP When parsed Then internal contract is mapped with explicit status values.
 - Given contract-breaking change When build/test runs Then failing contract test blocks merge.
 - Given contract versioning policy When schema evolves Then backward compatibility rule is enforced.
@@ -2609,7 +2609,7 @@ Status: ready-for-dev
 Story
 
 As a recovery scheduler,
-I want status requery for external transactions,
+I want status requery for external orders,
 So that UNKNOWN/EXECUTING outcomes can be reconciled.
 
 Acceptance Criteria
@@ -2770,7 +2770,7 @@ Status: ready-for-dev
 
 Story
 
-As a transfer user,
+As an order user,
 I want understandable external-failure messages,
 So that I know whether to retry, wait, or contact support.
 
@@ -2842,19 +2842,19 @@ Completion Notes List
 File List
 
 - /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/3-6-visible-external-error-ux.md","bmad","epic-3","story-3-6","lane-mixed","bmad-status-ready-for-dev","FIX-19"
-"Story 4.1: [CH] Transfer Session Create/Status + Ownership","Story","Story 4.1: [CH] Transfer Session Create/Status + Ownership
+"Story 4.1: [CH] Order Session Create/Status + Ownership","Story","Story 4.1: [CH] Order Session Create/Status + Ownership
 
 Status: ready-for-dev
 
 Story
 
 As a channel API owner,
-I want transfer session creation and status queries with ownership checks,
+I want order session creation and status queries with ownership checks,
 So that unauthorized access and invalid session usage are blocked.
 
 Acceptance Criteria
 
-- Given valid transfer initiation request When session API is called Then session is created with OTP_PENDING status and TTL.
+- Given valid order initiation request When session API is called Then session is created with PENDING_NEW status and TTL.
 - Given status query for owned session When endpoint is called Then current session state is returned.
 - Given non-owner session access When query or action occurs Then forbidden error is returned.
 - Given expired session When status/action is requested Then not-found/expired contract is returned.
@@ -2875,7 +2875,7 @@ Dev Notes
 Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 4.
-- Supplemental artifact `_bmad-output/implementation-artifacts/epic-4-transfer-execution-and-ledger-integrity.md` has different scope/numbering; use it only as technical reference, not story ID authority.
+- Supplemental artifact `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` has different scope/numbering; use it only as technical reference, not story ID authority.
 - Depends on: Story 1.2, Story 2.2.
 
 Technical Requirements
@@ -2904,7 +2904,7 @@ References
 - `_bmad-output/planning-artifacts/epics.md` (Epic 4, Story 4.1)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
-- `_bmad-output/implementation-artifacts/epic-4-transfer-execution-and-ledger-integrity.md` (supplemental only)
+- `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` (supplemental only)
 
 Dev Agent Record
 
@@ -2922,14 +2922,14 @@ Completion Notes List
 
 File List
 
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/4-1-transfer-session-create-status-plus-ownership.md","bmad","epic-4","story-4-1","lane-mixed","bmad-status-ready-for-dev","FIX-20"
+- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/4-1-order-session-create-status-plus-ownership.md","bmad","epic-4","story-4-1","lane-mixed","bmad-status-ready-for-dev","FIX-20"
 "Story 4.2: [CH] OTP Verification Policy","Story","Story 4.2: [CH] OTP Verification Policy
 
 Status: ready-for-dev
 
 Story
 
-As an authenticated transfer initiator,
+As an authenticated order initiator,
 I want robust OTP verification controls,
 So that step-up authentication is secure and abuse-resistant.
 
@@ -2956,7 +2956,7 @@ Dev Notes
 Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 4.
-- Supplemental artifact `_bmad-output/implementation-artifacts/epic-4-transfer-execution-and-ledger-integrity.md` has different scope/numbering; use it only as technical reference, not story ID authority.
+- Supplemental artifact `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` has different scope/numbering; use it only as technical reference, not story ID authority.
 - Depends on: Story 4.1, Story 1.2.
 
 Technical Requirements
@@ -2985,7 +2985,7 @@ References
 - `_bmad-output/planning-artifacts/epics.md` (Epic 4, Story 4.2)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
-- `_bmad-output/implementation-artifacts/epic-4-transfer-execution-and-ledger-integrity.md` (supplemental only)
+- `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` (supplemental only)
 
 Dev Agent Record
 
@@ -3011,12 +3011,12 @@ Status: ready-for-dev
 Story
 
 As a domain owner,
-I want explicit transfer session transition rules,
+I want explicit order session transition rules,
 So that invalid state progression cannot occur.
 
 Acceptance Criteria
 
-- Given transfer FSM definition When state transition command is applied Then only allowed transitions are accepted.
+- Given order FSM definition When state transition command is applied Then only allowed transitions are accepted.
 - Given invalid transition request When attempted Then deterministic conflict/error is returned.
 - Given state persistence event When transition completes Then status and timestamps are stored consistently.
 - Given API status response When serialized Then optional fields follow status-specific contract.
@@ -3037,7 +3037,7 @@ Dev Notes
 Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 4.
-- Supplemental artifact `_bmad-output/implementation-artifacts/epic-4-transfer-execution-and-ledger-integrity.md` has different scope/numbering; use it only as technical reference, not story ID authority.
+- Supplemental artifact `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` has different scope/numbering; use it only as technical reference, not story ID authority.
 - Depends on: Story 4.2.
 
 Technical Requirements
@@ -3066,7 +3066,7 @@ References
 - `_bmad-output/planning-artifacts/epics.md` (Epic 4, Story 4.3)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
-- `_bmad-output/implementation-artifacts/epic-4-transfer-execution-and-ledger-integrity.md` (supplemental only)
+- `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` (supplemental only)
 
 Dev Agent Record
 
@@ -3085,21 +3085,21 @@ Completion Notes List
 File List
 
 - /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/4-3-fsm-transition-governance.md","bmad","epic-4","story-4-3","lane-mixed","bmad-status-ready-for-dev","FIX-20"
-"Story 4.4: [FE] Web Transfer Step A/B","Story","Story 4.4: [FE] Web Transfer Step A/B
+"Story 4.4: [FE] Web Order Step A/B","Story","Story 4.4: [FE] Web Order Step A/B
 
 Status: ready-for-dev
 
 Story
 
 As a web user,
-I want step-based transfer input and OTP preparation flow,
-So that transfer setup is clear and reversible.
+I want step-based order input and OTP preparation flow,
+So that order setup is clear and reversible.
 
 Acceptance Criteria
 
-- Given step A transfer form When user submits valid input Then session initiation API is called successfully.
+- Given step A order form When user submits valid input Then session initiation API is called successfully.
 - Given invalid form data When validation runs Then client-side and server-side errors are shown.
-- Given transition to step B When session enters OTP_PENDING Then OTP input UI becomes active.
+- Given transition to step B When session enters PENDING_NEW Then OTP input UI becomes active.
 - Given API/network error When request fails Then user receives retry guidance.
 
 Tasks / Subtasks
@@ -3118,7 +3118,7 @@ Dev Notes
 Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 4.
-- Supplemental artifact `_bmad-output/implementation-artifacts/epic-4-transfer-execution-and-ledger-integrity.md` has different scope/numbering; use it only as technical reference, not story ID authority.
+- Supplemental artifact `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` has different scope/numbering; use it only as technical reference, not story ID authority.
 - Depends on: Story 4.1, Story 2.4.
 
 Technical Requirements
@@ -3147,7 +3147,7 @@ References
 - `_bmad-output/planning-artifacts/epics.md` (Epic 4, Story 4.4)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
-- `_bmad-output/implementation-artifacts/epic-4-transfer-execution-and-ledger-integrity.md` (supplemental only)
+- `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` (supplemental only)
 
 Dev Agent Record
 
@@ -3165,7 +3165,7 @@ Completion Notes List
 
 File List
 
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/4-4-web-transfer-step-a-b.md","bmad","epic-4","story-4-4","lane-mixed","bmad-status-ready-for-dev","FIX-20"
+- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/4-4-web-order-step-a-b.md","bmad","epic-4","story-4-4","lane-mixed","bmad-status-ready-for-dev","FIX-20"
 "Story 4.5: [FE] Web OTP + Step C","Story","Story 4.5: [FE] Web OTP + Step C
 
 Status: ready-for-dev
@@ -3174,7 +3174,7 @@ Story
 
 As a web user,
 I want OTP verification and final confirmation/result screens,
-So that I can complete transfer with clear status feedback.
+So that I can complete order with clear status feedback.
 
 Acceptance Criteria
 
@@ -3199,7 +3199,7 @@ Dev Notes
 Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 4.
-- Supplemental artifact `_bmad-output/implementation-artifacts/epic-4-transfer-execution-and-ledger-integrity.md` has different scope/numbering; use it only as technical reference, not story ID authority.
+- Supplemental artifact `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` has different scope/numbering; use it only as technical reference, not story ID authority.
 - Depends on: Story 4.2, Story 4.3, Story 4.4.
 
 Technical Requirements
@@ -3228,7 +3228,7 @@ References
 - `_bmad-output/planning-artifacts/epics.md` (Epic 4, Story 4.5)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
-- `_bmad-output/implementation-artifacts/epic-4-transfer-execution-and-ledger-integrity.md` (supplemental only)
+- `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` (supplemental only)
 
 Dev Agent Record
 
@@ -3247,15 +3247,15 @@ Completion Notes List
 File List
 
 - /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/4-5-web-otp-plus-step-c.md","bmad","epic-4","story-4-5","lane-mixed","bmad-status-ready-for-dev","FIX-20"
-"Story 4.6: [MOB] Mobile Transfer Step A/B","Story","Story 4.6: [MOB] Mobile Transfer Step A/B
+"Story 4.6: [MOB] Mobile Order Step A/B","Story","Story 4.6: [MOB] Mobile Order Step A/B
 
 Status: ready-for-dev
 
 Story
 
 As a mobile user,
-I want transfer input and OTP preparation on mobile flow,
-So that I can initiate transfer with same capability as web.
+I want order input and OTP preparation on mobile flow,
+So that I can initiate an order with same capability as web.
 
 Acceptance Criteria
 
@@ -3280,7 +3280,7 @@ Dev Notes
 Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 4.
-- Supplemental artifact `_bmad-output/implementation-artifacts/epic-4-transfer-execution-and-ledger-integrity.md` has different scope/numbering; use it only as technical reference, not story ID authority.
+- Supplemental artifact `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` has different scope/numbering; use it only as technical reference, not story ID authority.
 - Depends on: Story 4.1, Story 2.5.
 
 Technical Requirements
@@ -3309,7 +3309,7 @@ References
 - `_bmad-output/planning-artifacts/epics.md` (Epic 4, Story 4.6)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
-- `_bmad-output/implementation-artifacts/epic-4-transfer-execution-and-ledger-integrity.md` (supplemental only)
+- `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` (supplemental only)
 
 Dev Agent Record
 
@@ -3327,7 +3327,7 @@ Completion Notes List
 
 File List
 
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/4-6-mobile-transfer-step-a-b.md","bmad","epic-4","story-4-6","lane-mixed","bmad-status-ready-for-dev","FIX-20"
+- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/4-6-mobile-order-step-a-b.md","bmad","epic-4","story-4-6","lane-mixed","bmad-status-ready-for-dev","FIX-20"
 "Story 4.7: [MOB] Mobile OTP + Step C","Story","Story 4.7: [MOB] Mobile OTP + Step C
 
 Status: ready-for-dev
@@ -3336,14 +3336,14 @@ Story
 
 As a mobile user,
 I want OTP verification and final result flow on mobile,
-So that complete transfer experience is parity with web.
+So that complete order experience is parity with web.
 
 Acceptance Criteria
 
 - Given OTP verify on mobile When valid code is entered Then app transitions to confirmation/execution.
 - Given OTP or execution errors When response received Then user sees mapped action guidance.
-- Given final result response When completed/failed Then transaction reference and failure reasons are rendered.
-- Given app background/foreground cycle When session resumes Then current transfer status is recovered.
+- Given final result response When completed/failed Then order reference and failure reasons are rendered.
+- Given app background/foreground cycle When session resumes Then current order status is recovered.
 
 Tasks / Subtasks
 
@@ -3361,7 +3361,7 @@ Dev Notes
 Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 4.
-- Supplemental artifact `_bmad-output/implementation-artifacts/epic-4-transfer-execution-and-ledger-integrity.md` has different scope/numbering; use it only as technical reference, not story ID authority.
+- Supplemental artifact `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` has different scope/numbering; use it only as technical reference, not story ID authority.
 - Depends on: Story 4.2, Story 4.3, Story 4.6.
 
 Technical Requirements
@@ -3390,7 +3390,7 @@ References
 - `_bmad-output/planning-artifacts/epics.md` (Epic 4, Story 4.7)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
-- `_bmad-output/implementation-artifacts/epic-4-transfer-execution-and-ledger-integrity.md` (supplemental only)
+- `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` (supplemental only)
 
 Dev Agent Record
 
@@ -3417,7 +3417,7 @@ Story
 
 As a product quality owner,
 I want FE and MOB FSM behavior parity,
-So that one client does not diverge from core transfer rules.
+So that one client does not diverge from core order rules.
 
 Acceptance Criteria
 
@@ -3439,7 +3439,7 @@ Dev Notes
 Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 4.
-- Supplemental artifact `_bmad-output/implementation-artifacts/epic-4-transfer-execution-and-ledger-integrity.md` has different scope/numbering; use it only as technical reference, not story ID authority.
+- Supplemental artifact `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` has different scope/numbering; use it only as technical reference, not story ID authority.
 - Depends on: Story 4.5, Story 4.7.
 
 Technical Requirements
@@ -3468,7 +3468,7 @@ References
 - `_bmad-output/planning-artifacts/epics.md` (Epic 4, Story 4.8)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
-- `_bmad-output/implementation-artifacts/epic-4-transfer-execution-and-ledger-integrity.md` (supplemental only)
+- `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` (supplemental only)
 
 Dev Agent Record
 
@@ -3495,11 +3495,11 @@ Story
 
 As an account policy engine,
 I want daily amount/count validation,
-So that transfer attempts respect financial policy.
+So that order attempts respect financial policy.
 
 Acceptance Criteria
 
-- Given transfer request with account context When limit check executes Then remaining capacity is computed accurately.
+- Given order request with account context When limit check executes Then remaining capacity is computed accurately.
 - Given request exceeds limit When validation fails Then rejection includes remaining-limit metadata.
 - Given exactly-at-limit request When check runs Then acceptance/rejection behavior follows documented boundary.
 - Given daily window rollover When date boundary changes Then counters reset according to timezone rule.
@@ -3568,22 +3568,22 @@ Completion Notes List
 File List
 
 - /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/5-1-limit-engine.md","bmad","epic-5","story-5-1","lane-mixed","bmad-status-ready-for-dev","FIX-21"
-"Story 5.2: [AC] Same-bank Ledger Posting","Story","Story 5.2: [AC] Same-bank Ledger Posting
+"Story 5.2: [AC] Order Execution & Position Update","Story","Story 5.2: [AC] Order Execution & Position Update
 
 Status: ready-for-dev
 
 Story
 
 As a ledger engine,
-I want atomic debit/credit posting for same-bank transfers,
+I want atomic debit/credit posting for FEP-routed orders,
 So that ledger integrity is preserved.
 
 Acceptance Criteria
 
-- Given authorized transfer execution When posting occurs Then paired debit/credit entries are committed atomically.
+- Given authorized order execution When posting occurs Then paired debit/credit entries are committed atomically.
 - Given posting failure mid-transaction When transaction aborts Then neither partial ledger entry persists.
 - Given insufficient balance condition When posting pre-check fails Then no ledger mutation occurs.
-- Given successful posting When response is built Then transaction reference is included.
+- Given successful posting When response is built Then order reference is included.
 
 Tasks / Subtasks
 
@@ -3648,23 +3648,23 @@ Completion Notes List
 
 File List
 
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/5-2-same-bank-ledger-posting.md","bmad","epic-5","story-5-2","lane-mixed","bmad-status-ready-for-dev","FIX-21"
-"Story 5.3: [AC] Interbank Ledger Semantics","Story","Story 5.3: [AC] Interbank Ledger Semantics
+- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/5-2-order-execution-and-position-update.md","bmad","epic-5","story-5-2","lane-mixed","bmad-status-ready-for-dev","FIX-21"
+"Story 5.3: [AC] FEP Order Execution Semantics","Story","Story 5.3: [AC] FEP Order Execution Semantics
 
 Status: ready-for-dev
 
 Story
 
-As an interbank ledger owner,
-I want deterministic posting semantics for external transfers,
+As a FEP execution owner,
+I want deterministic posting semantics for external orders,
 So that local ledger stays consistent with external processing lifecycle.
 
 Acceptance Criteria
 
-- Given interbank transfer execution request When pre-posting/debit occurs Then transaction state records external linkage metadata.
+- Given FEP-routed order execution request When pre-posting/debit occurs Then order state records external linkage metadata.
 - Given external failure requiring compensation When compensation path runs Then compensating credit is recorded with traceable linkage.
 - Given external unknown outcome When settlement deferred Then ledger state remains reconcilable for later recovery.
-- Given interbank completion When finalized Then final transfer status and references are consistent.
+- Given FEP order FILLED When finalized Then final order status (FILLED) and clOrdID references are consistent.
 
 Tasks / Subtasks
 
@@ -3729,14 +3729,14 @@ Completion Notes List
 
 File List
 
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/5-3-interbank-ledger-semantics.md","bmad","epic-5","story-5-3","lane-mixed","bmad-status-ready-for-dev","FIX-21"
+- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/5-3-fep-order-execution-semantics.md","bmad","epic-5","story-5-3","lane-mixed","bmad-status-ready-for-dev","FIX-21"
 "Story 5.4: [AC] Idempotent Posting","Story","Story 5.4: [AC] Idempotent Posting
 
 Status: ready-for-dev
 
 Story
 
-As a transaction safety owner,
+As a order safety owner,
 I want duplicate execution suppression,
 So that repeated client/system calls do not double-post.
 
@@ -3819,11 +3819,11 @@ Story
 
 As a corebank integrity owner,
 I want pessimistic locking and race-safe behavior,
-So that concurrent transfers cannot produce negative or corrupted balances.
+So that concurrent orders cannot produce negative or corrupted balances.
 
 Acceptance Criteria
 
-- Given concurrent transfer attempts on same account When lock policy is applied Then final balance never becomes negative.
+- Given concurrent order attempts on same account When lock policy is applied Then final balance never becomes negative.
 - Given lock contention When threshold exceeded Then request fails with deterministic conflict/error contract.
 - Given 10-thread concurrency test When executed in CI Then expected success/failure counts and final balance assertions pass.
 - Given lock duration observation When measured Then operational threshold alerting is available.
@@ -3904,7 +3904,7 @@ So that accounting integrity can be continuously verified.
 
 Acceptance Criteria
 
-- Given completed transfer set When integrity query runs Then debit/credit(+compensate) invariants hold.
+- Given completed order set When integrity query runs Then debit/credit(+compensate) invariants hold.
 - Given detected mismatch When integrity check fails Then anomaly is reported with traceable identifiers.
 - Given scheduled integrity job When executed Then summary metrics are stored for operations.
 - Given release gate When ledger integrity test fails Then build is blocked.
@@ -3979,15 +3979,15 @@ Status: ready-for-dev
 
 Story
 
-As a transfer user,
+As an order user,
 I want limit/balance/result failures clearly explained,
 So that I can take the correct next action.
 
 Acceptance Criteria
 
 - Given insufficient balance/limit errors When FE/MOB receives codes Then both clients show aligned actionable guidance.
-- Given transfer failure reason code When rendered Then reason category is distinguishable (internal/external/validation).
-- Given successful transfer completion When result rendered Then reference and updated balance context are shown where required.
+- Given order failure reason code When rendered Then reason category is distinguishable (internal/external/validation).
+- Given successful order completion When result rendered Then reference and updated balance context are shown where required.
 
 Tasks / Subtasks
 
@@ -4302,13 +4302,13 @@ Story
 
 As a recovery engine,
 I want periodic requery for unknown outcomes,
-So that ambiguous transactions can converge to terminal states.
+So that ambiguous orders can converge to terminal states.
 
 Acceptance Criteria
 
-- Given transfer in UNKNOWN/EXECUTING timeout state When scheduler runs Then status requery is executed with backoff policy.
-- Given requery returns accepted/completed When reconciliation runs Then transfer state converges to terminal success.
-- Given requery repeatedly unknown/failing When threshold exceeded Then transfer is escalated to manual recovery queue.
+- Given order in UNKNOWN/EXECUTING timeout state When scheduler runs Then status requery is executed with backoff policy.
+- Given requery returns accepted/completed When reconciliation runs Then order state converges to terminal success.
+- Given requery repeatedly unknown/failing When threshold exceeded Then order is escalated to manual recovery queue.
 - Given scheduler cycle execution When metrics collected Then attempt and convergence counters are recorded.
 
 Tasks / Subtasks
@@ -4383,7 +4383,7 @@ Story
 
 As an operator,
 I want controlled replay/recovery commands,
-So that unresolved transfers can be corrected safely.
+So that unresolved orders can be corrected safely.
 
 Acceptance Criteria
 
@@ -4543,7 +4543,7 @@ Status: ready-for-dev
 
 Story
 
-As a transfer user,
+As an order user,
 I want transparent degraded-state guidance,
 So that I understand delays and recovery behavior.
 
@@ -4623,7 +4623,7 @@ Story
 
 As a notification backend owner,
 I want SSE stream lifecycle management,
-So that users receive transfer outcomes in real time.
+So that users receive order outcomes in real time.
 
 Acceptance Criteria
 
@@ -4708,7 +4708,7 @@ So that missed events can be recovered.
 
 Acceptance Criteria
 
-- Given transfer terminal event When notification pipeline runs Then notification is persisted before/with dispatch.
+- Given order terminal event When notification pipeline runs Then notification is persisted before/with dispatch.
 - Given list API request When pagination params applied Then ordered notifications are returned.
 - Given read-mark request When notification id belongs to user Then read status is updated.
 - Given unauthorized notification access When validation fails Then request is denied.
@@ -4785,7 +4785,7 @@ Story
 
 As a web user,
 I want real-time notification center with reconnection behavior,
-So that transfer results are visible even across brief disconnections.
+So that order results are visible even across brief disconnections.
 
 Acceptance Criteria
 
@@ -4866,7 +4866,7 @@ Story
 
 As a mobile user,
 I want in-app notification feed and reconnection,
-So that transfer outcomes remain visible on mobile.
+So that order outcomes remain visible on mobile.
 
 Acceptance Criteria
 
@@ -5275,7 +5275,7 @@ So that credentials/session data/account numbers are never leaked.
 
 Acceptance Criteria
 
-- Given logging of transfer/auth contexts When sensitive fields included Then masking rules are applied.
+- Given logging of order/auth contexts When sensitive fields included Then masking rules are applied.
 - Given password/otp/session token values When logging attempted Then raw values are never persisted.
 - Given masking utility tests When test suite runs Then representative patterns are validated.
 - Given log compliance check When release gate runs Then prohibited pattern scan returns clean.
@@ -5669,12 +5669,12 @@ Status: ready-for-dev
 Story
 
 As an integration owner,
-I want unified orchestration for same-bank and interbank execution,
-So that transfer paths are controlled through a single domain flow.
+I want unified orchestration for FEP-routed execution,
+So that order paths are controlled through a single domain flow.
 
 Acceptance Criteria
 
-- Given AUTHED transfer session When execute command issued Then orchestration selects same-bank or interbank branch correctly.
+- Given AUTHED order session When execute command issued Then orchestration selects FEP-routed branch correctly.
 - Given branch execution completed When results returned Then channel state reflects downstream outcome deterministically.
 - Given downstream timeout/failure When execution path fails Then recovery-eligible state is assigned.
 - Given orchestration logic update When integration tests run Then both branches remain green.
@@ -5749,14 +5749,14 @@ Status: ready-for-dev
 Story
 
 As a platform consumer,
-I want normalized transfer terminal states,
+I want normalized order terminal states,
 So that clients can render outcomes without service-specific branching.
 
 Acceptance Criteria
 
 - Given branch-specific outcomes When response is normalized Then terminal states follow common contract.
-- Given failed transfer When failure code is set Then reason taxonomy matches documented categories.
-- Given completed transfer When response returned Then transaction reference is always present.
+- Given failed order When failure code is set Then reason taxonomy matches documented categories.
+- Given completed order When response returned Then order reference is always present.
 - Given state contract regression When tests run Then schema mismatch fails CI.
 
 Tasks / Subtasks
@@ -5829,13 +5829,13 @@ Status: ready-for-dev
 Story
 
 As a reliability owner,
-I want orchestrated recovery for EXECUTING/UNKNOWN transfers,
-So that stuck transactions eventually converge.
+I want orchestrated recovery for EXECUTING/UNKNOWN orders,
+So that stuck orders eventually converge.
 
 Acceptance Criteria
 
-- Given transfer remains non-terminal beyond threshold When scheduler runs Then recovery sequence is triggered.
-- Given external requery returns terminal result When reconciliation succeeds Then transfer is closed with normalized state.
+- Given order remains non-terminal beyond threshold When scheduler runs Then recovery sequence is triggered.
+- Given external requery returns terminal result When reconciliation succeeds Then order is closed with normalized state.
 - Given repeated unresolved attempts When max tries exceeded Then manual recovery queue entry is created.
 - Given recovery execution When audited Then attempt history is queryable.
 
@@ -5915,7 +5915,7 @@ So that duplicate operations never diverge across system boundaries.
 Acceptance Criteria
 
 - Given duplicate request at channel boundary When dedupe applies Then same canonical outcome is returned.
-- Given AC/FEP partial records When reconciliation runs Then canonical transaction identity is restored.
+- Given AC/FEP partial records When reconciliation runs Then canonical order identity is restored.
 - Given mismatch detection When discovered Then inconsistency is surfaced to operations.
 - Given reconciliation run report When completed Then success/failure counters are emitted.
 
@@ -5995,7 +5995,7 @@ So that complex backend outcomes are understandable.
 Acceptance Criteria
 
 - Given normalized terminal response When FE renders result Then completed/failed states are displayed consistently.
-- Given recovery-in-progress state When user views transfer status Then proper pending/retry guidance is shown.
+- Given recovery-in-progress state When user views order status Then proper pending/retry guidance is shown.
 - Given retry-eligible failure When user triggers retry action Then operation follows guarded flow.
 - Given unknown status resolution When final state arrives Then UI auto-updates without stale conflict.
 
@@ -6070,14 +6070,14 @@ Story
 
 As a mobile user,
 I want integrated final-state and retry guidance on mobile,
-So that transfer completion behavior is parity with web.
+So that order completion behavior is parity with web.
 
 Acceptance Criteria
 
 - Given normalized final response When mobile renders result Then status/reason/ref fields follow same semantics as web.
 - Given recovery-in-progress condition When screen revisited Then current status is restored and shown accurately.
 - Given retryable failure condition When user retries Then guarded action path executes and prevents duplicates.
-- Given connectivity interruption When app resumes Then latest transfer state is re-synced.
+- Given connectivity interruption When app resumes Then latest order state is re-synced.
 
 Tasks / Subtasks
 
@@ -6316,7 +6316,7 @@ Acceptance Criteria
 
 - Given timeout and failure drill setup When test run executes Then CB open behavior is verified.
 - Given recovery drill scenario When downstream recovers Then state closes and normal flow resumes.
-- Given replay/requery drill When unresolved transaction simulated Then recovery workflow converges or escalates as designed.
+- Given replay/requery drill When unresolved order simulated Then recovery workflow converges or escalates as designed.
 - Given drill evidence requirement When drill completes Then report/log artifacts are attached.
 
 Tasks / Subtasks
@@ -6475,7 +6475,7 @@ So that web deployment quality is auditable.
 Acceptance Criteria
 
 - Given FE E2E suite When release pipeline runs Then critical user journeys pass.
-- Given regression in core transfer/auth paths When detected Then release gate fails.
+- Given regression in core order/auth paths When detected Then release gate fails.
 - Given release checklist template When preparing shipment Then checklist items are completed with evidence links.
 - Given final FE candidate build When validated Then versioned release notes are generated.
 
@@ -6555,7 +6555,7 @@ So that mobile deployment quality is auditable.
 Acceptance Criteria
 
 - Given MOB E2E suite When release pipeline runs Then critical flows pass on target test matrix.
-- Given auth/transfer/notification regressions When detected Then release gate fails.
+- Given auth/order/notification regressions When detected Then release gate fails.
 - Given release checklist template When preparing distribution Then checklist and artifact links are completed.
 - Given final build candidate When approved Then release notes and handoff package are finalized.
 
