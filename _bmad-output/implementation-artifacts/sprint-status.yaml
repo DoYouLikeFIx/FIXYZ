@@ -37,8 +37,8 @@ story_location: "{project-root}/_bmad-output/implementation-artifacts"
 development_status:
   epic-0: backlog
   0-1-be-core-platform-baseline: done
-  0-2-be-test-ci-foundation: review
-  0-3-fe-frontend-foundation-scaffold: ready-for-dev
+  0-2-be-test-ci-foundation: done
+  0-3-fe-frontend-foundation-scaffold: done
   0-4-mob-mobile-foundation-scaffold: ready-for-dev
   0-5-collaboration-webhook-notifications: ready-for-dev
   epic-0-retrospective: optional

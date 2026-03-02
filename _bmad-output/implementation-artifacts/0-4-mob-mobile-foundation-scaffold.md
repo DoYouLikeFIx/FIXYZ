@@ -43,12 +43,13 @@ so that mobile features follow the same contract and architecture.
   - [ ] Ensure CSRF header injection is skipped for safe methods (GET/HEAD/OPTIONS)
   - [ ] Add CSRF bootstrap/refresh sequence: `GET /api/v1/auth/csrf` on app cold start, login success, and foreground resume before first state-changing call
   - [ ] Define missing-token fail-safe: if `XSRF-TOKEN` absent, re-bootstrap once then fail request with deterministic client error
-- [ ] Add MOB CI workflow (`ci-mobile.yml`) scoped to the MOB lane
-  - [ ] Create `.github/workflows/ci-mobile.yml` triggered on push/PR with path filter `MOB/**`
+- [ ] Add MOB-native CI workflow (`ci-mobile.yml`) in the MOB repo
+  - [ ] Create `MOB/.github/workflows/ci-mobile.yml` triggered on MOB repo push/PR (do not rely on super-repo path filter `MOB/**`)
   - [ ] Workflow steps: dependency install → TypeScript type-check → lint → `react-native build` (or Metro bundle dry-run)
-  - [ ] Ensure workflow produces a named status check (`ci-mobile`) compatible with branch protection rules
+  - [ ] Ensure workflow produces a named status check (`ci-mobile`) compatible with MOB repo branch protection rules
   - [ ] Run on `ubuntu-latest` using Node.js matrix; skip simulator launch in CI (bundle-only validation is sufficient for foundation)
   - [ ] Add PR checklist gate requiring manual simulator/device smoke evidence for AC1 (`boot + health call`), because CI is bundle-only
+  - [ ] Keep root-repo CI limited to integration/sync checks; MOB quality gate ownership remains in MOB repo CI
 
 ## Dev Notes
 
@@ -57,6 +58,7 @@ so that mobile features follow the same contract and architecture.
 - Dependency: Story 0.1 foundational backend runtime must be available.
 - Mobile lane is currently represented as a dedicated repository/submodule; keep changes isolated to MOB scope.
 - Scope is scaffold + network/security baseline only; no feature screens required in this story.
+- MOB CI ownership is lane-local: define and enforce MOB required checks in MOB submodule workflows.
 
 ### Technical Requirements
 
@@ -102,7 +104,7 @@ so that mobile features follow the same contract and architecture.
   - `MOB/src/network/**` (or equivalent shared client location)
   - `MOB/src/config/**` (environment/base URL config)
   - `MOB/src/security/**` (secure storage wrapper)
-  - `/Users/yeongjae/fixyz/.github/workflows/ci-mobile.yml`
+  - `MOB/.github/workflows/ci-mobile.yml`
 - Keep all mobile baseline logic in reusable modules; avoid duplicating network/auth glue in screen components.
 
 ### Testing Requirements

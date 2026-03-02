@@ -2159,7 +2159,7 @@ fix/                                          # 모노레포 루트
 │       ├── ci-corebank.yml                   # matrix job 2
 │       ├── ci-fep-gateway.yml                # matrix job 3
 │       ├── ci-fep-simulator.yml              # matrix job 4
-│       └── ci-frontend.yml                   # Vite + Vitest (R2)
+│       └── docs-publish.yml                  # 문서 발행 (FE CI는 FE/.github/workflows/ci-frontend.yml에서 관리)
 ├── .gitignore                                # *.env, build/, .gradle/, node_modules/
 ├── README.md                                 # Quick Start, 아키텍처 개요
 ├── CONTRIBUTING.md                           # 브랜치/커밋/PR 컨벤션 (R6)
