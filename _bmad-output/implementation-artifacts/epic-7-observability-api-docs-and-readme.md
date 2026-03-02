@@ -1,11 +1,14 @@
 # Epic 7: Observability, API Docs & README
 
+> **⚠️ Epic Numbering Note**: This supplemental file was numbered from the securities-order domain and corresponds to **Epic 8 in epics.md: Cross-system Security, Audit, Observability (partial)**. The canonical story authority is always `_bmad-output/planning-artifacts/epics.md`.
+
+
 ## Summary
 
-Swagger UI documents all Channel APIs, X-Correlation-Id propagates through logs of all 3 services, and structured JSON logs allow request chain reconstruction. README provides immediate answers for two interview tracks (Banking/FinTech).
+GitHub Pages-hosted Swagger UI documents Channel/CoreBank/FEP Gateway/FEP Simulator APIs, X-Correlation-Id propagates through logs of all 4 backend services, and structured JSON logs allow request chain reconstruction. README provides immediate answers for two interview tracks (Banking/FinTech).
 
 **FRs covered:** FR-40, FR-42, FR-53  
-**NFRs covered:** NFR-O1(Swagger 200), NFR-L1(JSON Logs), NFR-M2(README ADR), NFR-M3(API Docs), NFR-M4(Env Externalization)  
+**NFRs covered:** NFR-O1(GitHub Pages API Docs 200), NFR-L1(JSON Logs), NFR-M2(README ADR), NFR-M3(API Docs), NFR-M4(Env Externalization)  
 **Architecture requirements:** springdoc-openapi SwaggerConfig, logback-spring.xml(JSON + MDC), X-Correlation-Id propagation chain(CorrelationIdFilter→CoreBankClient/FepClient→InternalSecretFilter), Actuator endpoint exposure
 
 ---
@@ -13,17 +16,17 @@ Swagger UI documents all Channel APIs, X-Correlation-Id propagates through logs 
 ## Story 7.1: Swagger & OpenAPI Documentation
 
 As a **developer or interviewer**,  
-I want interactive API documentation at `/swagger-ui.html` covering all Channel Service endpoints,  
+I want interactive API documentation at the canonical endpoint (`https://<org>.github.io/<repo>/`) covering all required service endpoints,  
 So that I can explore and verify the API without reading source code.
 
 **Depends On:** Story 1.2, Story 2.1 (Controller implementation done)
 
 ### Acceptance Criteria
 
-**Given** `GET /swagger-ui.html` (after channel-service startup)  
-**When** requested  
+**Given** `docs-publish.yml` succeeds on `main`  
+**When** the canonical endpoint (`https://<org>.github.io/<repo>/`) is requested  
 **Then** HTTP 200 returned (NFR-O1)  
-**And** accessible without authentication (`SecurityConfig.permitAll()`)
+**And** Channel selector is accessible without service authentication.
 
 **Given** `SwaggerConfig @Configuration`  
 **When** config checked  
@@ -39,15 +42,15 @@ So that I can explore and verify the API without reading source code.
 **And** request/response DTOs include `@Schema(description = "...")` annotation  
 **And** error response codes documented via `@ApiResponse` (400, 401, 403, 422, 500)
 
-**Given** `GET /v3/api-docs`  
-**When** requested  
-**Then** HTTP 200 JSON format OpenAPI 3.0 spec returned  
-**And** verification includes all `/api/v1/**` endpoints
+**Given** build-time OpenAPI generation tasks run for channel/corebank/fep-gateway/fep-simulator  
+**When** generated specs are reviewed  
+**Then** valid OpenAPI 3.0 JSON artifacts exist for each required service  
+**And** verification includes all `/api/v1/**` public endpoints for Channel.
 
-**Given** `GET /swagger-ui.html` (after fep-service startup)  
-**When** requested  
-**Then** HTTP 200 (NFR-O1 — fep-service also provides Swagger)  
-**And** documents `/fep/v1/**` and `/fep-internal/**` endpoints
+**Given** canonical docs selector tabs are loaded  
+**When** `FEP Gateway` and `FEP Simulator` tabs are selected  
+**Then** both API document sets are reachable (NFR-O1)  
+**And** FEP Gateway documents required `/fep/v1/**` and `/fep-internal/**` endpoints.
 
 ---
 
@@ -61,7 +64,7 @@ So that a complete request chain can be reconstructed from logs across services.
 
 ### Acceptance Criteria
 
-**Given** `logback-spring.xml` config (for all 3 services)  
+**Given** `logback-spring.xml` config (for all 4 backend services)  
 **When** service startup  
 **Then** JSON format log output via `logstash-logback-encoder`  
 **And** each log line is valid JSON with fields: `timestamp, level, logger, message, traceId, correlationId, memberId`
@@ -83,19 +86,19 @@ So that a complete request chain can be reconstructed from logs across services.
 **And** `FepClientConfig @Bean`: `RestClient.builder().requestInterceptor(correlationIdInterceptor())` applied
 
 **Given** Full request chain log query (same `correlationId`)  
-**When** grep logs across 3 services  
+**When** grep logs across 4 backend services  
 **Then** entire request chain reconstructable using same `correlationId` (NFR-L1)
 
 **Given** `CorrelationIdPropagationTest` (Integration Test)  
-**When** execute E2E transfer request  
+**When** execute E2E order request  
 **Then** Verify headers in Channel → CoreBank WireMock:
 ```java
-channelWireMock.verify(postRequestedFor(urlEqualTo("/internal/v1/transfers"))
+channelWireMock.verify(postRequestedFor(urlEqualTo("/internal/v1/orders"))
     .withHeader("X-Correlation-Id", matching("[a-f0-9\\-]{36}")));
-fepWireMock.verify(postRequestedFor(urlEqualTo("/fep/v1/transfer"))
+fepWireMock.verify(postRequestedFor(urlEqualTo("/fep/v1/orders"))
     .withHeader("X-Correlation-Id", matching("[a-f0-9\\-]{36}")));
 ```
-**And** verify same `correlationId` UUID propagated 3-hops (Channel → CoreBank → FEP)
+**And** verify same `correlationId` UUID propagated 3-hops (Channel → CoreBank → FEP Gateway → FEP Simulator)
 
 ---
 
@@ -111,8 +114,8 @@ So that I can evaluate the project's depth without asking.
 
 **Given** GitHub Repository README.md (top)  
 **When** First screen (above the fold)  
-**Then** Display CI badges (`ci-channel`, `ci-corebank`, `ci-fep`, `ci-frontend`), JaCoCo coverage badge  
-**And** Architecture Diagram (Mermaid) — Channel:8080, CoreBanking:8081, FEP:8082, MySQL, Redis relationships  
+**Then** Display CI badges (`ci-channel`, `ci-corebank`, `ci-fep-gateway`, `ci-fep-simulator`, `ci-frontend`), JaCoCo coverage badge  
+**And** Architecture Diagram (Mermaid) — Channel:8080, CoreBanking:8081, FEP Gateway:8083, FEP Simulator:8082, MySQL, Redis relationships  
 **And** Quick Start 3-command section:
 ```bash
 cp .env.example .env
@@ -123,33 +126,41 @@ docker compose up
 **Given** Bank Interviewer Track section (README)  
 **When** Reading  
 **Then** "Why Pessimistic Lock?" → Summary of ADR-001 + interview speaking points  
-**And** "How does OTP work?" → Explanation of simulation boundary (SecureRandom vs HSM)  
-**And** "Ledger Integrity?" → Link to Scenario #7 (SUM(DEBIT)==SUM(CREDIT))  
+**And** "How does OTP work?" → Explanation of simulation boundary (TOTP RFC 6238 via Google Authenticator vs production HSM-backed token device; secret replaceability via Vault)  
+**And** "Position Integrity?" → Link to Scenario #7 (SUM(BUY executed_qty) − SUM(SELL executed_qty) == positions.quantity)  
 **And** 5-minute Demo Script:
 ```bash
-# 1. Normal Transfer
+# 1. Normal Order
 curl -X POST .../auth/login → Get JSESSIONID
-curl -X POST .../transfers/sessions → sessionId
+curl -X POST .../orders/sessions → sessionId
 curl -X POST .../otp/verify (Valid TOTP)
 curl -X POST .../execute → COMPLETED
 # 2. OTP Failure x3 → FAILED
 curl -X POST .../otp/verify (Wrong Code) ×3 → AUTH-005
 # 3. Admin Session Invalidation
-curl -X DELETE .../admin/members/{id}/sessions (admin@fix.com)
+curl -X DELETE .../admin/members/{memberId}/sessions (admin@fix.com)
 ```
 
 **Given** FinTech Interviewer Track section (README)  
 **When** Reading  
-**Then** Link to Swagger UI (`localhost:8080/swagger-ui.html`)  
+**Then** Link to API docs (`https://<org>.github.io/<repo>/`)  
 **And** DevTools verification guide: Network tab → Check `EventStream`  
 **And** Actuator Circuit Breaker Demo Script:
 ```bash
-# Force Trigger CB OPEN
-curl -X POST "http://localhost:8082/fep-internal/simulate-failures?count=3" \
-     -H "X-Internal-Secret: $FEP_INTERNAL_SECRET"
-# Check CB State
-curl http://localhost:8080/actuator/circuitbreakers
+# Step 1: Configure FEP Simulator → TIMEOUT mode (all FEP calls will timeout after 3000ms)
+curl -X PUT "http://localhost:8082/fep-internal/rules" \
+     -H "Content-Type: application/json" \
+     -d '{"action_type":"TIMEOUT","delay_ms":3000,"failure_rate":1.0}'
+# Step 2: Trigger 3 order executions via FIX web UI (or via channel-service execute endpoint)
+#         Each will ReadTimeoutException → Resilience4j records failure; slidingWindowSize=3
+#         After 3rd failure: CB transitions CLOSED → OPEN
+# Step 3: Check CB State (corebank-service — Resilience4j @CircuitBreaker(name="fep") lives here)
+curl http://localhost:8081/actuator/circuitbreakers
 # → confirm fep.state: "OPEN"
+# Step 4: Restore FEP Simulator to normal
+curl -X PUT "http://localhost:8082/fep-internal/rules" \
+     -H "Content-Type: application/json" \
+     -d '{"action_type":"IGNORE","delay_ms":0,"failure_rate":0.0}'
 ```
 
 **Given** ADR File Organization  

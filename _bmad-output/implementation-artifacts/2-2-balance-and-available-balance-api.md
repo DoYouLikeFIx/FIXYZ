@@ -8,7 +8,7 @@ Status: ready-for-dev
 
 As an authenticated user,
 I want real-time balance information,
-so that transfer decisions can be made safely.
+so that order decisions can be made safely.
 
 ## Acceptance Criteria
 
@@ -38,7 +38,7 @@ so that transfer decisions can be made safely.
 ### Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 2 (`2.1`~`2.6`).
-- Supplemental artifact `_bmad-output/implementation-artifacts/epic-2-transfer-initiation-and-otp.md` has different scope/numbering; use it only as technical reference, not story ID authority.
+- Supplemental artifact `_bmad-output/implementation-artifacts/epic-2-order-session-and-otp.md` has different scope/numbering; use it only as technical reference, not story ID authority.
 - Depends on Story 2.1 and Story 1.2.
 - This story is the read-side contract baseline for FE/MOB dashboard flows.
 
@@ -96,7 +96,7 @@ so that transfer decisions can be made safely.
 - `_bmad-output/planning-artifacts/epics.md` (Epic 2, Story 2.2)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
-- `_bmad-output/implementation-artifacts/epic-2-transfer-initiation-and-otp.md` (supplemental only)
+- `_bmad-output/implementation-artifacts/epic-2-order-session-and-otp.md` (supplemental only)
 
 ## Dev Agent Record
 

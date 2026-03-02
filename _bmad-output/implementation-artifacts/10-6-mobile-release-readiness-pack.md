@@ -13,7 +13,7 @@ So that mobile deployment quality is auditable.
 ## Acceptance Criteria
 
 1. Given MOB E2E suite When release pipeline runs Then critical flows pass on target test matrix.
-2. Given auth/transfer/notification regressions When detected Then release gate fails.
+2. Given auth/order/notification regressions When detected Then release gate fails.
 3. Given release checklist template When preparing distribution Then checklist and artifact links are completed.
 4. Given final build candidate When approved Then release notes and handoff package are finalized.
 

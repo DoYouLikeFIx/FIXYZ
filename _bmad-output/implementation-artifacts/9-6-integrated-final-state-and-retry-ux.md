@@ -8,14 +8,14 @@ Status: ready-for-dev
 
 As a mobile user,
 I want integrated final-state and retry guidance on mobile,
-So that transfer completion behavior is parity with web.
+So that order completion behavior is parity with web.
 
 ## Acceptance Criteria
 
 1. Given normalized final response When mobile renders result Then status/reason/ref fields follow same semantics as web.
 2. Given recovery-in-progress condition When screen revisited Then current status is restored and shown accurately.
 3. Given retryable failure condition When user retries Then guarded action path executes and prevents duplicates.
-4. Given connectivity interruption When app resumes Then latest transfer state is re-synced.
+4. Given connectivity interruption When app resumes Then latest order state is re-synced.
 
 ## Tasks / Subtasks
 

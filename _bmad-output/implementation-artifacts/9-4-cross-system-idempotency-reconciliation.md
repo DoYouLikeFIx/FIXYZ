@@ -13,7 +13,7 @@ So that duplicate operations never diverge across system boundaries.
 ## Acceptance Criteria
 
 1. Given duplicate request at channel boundary When dedupe applies Then same canonical outcome is returned.
-2. Given AC/FEP partial records When reconciliation runs Then canonical transaction identity is restored.
+2. Given AC/FEP partial records When reconciliation runs Then canonical order identity is restored.
 3. Given mismatch detection When discovered Then inconsistency is surfaced to operations.
 4. Given reconciliation run report When completed Then success/failure counters are emitted.
 

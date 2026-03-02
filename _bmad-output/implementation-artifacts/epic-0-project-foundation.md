@@ -1,110 +1,172 @@
-# Epic 0: Project Foundation
+# Epic 0: Foundation & Shared Platform
+
+## Sync Note
+
+This document is synchronized to `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/epics.md` (Epic 0 section) and is the execution companion for Story 0.1 through Story 0.5.
+
+Primary source of truth for story decomposition remains `epics.md`.
+
+---
 
 ## Summary
 
-Running `docker compose up` once brings up all three services (channel:8080, corebank:8081, fep:8082), GitHub Actions CI passes the baseline build, and the frontend Vite dev server communicates with the backend — achieving a full-stack Hello World state. This is the technical foundation for all subsequent Epics.
+Epic 0 establishes the common platform foundation required before feature epics:
 
-**FRs covered:** FR-41  
-**Architecture requirements:** Gradle 7 modules, core-common, testing-support, docker-compose.yml + override, Flyway V1 migrations, 4 GitHub Actions workflows (basic skeleton), fix-frontend Vite scaffold, lib/axios.ts, vercel.json  
-
-> **[ADR-TOTP-SEC-001] Interim TOTP Secret Storage Strategy**  
-> **Decision:** When implementing Epic 2 (Story 2.2), TOTP secrets are stored encrypted in the DB using `@EncryptedColumn` (AES-256, with the key externalized via env var `TOTP_ENCRYPTION_KEY`). Migration to HashiCorp Vault KV v2 is deferred to Epic 6 Story 6.4.  
-> **Rationale:** The complexity of Vault's `docker compose` initialization (unseal, init, depends_on chain) poses a risk of delaying Epic 0 foundational work. Since the implementation is abstracted behind the `TotpSecretRepository` interface, swapping the backend requires no changes to service code.
+- Backend multi-module baseline and runtime topology
+- Test and CI foundations for deterministic validation
+- Web and mobile scaffolds aligned to backend contracts
+- Team collaboration notification baseline (GitHub/Jira -> MatterMost)
 
 ---
 
-## Story 0.1: Backend Infrastructure Scaffold
+## Story 0.1: [BE][CH] Core Platform Baseline
 
-As a **developer**,  
-I want the Gradle multi-module project to build and all three services to start via `docker compose up` with seed data loaded,  
-So that I have a verified foundation to build all subsequent features on.
+As a **backend engineer**,  
+I want a stable multi-module platform baseline,  
+So that all system lanes can build on a consistent runtime and coding contract.
 
 ### Acceptance Criteria
 
-**Given** a clean checkout of the repository  
-**When** `./gradlew build` is run from the project root  
-**Then** all 7 modules (core-common, testing-support, channel-domain, channel-service, corebank-domain, corebank-service, fep-service) compile without errors  
-**And** `gradle.properties` contains `org.gradle.parallel=true` and `org.gradle.caching=true`
-
-**Given** `.env.example` is copied to `.env` with placeholder values filled  
-**When** `docker compose up` is run  
-**Then** all three services start within 90 seconds (NFR-P3)  
-**And** `GET localhost:8080/actuator/health` returns HTTP 200 `{"status":"UP"}`  
-**And** `GET localhost:8081/actuator/health` returns HTTP 200 `{"status":"UP"}`  
-**And** `GET localhost:8082/actuator/health` returns HTTP 200 `{"status":"UP"}`
-
-**Given** Flyway is configured for channel-service and corebank-service  
-**When** services start  
-**Then** `V1__create_transfer_session_table.sql` runs against channel_db without error  
-**And** `V1__create_member_table.sql` runs against core_db without error  
-**And** `R__seed_data.sql` runs on local/test profile and creates seed data including:
-- `admin@fix.com` account with ROLE_ADMIN
-- `user@fix.com` account with ROLE_USER
-- Each account has at least one bank account with non-zero balance
-
-**Given** `docker-compose.override.yml` exists at project root  
-**When** `docker compose up` is run locally  
-**Then** `mysql:3306`, `redis:6379`, `corebank-service:8081`, `fep-service:8082` ports are accessible from the host machine  
-**And** DBeaver / Redis Insight can connect to each service directly
-
-**Given** `curl localhost:8081/actuator/health` is run from the host machine without override  
-**When** the base `docker-compose.yml` is used alone (production mode)  
-**Then** connection is refused for corebank and fep (NFR-S4 — internal services not exposed)
-
-**Given** `testing-support/build.gradle` declares TC and WireMock with `api` scope  
-**When** `./gradlew :channel-service:test` is run (empty test class)  
-**Then** `ChannelIntegrationTestBase` compiles successfully  
-**And** Testcontainers MySQL container starts and stops without error  
-**And** `MySQLContainer` and `WireMockServer` classes resolve on the test classpath
-
-**Given** the internal API security scaffold for `corebank-service`  
-**When** `corebank-service:8081/internal/**` is called without the `X-Internal-Secret` header  
-**Then** `InternalSecretFilter` (`OncePerRequestFilter`) is applied to the `/internal/**` path  
-**And** requests without the header → HTTP 403 (scaffold implementation — detailed logic completed in Story 6.3)  
-**And** the secret is externalized via env var `COREBANK_INTERNAL_SECRET` (`application.yml: ${COREBANK_INTERNAL_SECRET:dev-secret}`)  
-**And** `fep-service:8082/fep-internal/**` follows the same pattern with a `FepInternalSecretFilter` scaffold  
-**And** Story 6.3 `SecurityBoundaryTest` is guaranteed to pass on top of this scaffold
+- **Given** a clean checkout  
+  **When** `./gradlew build` runs  
+  **Then** all backend modules compile without error.
+- **Given** docker compose setup files  
+  **When** `docker compose up` is executed  
+  **Then** channel/corebank/fep-gateway/fep-simulator services become healthy.
+- **Given** Flyway configuration for channel/corebank schemas  
+  **When** services start  
+  **Then** baseline migrations and local/test seed data run without error.
+- **Given** internal service boundaries  
+  **When** internal endpoint is called without secret header  
+  **Then** request is blocked by scaffold filter.
+- **Given** common error contract requirement  
+  **When** API exception occurs  
+  **Then** standardized error schema is returned.
+- **Given** local developer visibility requirements  
+  **When** `docker-compose.override.yml` is applied  
+  **Then** MySQL/Redis/internal service ports are reachable for local tools only.
+- **Given** SpringDoc build-time generation is configured for channel/corebank/fep-gateway/fep-simulator services  
+  **When** `generateOpenApiDocs` tasks run  
+  **Then** each service outputs a valid OpenAPI 3.0 JSON artifact.
+- **Given** a merge to `main` with backend CI passing  
+  **When** `docs-publish.yml` completes  
+  **Then** GitHub Pages (`https://<org>.github.io/<repo>/`) is the canonical API docs endpoint and renders Channel/CoreBank/FEP Gateway/FEP Simulator selectors from latest generated specs.
+- **Given** first deployment on a repository without Pages source configuration  
+  **When** initial docs publish run completes  
+  **Then** one-time Pages source setup (`gh-pages` / root) is completed and recorded in ops runbook.
 
 ---
 
-## Story 0.2: CI Pipeline & Frontend Scaffold
+## Story 0.2: [BE][CH] Test & CI Foundation
 
-As a **developer**,  
-I want GitHub Actions to run a basic build on every push and the frontend Vite dev server to communicate with the backend,  
-So that every code change is automatically validated and the full development environment is ready from day one.
+As a **platform engineer**,  
+I want reproducible test and CI baselines,  
+So that feature teams can ship with deterministic validation.
+
+**Depends On:** Story 0.1
 
 ### Acceptance Criteria
 
-**Given** code is pushed to any branch  
-**When** the GitHub Actions workflows trigger  
-**Then** `ci-channel.yml`, `ci-corebank.yml`, `ci-fep.yml`, `ci-frontend.yml` all run  
-**And** `./gradlew build` exits with code 0 on each backend workflow  
-**And** `pnpm install && pnpm build` exits with code 0 on the frontend workflow
+- **Given** Testcontainers base classes  
+  **When** integration tests execute  
+  **Then** MySQL/Redis test resources spin up deterministically.
+- **Given** WireMock dependency policy  
+  **When** contract test stubs are compiled  
+  **Then** test module resolves all required classes.
+- **Given** CI split workflow design  
+  **When** push/PR occurs  
+  **Then** service-scoped pipelines execute independently.
+- **Given** failed quality check  
+  **When** pipeline runs  
+  **Then** merge is blocked by status check.
 
-**Given** `fix-frontend/` is scaffolded with Vite 6 + React 19 + TypeScript + pnpm  
-**When** `pnpm dev` is run in `fix-frontend/`  
-**Then** `vite.config.ts` proxy routes `/api/*` to `http://localhost:8080`  
-**And** `src/lib/axios.ts` exports a single configured Axios instance with `baseURL` from `VITE_API_BASE_URL`  
-**And** `@/` path alias resolves to `src/` in both `vite.config.ts` (resolve.alias) and `tsconfig.json` (paths)
+---
 
-**Given** `fix-frontend/.env.local` contains `VITE_API_BASE_URL=http://localhost:8080`  
-**When** the dev server is running and backend is up  
-**Then** a `GET /actuator/health` call via the Axios instance returns HTTP 200
+## Story 0.3: [FE] Frontend Foundation Scaffold
 
-**Given** `vercel.json` exists in `fix-frontend/`  
-**When** Vercel builds the project  
-**Then** all routes are rewritten to `/index.html` (SPA routing support)
+As a **frontend engineer**,  
+I want a standardized web scaffold and API client,  
+So that product UI features can be implemented consistently.
 
-**Given** the repository root contains `README.md`  
-**When** a developer clones the repo and reads the README  
-**Then** a "Quick Start" section exists with exactly 3 commands:
+**Depends On:** Story 0.1
 
-```bash
-cp .env.example .env
-docker compose up
-# → All services healthy at localhost:8080/8081/8082
-```
+### Acceptance Criteria
 
-**Given** `CONTRIBUTING.md` exists at the project root  
-**When** a developer reads it  
-**Then** it defines: branch naming convention, commit message format (Conventional Commits), and PR merge strategy
+- **Given** Vite + TypeScript scaffold  
+  **When** local dev server runs  
+  **Then** build and HMR work without runtime error.
+- **Given** API base URL configuration  
+  **When** client requests backend health endpoint  
+  **Then** call succeeds via configured proxy/baseURL.
+- **Given** path alias convention  
+  **When** imports use alias paths  
+  **Then** compile and runtime resolution both succeed.
+- **Given** shared error interceptor policy  
+  **When** backend returns standard error schema  
+  **Then** web layer parses and displays normalized message.
+
+---
+
+## Story 0.4: [MOB] Mobile Foundation Scaffold
+
+As a **mobile engineer**,  
+I want a standardized mobile scaffold and API layer,  
+So that mobile features follow the same contract and architecture.
+
+**Depends On:** Story 0.1
+
+### Acceptance Criteria
+
+- **Given** mobile project scaffold  
+  **When** project is built and launched  
+  **Then** baseline app runs on target simulator/device.
+- **Given** env-based API config  
+  **When** mobile calls backend health endpoint  
+  **Then** request succeeds against host matrix (`Android emulator=http://10.0.2.2:8080`, `iOS simulator=http://localhost:8080`, `physical device=http://<LAN_IP>:8080`) with `GET /actuator/health` HTTP 200 within 5s.
+- **Given** common network module  
+  **When** API errors occur  
+  **Then** mobile receives parsed standardized error payload.
+- **Given** server-side cookie session policy  
+  **When** session is issued  
+  **Then** mobile persists no raw credentials/password/OTP in app storage and uses OS-approved secure storage controls for any sensitive client-side secret material.
+- **Given** cookie-session + CSRF contract for state-changing API calls  
+  **When** mobile sends non-GET request  
+  **Then** client includes credentials and `X-XSRF-TOKEN` header derived from `XSRF-TOKEN` cookie after explicit CSRF bootstrap/refresh (`GET /api/v1/auth/csrf`) on app start/login/resume.
+- **Given** foundation CI runs bundle-only checks  
+  **When** PR is prepared for merge  
+  **Then** AC1 is satisfied only after manual simulator/device smoke evidence (boot log/screenshot + health-call capture) is attached in PR checklist.
+
+---
+
+## Story 0.5: [BE][CH] Collaboration Webhook Notifications (MatterMost + Jira + GitHub)
+
+As a **delivery team**,  
+I want Jira and GitHub webhook events delivered to MatterMost,  
+So that release/quality state is visible in real time without manual polling.
+
+**Depends On:** Story 0.2  
+**Implementation Decision:** Option 1 (Direct integration: `GitHub Actions + Jira Automation -> MatterMost webhook`, no central relay)
+
+### Acceptance Criteria
+
+- **Given** GitHub webhook events (`pull_request`, `workflow_run`)  
+  **When** GitHub Actions workflow posts to MatterMost incoming webhook  
+  **Then** MatterMost receives standardized notifications with repository, actor, link, and result.
+- **Given** Jira webhook events for issue lifecycle transitions  
+  **When** Jira Automation rule sends transition event to MatterMost webhook  
+  **Then** MatterMost receives issue key, summary, previous/new status, and assignee context.
+- **Given** webhook secrets and integration endpoints  
+  **When** runtime configuration is applied  
+  **Then** credentials are managed only via GitHub Secrets and Jira secured webhook settings (no hardcoding).
+- **Given** duplicate delivery or retry from source systems  
+  **When** normalized dedupe key `source + source_project + target_channel + event_type + entity_id + normalized_target_status + normalized_actor` (`null`/missing -> `_`) or source event id (`delivery_id`/equivalent) repeats within source suppression window (`GitHub=10m`, `Jira=10m`)  
+  **Then** duplicated user-visible posts are suppressed.
+- **Given** direct integration architecture (no central relay)  
+  **When** dedupe state is persisted  
+  **Then** source-specific dedupe contract is explicit and auditable (`GitHub`: Actions cache key `mm-dedupe-{dedupe_hash}-{window_bucket_10m}` where `window_bucket_10m=floor(event_epoch/600)`; `Jira`: entity/property `mm_last_hash` + `mm_last_ts` with 10-minute timestamp comparison).
+- **Given** outbound posting failure to MatterMost  
+  **When** network timeout or non-2xx response occurs  
+  **Then** source retry policy executes with bounded retries (`max_attempts=3`) using source-specific backoff contract (`GitHub`: `2s`,`5s` + jitter `±20%`; `Jira`: fixed `2s`,`5s` without jitter due platform limits), per-source+per-entity ordering guard, and final failure visibility in run/audit logs.
+- **Given** reliability validation runbook execution  
+  **When** duplicate and failure scenarios are replayed  
+  **Then** evidence artifacts are indexed under `docs/ops/webhook-validation/<YYYYMMDD>/` with reproducible naming and enforced retention configuration (`>=90 days`).

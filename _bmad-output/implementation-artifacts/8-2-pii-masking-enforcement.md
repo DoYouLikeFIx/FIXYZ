@@ -12,7 +12,7 @@ So that credentials/session data/account numbers are never leaked.
 
 ## Acceptance Criteria
 
-1. Given logging of transfer/auth contexts When sensitive fields included Then masking rules are applied.
+1. Given logging of order/auth contexts When sensitive fields included Then masking rules are applied.
 2. Given password/otp/session token values When logging attempted Then raw values are never persisted.
 3. Given masking utility tests When test suite runs Then representative patterns are validated.
 4. Given log compliance check When release gate runs Then prohibited pattern scan returns clean.

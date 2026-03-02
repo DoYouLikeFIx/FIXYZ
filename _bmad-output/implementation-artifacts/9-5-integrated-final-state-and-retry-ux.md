@@ -13,7 +13,7 @@ So that complex backend outcomes are understandable.
 ## Acceptance Criteria
 
 1. Given normalized terminal response When FE renders result Then completed/failed states are displayed consistently.
-2. Given recovery-in-progress state When user views transfer status Then proper pending/retry guidance is shown.
+2. Given recovery-in-progress state When user views order status Then proper pending/retry guidance is shown.
 3. Given retry-eligible failure When user triggers retry action Then operation follows guarded flow.
 4. Given unknown status resolution When final state arrives Then UI auto-updates without stale conflict.
 

@@ -1,4 +1,4 @@
-# Story 4.6: [MOB] Mobile Transfer Step A/B
+# Story 4.4: [FE] Web Order Step A/B
 
 Status: ready-for-dev
 
@@ -6,16 +6,16 @@ Status: ready-for-dev
 
 ## Story
 
-As a mobile user,
-I want transfer input and OTP preparation on mobile flow,
-So that I can initiate transfer with same capability as web.
+As a web user,
+I want step-based order input and OTP preparation flow,
+So that order setup is clear and reversible.
 
 ## Acceptance Criteria
 
-1. Given step A mobile form When submission succeeds Then session is created and step B is shown.
-2. Given invalid amount/account input When validation fails Then contextual error indicators are displayed.
-3. Given OTP pending session When user navigates to OTP step Then remaining session context is preserved.
-4. Given navigation interruption When user returns Then state restoration logic preserves flow continuity.
+1. Given step A order form When user submits valid input Then session initiation API is called successfully.
+2. Given invalid form data When validation runs Then client-side and server-side errors are shown.
+3. Given transition to step B When session enters PENDING_NEW Then OTP input UI becomes active.
+4. Given API/network error When request fails Then user receives retry guidance.
 
 ## Tasks / Subtasks
 
@@ -33,8 +33,8 @@ So that I can initiate transfer with same capability as web.
 ### Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 4.
-- Supplemental artifact `_bmad-output/implementation-artifacts/epic-4-transfer-execution-and-ledger-integrity.md` has different scope/numbering; use it only as technical reference, not story ID authority.
-- Depends on: Story 4.1, Story 2.5.
+- Supplemental artifact `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` has different scope/numbering; use it only as technical reference, not story ID authority.
+- Depends on: Story 4.1, Story 2.4.
 
 ### Technical Requirements
 
@@ -59,10 +59,11 @@ So that I can initiate transfer with same capability as web.
 
 ### References
 
-- `_bmad-output/planning-artifacts/epics.md` (Epic 4, Story 4.6)
+- `_bmad-output/planning-artifacts/epics.md` (Epic 4, Story 4.4)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
-- `_bmad-output/implementation-artifacts/epic-4-transfer-execution-and-ledger-integrity.md` (supplemental only)
+- `_bmad-output/planning-artifacts/channels/api-spec.md` (채널계 API 명세)
+- `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` (supplemental only)
 
 ## Dev Agent Record
 
@@ -80,4 +81,4 @@ GPT-5 Codex (Codex desktop)
 
 ### File List
 
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/4-6-mobile-transfer-step-a-b.md
+- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/4-4-web-order-step-a-b.md

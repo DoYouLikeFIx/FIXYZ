@@ -1,4 +1,4 @@
-# Story 5.3: [AC] Interbank Ledger Semantics
+# Story 5.3: [AC] FEP Order Execution Semantics
 
 Status: ready-for-dev
 
@@ -6,16 +6,16 @@ Status: ready-for-dev
 
 ## Story
 
-As an interbank ledger owner,
-I want deterministic posting semantics for external transfers,
+As a FEP execution owner,
+I want deterministic posting semantics for external orders,
 So that local ledger stays consistent with external processing lifecycle.
 
 ## Acceptance Criteria
 
-1. Given interbank transfer execution request When pre-posting/debit occurs Then transaction state records external linkage metadata.
+1. Given FEP-routed order execution request When pre-posting/debit occurs Then order state records external linkage metadata.
 2. Given external failure requiring compensation When compensation path runs Then compensating credit is recorded with traceable linkage.
 3. Given external unknown outcome When settlement deferred Then ledger state remains reconcilable for later recovery.
-4. Given interbank completion When finalized Then final transfer status and references are consistent.
+4. Given FEP order FILLED When finalized Then final order status (FILLED) and clOrdID references are consistent.
 
 ## Tasks / Subtasks
 
@@ -52,7 +52,15 @@ So that local ledger stays consistent with external processing lifecycle.
 - Validate all acceptance criteria with automated tests (unit/integration/e2e as appropriate).
 - Ensure negative paths and validation/authorization/error flows are covered.
 
-### Story Completion Status
+#### TC-5.3-UNKNOWN-THRESHOLD: UNKNOWN 재조회 maxRetryCount 경계 테스트
+
+- GIVEN `order_session.status = EXECUTING`, `created_at > 10분` 전인 OrderSession
+- WHEN `OrderSessionRecoveryService`의 재조회 응답이 매회 `UNKNOWN`으로 5회 반팁
+- THEN 5회차 후 `order_session.status = ESCALATED`로 업데이트됨 (AC 3)
+- AND 숨결 대기 예와금 변동 없이 레저 상태 유지 (reconcilable)
+- VERIFY `recovery.max-retry-count=5` 설정 변경 시(e.g. 3회) 해당 횟수만큼 재시도 후 ESCALATED 전환 여부
+- NOTE `maxRetryCount` 코드 값: `application.yml recovery.max-retry-count=5`, 참고: `fep-gateway/api-spec.md` §10.1
+- NOTE **통합 테스트 속도 최적화**: 스케줄러 60초 대기를 회피하려면 `@TestPropertySource(properties="recovery.scan-interval-ms=100")` 또는 `@SpringBootTest` 설정에서 `recovery.scan-interval-ms=100`을 오버라이드하여 100ms 주기로 실행할 것.
 
 - Status set to `ready-for-dev`.
 - Completion note: Epic 5 story context prepared from canonical planning artifact.
@@ -62,6 +70,8 @@ So that local ledger stays consistent with external processing lifecycle.
 - `_bmad-output/planning-artifacts/epics.md` (Epic 5, Story 5.3)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
+- `_bmad-output/planning-artifacts/channels/api-spec.md` (채널계 API 명세)
+- `_bmad-output/planning-artifacts/fep-gateway/api-spec.md` (대외계 API 명세)
 - `_bmad-output/implementation-artifacts/epic-5-real-time-notifications.md` (supplemental only)
 
 ## Dev Agent Record
@@ -80,4 +90,4 @@ GPT-5 Codex (Codex desktop)
 
 ### File List
 
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/5-3-interbank-ledger-semantics.md
+- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/5-3-fep-order-execution-semantics.md

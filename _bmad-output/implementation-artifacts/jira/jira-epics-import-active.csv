@@ -11,7 +11,7 @@ Story count (canonical): 6","bmad,epic-2,epic-ready"
 "Epic 3: External Gateway Contract (FEP)","Epic","Canonical source: _bmad-output/planning-artifacts/epics.md
 Epic number: 3
 Story count (canonical): 6","bmad,epic-3,epic-ready"
-"Epic 4: Channel Transfer Session & OTP FSM","Epic","Canonical source: _bmad-output/planning-artifacts/epics.md
+"Epic 4: Channel Order Session & OTP FSM","Epic","Canonical source: _bmad-output/planning-artifacts/epics.md
 Epic number: 4
 Story count (canonical): 8","bmad,epic-4,epic-ready"
 "Epic 5: Account Ledger, Limits, Idempotency, Concurrency","Epic","Canonical source: _bmad-output/planning-artifacts/epics.md

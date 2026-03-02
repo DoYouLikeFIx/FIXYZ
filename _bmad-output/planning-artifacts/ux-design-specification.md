@@ -20,30 +20,30 @@ outputDocuments:
 
 ### Project Vision
 
-FIX UI is a demonstration layer for a Korean banking architecture simulator. Its primary purpose is to make backend engineering decisions visible and explainable during technical interviews. The UI enables live walk-throughs of banking domain flows — authentication, transfer state machines, real-time notifications — without requiring evaluators to read source code directly.
+FIX UI is a demonstration layer for a Korean bank-affiliated securities exchange simulator (은행계 증권사). Its primary purpose is to make backend engineering decisions visible and explainable during technical interviews. The UI enables live walk-throughs of securities domain flows — authentication, order state machines, real-time notifications — without requiring evaluators to read source code directly.
 
 The UI is not an end-user product. It is a structured portfolio artifact where every design decision either proves a backend claim or enables a narrative during a 5-minute screenshare demo.
 
 ### Target Users
 
 **yeongjae (Demonstrator)**
-Technical expert. Uses the 5-screen React app during live screenshare (~5 min demo window) to narrate architectural decisions. Needs: smooth flow without unexpected errors, Korean banking vocabulary to drive narrative, and ability to trigger error states on demand to demonstrate resilience patterns.
+Technical expert. Uses the 5-screen React app during live screenshare (~5 min demo window) to narrate architectural decisions. Needs: smooth flow without unexpected errors, Korean securities vocabulary to drive narrative, and ability to trigger error states on demand to demonstrate resilience patterns.
 
-**Bank Interviewer Track — Evaluator A**
-Mental model: "Does this feel like an internal banking system?" Looks for: Korean-language error messages, masked account numbers (계좌번호 마스킹), step-up OTP UI, OWASP-referenced security patterns in the README. Success signal: recognizes the vocabulary and patterns used internally at Korean tier-1 banks.
+**Securities Firm Interviewer Track — Evaluator A (Bank-affiliated: KB증권/신한투자증권)**
+Mental model: "이 시스템이 리테일 증권사 내부 시스템처럼 보이는가?" Looks for: Korean-language order error messages, masked account numbers (계좌번호 마스킹), step-up OTP UI, Order Book 체결 로직, KRX/금융투자협회 준수 구조. Success signal: recognizes the 체널계/계정계/대외계 3계층 아키텍처 vocabulary used at Korean bank-affiliated securities firms.
 
 **FinTech Interviewer Track — Evaluator B**
-Mental model: "Is this well-engineered React?" Looks for: clean component structure, CI badge passing, Swagger UI accessible at `/swagger-ui.html`, SSE EventSource visible in Network tab, no Document-type requests during modal transitions. Success signal: can independently verify architectural claims within 5 minutes using Browser DevTools.
+Mental model: "Is this well-engineered React?" Looks for: clean component structure, CI badge passing, GitHub Pages API Docs accessible at `https://<org>.github.io/<repo>/`, SSE EventSource visible in Network tab, no Document-type requests during modal transitions. Success signal: can independently verify architectural claims within 5 minutes using Browser DevTools.
 
 ### Key Design Challenges
 
-1. **Domain authenticity vs. demo efficiency:** 한국 은행 앱의 실제 이체 플로우(OTP 단계별 진행, 보안 확인)를 충분히 모사하면서도, 시연 중 30초 이내에 이체를 완료할 수 있어야 한다.
+1. **Domain authenticity vs. demo efficiency:** 한국 은행계 증권사 앱의 실제 주문 플로우(OTP 단계별 진행, 보유수량 검증, Order Book 체결)를 충분히 모사하면서도, 시연 중 30초 이내에 주문을 완료할 수 있어야 한다.
 
 2. **Dual-audience information hierarchy:** 같은 스크린이 Bank interviewer에게는 보안 패턴(마스킹, OTP, 세션 만료 메시지)을, FinTech interviewer에게는 컴포넌트 구조와 상태 관리 패턴을 동시에 전달해야 한다.
 
-3. **Error state as portfolio proof:** 잔액 부족, OTP 만료, 세션 만료, FEP 장애 에러는 단순한 방어 코드가 아니라 백엔드 계약(FR-54, NFR-S5, NFR-R2)이 동작함을 시각적으로 증명해야 한다. 에러 UX가 허술하면 백엔드 신뢰성 주장이 약해진다.
+3. **Error state as portfolio proof:** 보유수량 부족, OTP 만료, 세션 만료, FEP 장애 에러는 단순한 방어 코드가 아니라 백엔드 계약(FR-54, NFR-S5, NFR-R2)이 동작함을 시각적으로 증명해야 한다. 에러 UX가 허술하면 백엔드 신뢰성 주장이 약해진다.
 
-4. **Navigation & routing clarity:** Transfer Flow의 3단계(A→B→C)는 URL 변경 없는 modal state로 관리되어야 한다 (NFR-UX1). 이 설계 결정이 "SPA 이해"를 증명하는 동시에 네트워크 탭에서 검증 가능한 패턴을 만든다.
+4. **Navigation & routing clarity:** Order Flow의 3단계(A→B→C)는 URL 변경 없는 modal state로 관리되어야 한다 (NFR-UX1). 이 설계 결정이 "SPA 이해"를 증명하는 동시에 네트워크 탭에서 검증 가능한 패턴을 만든다.
 
 ### Design Opportunities
 
@@ -61,15 +61,15 @@ Mental model: "Is this well-engineered React?" Looks for: clean component struct
 
 | Transition                         | Type                  | URL Change           | Rationale                          |
 | ---------------------------------- | --------------------- | -------------------- | ---------------------------------- |
-| Login → Account List               | Full navigation       | `/accounts`          | Session 수립 후 새 컨텍스트 진입   |
-| Account List → Account Detail      | Route navigation      | `/accounts/:id`      | 딥링크 가능, 뒤로가기 지원         |
-| Account Detail → Transfer Flow (A) | Modal overlay         | 없음                 | NFR-UX1 — no Document request      |
-| Transfer Flow A → B → C            | Modal step transition | 없음                 | `useState`/`useReducer` — URL 불변 |
-| Transfer Flow Close / Complete     | Modal dismiss         | `/accounts/:id` 복귀 | 이전 컨텍스트 유지                 |
+| Login → Portfolio List              | Full navigation       | `/portfolio`         | Session 수립 후 새 컨텍스트 진입   |
+| Portfolio List → Position Detail   | Route navigation      | `/portfolio/:symbol` | 딥링크 가능, 뒤로가기 지원         |
+| Position Detail → Order Flow (A)  | Modal overlay         | 없음                 | NFR-UX1 — no Document request      |
+| Order Flow A → B → C              | Modal step transition | 없음                 | `useState`/`useReducer` — URL 불변 |
+| Order Flow Close / Complete        | Modal dismiss         | `/portfolio/:symbol` 복귀 | 이전 컨텍스트 유지                 |
 | Any screen → Notification Feed     | Route navigation      | `/notifications`     | 독립 화면                          |
 | Session expiry (any screen)        | Forced redirect       | `/login`             | FR-05, NFR-S7                      |
 
-**Transfer Flow implementation note:** React `useState` 또는 `useReducer`로 step(`A`\|`B`\|`C`) 관리. `react-router-dom` route 변경 없음. Browser DevTools Network tab에서 modal 전환 시 Document 타입 요청 0건 — NFR-UX1 검증 수단.
+**Order Flow implementation note:** React `useState` 또는 `useReducer`로 step(`A`\|`B`\|`C`) 관리. `react-router-dom` route 변경 없음. Browser DevTools Network tab에서 modal 전환 시 Document 타입 요청 0건 — NFR-UX1 검증 수단.
 
 ---
 
@@ -77,15 +77,15 @@ Mental model: "Is this well-engineered React?" Looks for: clean component struct
 
 | Screen / Action          | Loading Trigger                 | UX Behavior                                                 | Max Duration |
 | ------------------------ | ------------------------------- | ----------------------------------------------------------- | ------------ |
-| Login submit             | `POST /api/auth/login`          | 버튼 비활성화 + spinner                                     | p95 500ms    |
-| Account List load        | `GET /api/accounts`             | skeleton placeholder                                        | p95 500ms    |
-| Transfer Prepare         | `POST /api/transfers/prepare`   | 버튼 비활성화 + spinner                                     | p95 1,000ms  |
+| Login submit             | `POST /api/v1/auth/login`                       | 버튼 비활성화 + spinner                                     | p95 500ms    |
+| Portfolio List load      | `GET /api/v1/portfolio`                         | skeleton placeholder                                        | p95 500ms    |
+| Order Prepare            | `POST /api/v1/orders/sessions`                  | 버튼 비활성화 + spinner                                     | p95 1,000ms  |
 | OTP input (6자리 완성)   | 자동 또는 수동 submit           | 즉각 피드백, 버튼 비활성화                                  | p95 500ms    |
-| Transfer Execute         | `POST /api/transfers/execute`   | "처리 중입니다" + 버튼 비활성화                             | p95 1,000ms  |
-| Circuit Breaker fallback | OPEN state response             | "일시적인 오류가 발생했습니다. 잠시 후 다시 시도해 주세요." | 즉시         |
-| SSE connection           | `GET /api/notifications/stream` | 연결 indicator (선택)                                       | —            |
+| Order Execute            | `POST /api/v1/orders/sessions/{sessionId}/execute` | "주문 체결 중입니다" + 버튼 비활성화                             | p95 1,000ms  |
+| Circuit Breaker fallback | OPEN state response             | RC=9098: "대외 연결 회선이 일시 차단 중입니다. 잠시 후 다시 시도해 주세요." / RC=9004: "대외 기관 응답 시간이 초과되었습니다." | 즉시         |
+| SSE connection           | `GET /api/v1/notifications/stream`              | 연결 indicator (선택)                                       | —            |
 
-**Double-submit prevention:** Transfer Execute 버튼은 submit 후 응답 수신까지 완전히 비활성화. FR-20 idempotency와 함께 이중 이체 방지.
+**Double-submit prevention:** Order Execute 버튼은 submit 후 응답 수신까지 완전히 비활성화. FR-20 idempotency(ClOrdID)와 함께 이중 주문 방지.
 
 ---
 
@@ -93,12 +93,12 @@ Mental model: "Is this well-engineered React?" Looks for: clean component struct
 
 | Screen            | Happy Path                                     | Critical Error State                                                                          |
 | ----------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| Login             | 자격증명 입력 → 세션 생성 → Account List 이동  | 잘못된 비밀번호 → 에러 메시지 (계정 잠금 카운터 노출 금지)                                    |
-| Account List      | 계좌 목록 로드 → 마스킹된 계좌번호 표시        | 세션 만료 → 로그인 화면 redirect (401)                                                        |
-| Transfer Flow A   | 금액/수취인 계좌 입력 → OTP 발송 성공 → Step B | 잔액 부족 → "잔액이 부족합니다. 출금 계좌 잔액: ₩X / 이체 금액: ₩Y"                           |
-| Transfer Flow B   | OTP 6자리 입력 → 검증 성공 → Step C            | OTP 만료 (180초) → "이체 세션이 만료되었습니다. 이체 정보를 다시 입력해 주세요." + [처음으로] |
-| Transfer Flow C   | 이체 완료 → 참조번호 표시 + 잔액 업데이트      | FEP 장애 → CB fallback → "일시적인 오류가 발생했습니다."                                      |
-| Account Detail    | 계좌 상세 + 최근 거래 내역                     | 빈 거래 내역 → empty state 메시지                                                             |
+| Login             | 자격증명 입력 → 세션 생성 → Portfolio List 이동 | 잘못된 비밀번호 → 에러 메시지 (계정 잠금 카운터 노출 금지)                                    |
+| Portfolio List    | 포지션 목록 로드 → 종목별 보유수량 표시        | 세션 만료 → 로그인 화면 redirect (401)                                                        |
+| Order Flow A      | 종목/수량 입력 → OTP 발송 성공 → Step B        | 보유수량 부족 → "보유수량이 부족합니다. 가용수량: X주 / 주문수량: Y주"                        |
+| Order Flow B      | OTP 6자리 입력 → 검증 성공 → Step C            | OTP 만료 (600초) → "주문 세션이 만료되었습니다. 주문 정보를 다시 입력해 주세요." + [처음으로] |
+| Order Flow C      | 주문 체결 → ClOrdID 표시 + 포지션 업데이트     | FEP 장애 → Gateway CB OPEN(RC=9098) → "대외 연결 회선이 일시 차단 중입니다."                 |
+| Account Detail    | 계좌 상세 + 최근 주문 내역                     | 빈 주문 내역 → empty state 메시지                                                             |
 | Notification Feed | SSE 연결 → 실시간 알림 표시                    | SSE 연결 끊김 → 3초 내 자동 재연결 (NFR-UX2) / 연결 중 indicator                              |
 
 ---
@@ -107,7 +107,7 @@ Mental model: "Is this well-engineered React?" Looks for: clean component struct
 
 ### Defining Experience
 
-FIX의 핵심 경험은 이체 플로우 완주다. 이체 modal(A→B→C)은 FIX가 주장하는 모든 백엔드 결정을 단 하나의 연속된 사용자 행동으로 증명한다: 잔액 검증 → OTP 단계인증 → 원자적 원장 기록 → 실시간 알림 도착. 이체 플로우가 매끄럽게 완주되는 순간, FIX의 포트폴리오 가치가 전달된다.
+FIX의 핵심 경험은 주문 플로우 완주다. 주문 modal(A→B→C)은 FIX가 주장하는 모든 백엔드 결정을 단 하나의 연속된 사용자 행동으로 증명한다: 포지션 수량 검증 → OTP 단계인증 → 원자적 포지션 기록 → 실시간 체결 알림 도착. 주문 플로우가 매끄럽게 완주되는 순간, FIX의 포트폴리오 가치가 전달된다.
 
 ### Platform Strategy
 
@@ -117,17 +117,17 @@ Target platform: React Web (SPA), desktop browser, local Docker Compose environm
 
 1. **OTP auto-submit:** 6자리 숫자 입력 완성 시 수동 "확인" 버튼 없이 자동 검증 진행 — 한국 모바일 뱅킹 표준 UX 패턴과 동일.
 
-2. **Post-transfer notification:** 이체 완료 modal의 참조번호 표시와 동시 또는 직전에 Notification Feed에 알림 항목 생성 (SSE 실시간 전달).
+2. **Post-order notification:** 주문 체결 modal의 ClOrdID + FILLED 표시와 동시 또는 직전에 Notification Feed에 알림 항목 생성 (SSE 실시간 전달).
 
 3. **Zero-config startup:** `docker compose up` → 브라우저 → 로그인 — 별도 설정 없이 3단계로 데모 준비 완료.
 
-4. **Demo seed data (자동 설정):** Flyway `V99__seed_demo_data.sql` — `docker compose up` 시 자동 실행. 계좌 2개 (출금 ₩1,000,000 / 수취 ₩0), 사용자 `demo` / `demo1234`, 이체 한도 ₩500,000/일. README Quick Start에 자격증명 명시.
+4. **Demo seed data (자동 설정):** Flyway `R__seed_data.sql` — `docker compose up` 시 자동 실행. 포지션: 005930 삼성전자 500주 (`user` 계정), 현금 ₩5,000,000, 매도 한도 500주/일. Admin 계정: `admin` / `Admin1234!` (FEP Chaos 조작 전용). README Quick Start에 자격증명 명시.
 
 ### Critical Success Moments
 
-1. **이체 완료 화면:** 참조번호(transferId) + 처리 후 잔액 표시 → "이 시스템이 실제로 이체를 처리한다"는 증거.
+1. **주문 체결 화면:** ClOrdID + FILLED 상태 + 포지션 업데이트 표시 → "이 시스템이 실제로 주문을 체결한다"는 증거.
 
-2. **한국어 에러 메시지:** 잔액 부족 시 정확한 금액 포함 에러 → "도메인 어휘를 이해하고 만든 사람"의 신호.
+2. **한국어 에러 메시지:** 보유수량 부족 시 정확한 수량 포함 에러 → "도메인 어휘를 이해하고 만든 사람"의 신호.
 
 3. **DevTools 검증 가능성:** Network tab에서 modal 전환 중 Document 요청 0건, SSE EventSource 연결 유지 → NFR-UX1, UX2 실제 구현 확인.
 
@@ -137,23 +137,24 @@ Target platform: React Web (SPA), desktop browser, local Docker Compose environm
 
 1. **Backend claims, UX-proven:** 모든 UX 결정은 최소 하나의 백엔드 아키텍처 주장을 눈에 보이게 만들어야 한다.
 
-2. **Korean banking vocabulary first:** 에러 메시지, 레이블, 안내 문구는 한국 은행 서비스의 실제 어휘를 사용한다.
+2. **Korean securities vocabulary first:** 에러 메시지, 레이블, 안내 문구는 한국 은행계 증권사 서비스의 실제 어휘를 사용한다.
 
-3. **Demo-path optimization:** 로그인부터 이체 완료까지 10 actions 이내, 3분 이내. 최소 데모 경로: 아이디 입력 → 비밀번호 입력 → 로그인(3) → 이체 클릭(4) → 금액 입력 → 계좌 입력 → 다음(7) → OTP 6자리 auto-submit(8) → 완료 확인(9).
+3. **Demo-path optimization:** 로그인부터 주문 체결까지 10 actions 이내, 3분 이내. 최소 데모 경로: 아이디 입력 → 비밀번호 입력 → 로그인(3) → 매수/매도 클릭(4) → 종목코드 입력 → 수량 입력 → 다음(7) → OTP 6자리 auto-submit(8) → FILLED 확인(9).
 
-4. **Failure states are features:** 에러 화면은 방어 코드가 아니라 포트폴리오 증거물이다. 잔액 부족, OTP 만료, CB fallback은 설계된 demo 포인트다.
+4. **Failure states are features:** 에러 화면은 방어 코드가 아니라 포트폴리오 증거물이다. 보유수량 부족, OTP 만료, CB fallback은 설계된 demo 포인트다.
 
 ### Architecture Claim-to-Screen Mapping
 
 | 아키텍처 주장                   | 증명 화면                  | 가시적 증거                         | E2E Selector                                  |
 | ------------------------------- | -------------------------- | ----------------------------------- | --------------------------------------------- |
-| Pessimistic locking (동시 이체) | Transfer Flow C            | 잔액 일관성 — 0원 미만 발생 없음    | `[data-testid="balance-after"]` ≥ 0           |
-| Double-entry ledger             | Transfer Flow C            | 참조번호 + 처리 후 잔액 표시        | `[data-testid="transfer-ref"]` 존재           |
-| Step-up OTP authentication      | Transfer Flow B            | OTP 입력 단계가 이체 실행 전 강제됨 | `[data-testid="otp-input"]` 존재              |
+| Pessimistic locking (포지션 동시체결) | Order Flow C            | 보유수량 일관성 — 음수 발생 없음    | `[data-testid="position-qty-after"]` ≥ 0      |
+| Order Book 체결 + Position Ledger | Order Flow C            | ClOrdID + FILLED + 포지션 업데이트 | `[data-testid="order-clordid"]` 존재           |
+| Step-up OTP authentication      | Order Flow B            | OTP 입력 단계가 주문 실행 전 강제됨 | `[data-testid="otp-input"]` 존재              |
 | Session security                | 세션 만료 에러             | 401 → 로그인 화면 redirect          | URL = `/login`                                |
-| Circuit breaker fallback        | Transfer Flow C (FEP 장애) | fallback 메시지 즉시 표시           | `[data-testid="cb-fallback-msg"]`             |
-| SSE real-time notification      | Notification Feed          | 이체 완료 후 알림 자동 표시         | `[data-testid="notification-item"]` count > 0 |
-| Idempotency                     | Transfer Flow C            | 동일 transferId 재시도 시 동일 결과 | response `transferId` 동일                    |
+| FEP Gateway CB (기관별 임계치)  | Order Flow C (FEP 장애) | RC=9098 fallback 메시지 즉시 표시 + `/actuator/circuitbreakers`에서 OPEN 상태 확인 가능 | `[data-testid="cb-fallback-msg"]`             |
+| FIX 4.2 프로토콜 변환          | Order Flow C (완료)     | trace ID + FEP Gateway `fep_order_log` 연결 — FinTech interviewer가 "FIX 4.2 뉴오더싱글 필드 변환이 보이네"를 인지 | `[data-testid="order-trace-id"]` 존재      |
+| SSE real-time notification      | Notification Feed          | 주문 체결 후 알림 자동 표시         | `[data-testid="notification-item"]` count > 0 |
+| Idempotency (ClOrdID)           | Order Flow C            | 동일 ClOrdID 재시도 시 동일 결과   | response `clOrdID` 동일                    |
 
 ### Accessibility Minimum Standards
 
@@ -167,11 +168,11 @@ Target platform: React Web (SPA), desktop browser, local Docker Compose environm
 Pattern: `{screen}-{element}-{variant?}`
 
 ```
-login-submit-btn          account-list-item (반복)
-transfer-amount-input     transfer-otp-input
-transfer-ref              transfer-balance-after
+login-submit-btn          portfolio-list-item (반복)
+order-qty-input           order-otp-input
+order-clordid             position-qty-after
 cb-fallback-msg           notification-item (반복)
-session-error-msg         account-detail-balance
+session-error-msg         account-detail-position
 ```
 
 **Note:** `data-testid` attributes are included in all builds (including production). No `NODE_ENV` conditional stripping — portfolio project, always present.
@@ -189,9 +190,9 @@ FIX의 감정 설계 대상은 일반 사용자가 아니라 기술 면접관과
 - **Trust before reading code:** README와 UI만으로 "이 사람이 실제로 이해하고 만들었다"는 신뢰가 형성되어야 한다.
 - **Domain recognition (Bank track):** 한국어 에러 메시지, 마스킹 패턴, OTP 단계 — "이 어휘와 패턴을 나는 안다"는 인정의 감정.
 - **Pleasant surprise:** 기대치를 상회하는 완성도에서 오는 긍정적 놀라움. 구체적 트리거:
-  1. `docker compose up` 하나로 5개 서비스 + DB + Redis가 90초 이내 준비 완료 — "설정 없이 바로 되네?"
-  2. `localhost:8080/swagger-ui.html`에서 모든 엔드포인트가 즉시 문서화됨 — "포트폴리오인데 이 수준까지?"
-  3. 잔액 부족 에러가 `"잔액이 부족합니다. 출금 계좌 잔액: ₩1,000,000 / 이체 금액: ₩2,000,000"` 형식 — "한국 은행 앱이랑 똑같네"
+  1. `docker compose up` 하나로 4개 백엔드 서비스 + MySQL + Redis (+Vault/vault-init)가 120초 이내 준비 완료 — "설정 없이 바로 되네?"
+  2. `https://<org>.github.io/<repo>/`에서 Channel/CoreBank/FEP Gateway/FEP Simulator API 문서 selector가 즉시 확인됨 — "포트폴리오인데 이 수준까지?"
+  3. 보유수량 부족 에러가 `"보유수량이 부족합니다. 가용수량: 500주 / 주문수량: 600주"` 형식 — "한국 증권사 시스템이랑 똑같네"
 - **Confidence to advance:** "이 사람과 다음 단계 인터뷰를 진행하고 싶다."
 
 **yeongjae (Demonstrator):**
@@ -205,8 +206,8 @@ FIX의 감정 설계 대상은 일반 사용자가 아니라 기술 면접관과
 | 첫 진입 (`docker compose up` → 브라우저) | 기대감, 호기심    | 깔끔한 로그인 화면, 한국어 어휘                |
 | 로그인 성공                              | 안도, 신뢰 시작   | 즉각적 세션 응답, HttpOnly 쿠키                |
 | 계좌 목록 확인                           | 인정 (Bank track) | 마스킹된 계좌번호, 원화 포맷                   |
-| 이체 플로우 완주                         | 확신, 놀라움      | 참조번호, SSE 알림 도착                        |
-| 에러 상태 경험                           | 신뢰 강화         | 한국어 에러, 정확한 잔액 표시                  |
+| 주문 체결 완주                         | 확신, 놀라움      | ClOrdID, SSE 체결 알림 도착                        |
+| 에러 상태 경험                           | 신뢰 강화         | 한국어 에러, 정확한 보유수량 표시                  |
 | DevTools 확인                            | 전문성 인정       | SSE stream, no Document reload                 |
 | Curiosity trigger 활성화                 | "더 알고 싶다"    | FEP 장애 버튼, trace ID, Actuator 링크         |
 | 시연 종료 후                             | 심화 질문 유도    | CB, ledger, locking 설명으로 자연스럽게 이어짐 |
@@ -224,8 +225,8 @@ FIX의 감정 설계 대상은 일반 사용자가 아니라 기술 면접관과
 - **Trust → Korean vocabulary everywhere:** 에러 메시지, 레이블, 안내 문구가 한국 은행 내부 어휘를 사용할 때 Bank interviewer의 신뢰가 즉시 형성된다.
 - **Pleasant surprise → Error states polished:** 에러 화면이 허술하면 기대치 상향이 무너진다. 에러도 설계된 경험이어야 한다.
 - **Calm → Demo-path friction-free:** 시연자가 예상치 못한 오류로 당황하는 순간 신뢰가 손상된다. Seed data, auto-submit, deterministic flows.
-- **Recognition → Domain-first design:** 기술 스펙 용어(REST, SSE)보다 도메인 용어(이체, 원장, 한도)가 UI에서 우선한다.
-- **Curiosity → Intentional trigger UI:** FEP 장애 시뮬레이션 버튼(`data-testid="fep-chaos-btn"`, ROLE_ADMIN 표시), Transfer 완료 화면의 `traceparent` trace ID 표시, Navigation의 Actuator 링크 — 면접관이 스스로 질문하게 만드는 설계된 대화 진입점.
+- **Recognition → Domain-first design:** 기술 스펙 용어(REST, SSE)보다 도메인 용어(주문, 원장, 한도)가 UI에서 우선한다.
+- **Curiosity → Intentional trigger UI:** FEP 장애 시뮬레이션 드롭다운(`data-testid="fep-chaos-select"`, ROLE_ADMIN 표시), 주문 체결 화면의 `traceparent` trace ID 표시, Navigation의 Actuator 링크 — 면접관이 스스로 질문하게 만드는 설계된 대화 진입점.
 
 ### Emotional Design Principles
 
@@ -235,7 +236,7 @@ FIX의 감정 설계 대상은 일반 사용자가 아니라 기술 면접관과
 
 3. **두 청중의 인정 신호는 다르다:** Bank interviewer = Korean vocabulary. FinTech interviewer = DevTools pattern. 두 신호를 동시에 설계한다.
 
-4. **Curiosity triggers are designed, not accidental:** 면접관이 "이게 뭐죠?"라고 자연스럽게 묻게 만드는 UI 요소를 의도적으로 배치한다. ⚡ FEP 장애 시뮬레이션 버튼, Actuator 대시보드 링크, Transfer 완료 화면의 trace ID — 이 세 개의 curiosity trigger는 설계된 대화 진입점이다.
+4. **Curiosity triggers are designed, not accidental:** 면접관이 "이게 뭐죠?"라고 자연스럽게 묻게 만드는 UI 요소를 의도적으로 배치한다. ⚡ FEP 장애 시뮬레이션 드롭다운, Actuator 대시보드 링크, 주문 체결 화면의 trace ID — 이 세 개의 curiosity trigger는 설계된 대화 진입점이다.
 
 5. **Emotional success = PRD success:** Emotional design 목표(Trust, Recognition, Pleasant Surprise, Curiosity, Calm)가 달성되면 PRD Success Criteria가 자동으로 달성된다: Trust → "within 4 weeks, at least one interviewer asks about a specific implementation detail"; Curiosity → "technical interview invitation within 8 weeks"; Pleasant Surprise → "dual-audience README answers first 3 questions without scrolling." 감정 설계는 장식이 아니라 비즈니스 성과의 전달 메커니즘이다.
 
@@ -290,24 +291,24 @@ FinTech/General Interviewer Track
 
 - **핵심 문제 해결:** 복잡한 금융 작업을 단계별 모달로 분해해 인지 부하를 최소화한다.
 - **주요 UX 특성:**
-  - 이체 플로우: 수취인 → 금액/한도 → OTP 확인, 3-step 모달 (FIX A→B→C의 직접 참조)
+  - 주문 플로우: 종목/수량 입력 → OTP 확인 → 체결, 3-step 모달 (FIX A→B→C의 직접 참조)
   - OTP 6자리 입력 후 즉시 자동 submit — 사용자 확인 버튼 없음
   - 에러 메시지: 원인 + 현황 동시 노출 형식
-  - 이체 완료 후 Summary Card: 금액 + 수취인 + 참조번호 구조
-  - 이체 실패 시 "다시 이체하기" Retry CTA 제공
+  - 주문 체결 후 Summary Card: 종목 + 수량 + ClOrdID 구조
+  - 주문 실패 시 "다시 주문하기" Retry CTA 제공
   - 금액 포맷: ₩1,000,000 (원화 기호 + 천 단위 콤마)
-- **FIX 적용 접점:** Bank/FinTech 양 track funnel — 이체 핵심 플로우
+- **FIX 적용 접점:** Bank/FinTech 양 track funnel — 주문 핵심 플로우
 
 **카카오뱅크 (KakaoBank)** — Bank Track Domain Reference
 
 - **핵심 문제 해결:** 인터넷 은행이면서도 '은행다움'을 유지 — 도메인 어휘와 패턴이 기존 은행 직원에게 즉각적 신뢰를 준다.
 - **주요 UX 특성:**
   - 계좌번호 마스킹: `110-***-123456` 패턴
-  - 계좌 유형 구분 배지: 입출금 / 적금 / 정기예금 — AccountList 화면에서 유형 식별
-  - 이체 한도 표시: 잔액 + 오늘 이체 가능 금액 동시 노출
-  - 날짜별 거래 내역 그루핑
+  - 계좌 유형 구분 배지: 주식매매 / CMA / 위탁계좌 — PortfolioList 화면에서 유형 식별
+  - 매도 한도 표시: 포지션 + 오늘 매도 가능 수량 동시 노출
+  - 날짜별 주문 내역 그루핑
   - HttpOnly 쿠키 기반 세션 + 세션 만료 Toast 경고 → 자동 로그아웃
-  - 이체 실패 시 "다시 이체하기" CTA 제공
+  - 주문 실패 시 "다시 주문하기" CTA 제공
 - **FIX 적용 접점:** Bank track funnel 전용 — 도메인 어휘 및 계좌 화면
 
 **Stripe Dashboard** — FinTech Track Primary Reference
@@ -319,7 +320,7 @@ FinTech/General Interviewer Track
   - 상태 배지: `succeeded` / `failed` / `pending` — 색상 + 레이블 조합
   - Monospace 폰트로 ID/코드값 구분
   - 에러 시 `error_code` + `message` 동시 노출
-  - 결제 실패 시 "재시도" 버튼 항상 제공
+  - 주문 실패 시 "재시도" 버튼 항상 제공
 - **FIX 적용 접점:** FinTech track funnel — DevTools, trace ID, SSE stream
 
 **Stripe API Docs** — FinTech Track Developer Experience Reference
@@ -344,17 +345,17 @@ FinTech/General Interviewer Track
 
 #### Navigation Patterns
 
-- **단계형 모달 플로우 (토스):** 이체 A→B→C를 페이지 이동 없이 모달 스텝으로 처리. `useReducer`로 step 상태 관리, URL 변경 없음 → FIX 이체 플로우에 직접 적용
+- **단계형 모달 플로우 (토스):** 주문 A→B→C를 페이지 이동 없이 모달 스텝으로 처리. `useReducer`로 step 상태 관리, URL 변경 없음 → FIX 주문 플로우에 직접 적용
 - **세션 만료 Toast (카카오뱅크):** 자동 로그아웃 전 Toast 경고 + 3초 후 자동 redirect → FIX session expiry → `/login` redirect
 - **Actuator Deep-link:** Navigation에 외부 링크(`target="_blank"`, `data-testid="nav-actuator-link"`)로 단순 노출 — iframe 임베드는 CORS 이슈로 제외
 
 #### Interaction Patterns
 
 - **OTP 자동 submit (토스):** 6자리 입력 완료 시 submit 버튼 없이 즉시 API 호출 → `data-testid="otp-input"`
-- **실시간 SSE 스트림 (Stripe Dashboard):** 거래 상태 변화를 UI에 push. `EventSource` 사용 시 반드시 cleanup function에서 `EventSource.close()` 호출 필수 — 미구현 시 DevTools 화면에서 즉시 노출되는 버그
-- **이중 제출 방지 (토스/Stripe):** 처리 중 버튼 `disabled` + `aria-busy="true"` → FIX 이체 submit 버튼
+- **실시간 SSE 스트림 (Stripe Dashboard):** 주문 상태 변화를 UI에 push. `EventSource` 사용 시 반드시 cleanup function에서 `EventSource.close()` 호출 필수 — 미구현 시 DevTools 화면에서 즉시 노출되는 버그
+- **이중 제출 방지 (토스/Stripe):** 처리 중 버튼 `disabled` + `aria-busy="true"` → FIX 주문 submit 버튼
 - **Retry CTA (토스/카카오뱅크/Stripe):** 실패 케이스별 명확한 재시도 경로 제공:
-  - 잔액 부족 → "금액 수정" (Step B로 돌아가기, `useReducer` step reset)
+  - 보유수량 부족 → "수량 수정" (Step B로 돌아가기, `useReducer` step reset)
   - OTP 오류 → "OTP 재입력" (Step C 재렌더)
   - CB 발동 → "나중에 다시 시도하세요" Toast + CB 상태 설명
 - **Zero-friction API exploration (Stripe API Docs):** DTO에 `@Parameter(example = "110-234-567890")`, `@Schema(example = "demo")` 어노테이션 추가 — Swagger "Try it out" 클릭 시 실제 Seed data 값이 자동 입력됨 (코드 2-3줄, 구현 비용 최소)
@@ -362,17 +363,17 @@ FinTech/General Interviewer Track
   ```json
   {
     "error": {
-      "code": "INSUFFICIENT_BALANCE",
-      "message": "잔액이 부족합니다. 출금 계좌 잔액: ₩1,000,000 / 이체 금액: ₩2,000,000"
+      "code": "INSUFFICIENT_POSITION",
+      "message": "보유수량이 부족합니다. 가용수량: 500주 / 주문수량: 600주"
     }
   }
   ```
 
 #### Visual Patterns
 
-- **기술 식별자 노출 (Stripe Dashboard):** Transfer 완료 화면에 `traceparent` W3C 형식(`00-{traceId}-{spanId}-{flags}`) 노출 → `data-testid="transfer-trace-id"`. 면접관이 "OpenTelemetry까지 적용했구나"를 즉각 인지
-- **Summary Card (토스 이체 완료):** Transfer C 화면에 금액 + 수취인 + 참조번호 + trace ID를 Summary Card 형식(`data-testid="transfer-summary-card"`)으로 노출. 공유 버튼 대신 trace ID + SSE 확인 링크
-- **상태 배지 (Stripe):** 거래 상태 color-coded badge — `완료`(green) / `실패`(red) / `처리중`(yellow)
+- **기술 식별자 노출 (Stripe Dashboard):** 주문 체결 화면에 `traceparent` W3C 형식(`00-{traceId}-{spanId}-{flags}`) 노출 → `data-testid="order-trace-id"`. 면접관이 "OpenTelemetry까지 적용했구나"를 즉각 인지
+- **Summary Card (토스 주문 체결):** Order C 화면에 종목 + 수량 + ClOrdID + trace ID를 Summary Card 형식(`data-testid="order-summary-card"`)으로 노출. 공유 버튼 대신 trace ID + SSE 확인 링크
+- **상태 배지 (Stripe):** 주문 상태 color-coded badge — `완료`(green) / `실패`(red) / `처리중`(yellow)
 - **원화 포맷 (토스/카카오뱅크):** ₩ symbol + 천 단위 comma 전체 일관 적용
 - **계좌 마스킹 (카카오뱅크):** `110-***-123456` 형식
 - **Monospace 폰트:** trace ID, 계좌번호, 참조번호에 system-font 스택 적용 — Google Fonts 의존성 없음, 로컬 Docker 환경 폰트 로드 실패 위험 없음:
@@ -384,8 +385,8 @@ FinTech/General Interviewer Track
 
 ### Anti-Patterns to Avoid
 
-1. **Full-page reload for sub-operations:** SPA 신뢰도를 즉시 손상. 이체 플로우 중 Document reload 절대 금지.
-2. **Generic English error messages:** `"Insufficient balance"` 대신 `"잔액이 부족합니다"` — Bank interviewer에게 도메인 외의 레이어가 보임
+1. **Full-page reload for sub-operations:** SPA 신뢰도를 즉시 손상. 주문 플로우 중 Document reload 절대 금지.
+2. **Generic English error messages:** `"Insufficient position"` 대신 `"보유수량이 부족합니다"` — Bank interviewer에게 도메인 외의 레이어가 보임
 3. **기술 식별자 숨기기:** 참조번호, trace ID를 축약하거나 숨기면 Curiosity trigger가 사라지고 FinTech interviewer의 인정 신호가 끊김
 4. **과도한 애니메이션:** `opacity/transform 150ms`를 초과하는 transition은 화면 공유 시 시각적 잡음. keyframe animation, bounce, spring 효과 금지
 5. **Mobile-first 레이아웃:** FIX는 desktop screenshare 최적화. 좁은 카드 레이아웃, 햄버거 메뉴 = 잘못된 플랫폼 assumption
@@ -398,20 +399,20 @@ FinTech/General Interviewer Track
 
 #### What to Adopt (직접 적용)
 
-- **토스 3-step 이체 모달:** A(수취인) → B(금액/한도 확인) → C(OTP) 플로우 구조 (`useReducer` 기반 step 관리)
+- **토스 3-step 주문 모달:** A(종목/수량) → B(주문 확인) → C(OTP) 플로우 구조 (`useReducer` 기반 step 관리)
 - **OTP 자동 submit:** 6자리 완성 → 즉시 API 호출, 버튼 없음
-- **카카오뱅크 도메인 어휘:** 이체, 출금, 입금, 원장, 한도, 마스킹 패턴 전체 채택
+- **카카오뱅크 도메인 어휘:** 주문, 매도, 매수, 포지션, 원장, 한도, 마스킹 패턴 전체 채택
 - **Stripe 기술 식별자 노출:** Reference number, Trace ID (`traceparent` W3C 형식), Monospace 폰트
 - **Retry CTA 패턴:** 실패 케이스 3개 × 재시도 경로 (토스/카카오뱅크/Stripe 공통)
 - **Screen-as-Architecture-Proof:** 모든 아키텍처 주장은 대응하는 화면으로 증명 (Step 3 Architecture Claim-to-Screen Mapping과 일관)
 
 #### What to Adapt (수정 적용)
 
-- **토스 이체 완료 화면 → Summary Card:** 공유 버튼 제거, trace ID + SSE 확인 링크 추가 (`data-testid="transfer-summary-card"`)
+- **토스 주문 체결 화면 → Summary Card:** 공유 버튼 제거, trace ID + SSE 확인 링크 추가 (`data-testid="order-summary-card"`)
 - **Stripe 상태 배지:** `succeeded/failed/pending` → FIX 한국어 버전 `완료/실패/처리중` + 색상 유지
 - **카카오뱅크 세션 만료 Modal → Toast:** Modal 팝업 제거, Toast + 3초 후 자동 redirect (데모 흐름 방해 최소화)
 - **Stripe API Docs pre-fill → Springdoc DTO:** `@Parameter(example = "110-234-567890")`, `@Schema(example = "demo")` 어노테이션으로 Swagger "Try it out" UX 개선
-- **Stripe SSE stream → Post-transfer notification:** SSE stream 시각화는 P1-P2 수준. `EventSource.close()` cleanup 필수
+- **Stripe SSE stream → Post-order notification:** SSE stream 시각화는 P1-P2 수준. `EventSource.close()` cleanup 필수
 
 #### What to Avoid (명시적 제외)
 
@@ -427,7 +428,7 @@ FinTech/General Interviewer Track
 | -------------------------------- | ----------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | **P0** Demo-critical             | 없으면 데모가 안 됨           | 토스 3-step 모달, OTP auto-submit, Korean error messages, Summary Card, Retry CTA, 원화 포맷, 계좌 마스킹        |
 | **P1** Portfolio-differentiating | 있으면 확실히 차별화          | traceparent 노출, Swagger pre-fill (`@Parameter`), Structured Error Response, Monospace 폰트, Actuator 외부 링크 |
-| **P2** Curiosity-triggers        | 면접관이 질문을 유도하는 요소 | SSE 이벤트 스트림 패널, FEP chaos 버튼, CB 상태 배지                                                             |
+| **P2** Curiosity-triggers        | 면접관이 질문을 유도하는 요소 | SSE 이벤트 스트림 패널, FEP chaos 드롭다운, CB 상태 배지                                                         |
 
 **구현 복잡도 × 임팩트 테이블:**
 
@@ -438,7 +439,7 @@ FinTech/General Interviewer Track
 | DTO `@Parameter(example)`    | ★☆☆    | 🟡 중간 | P1       |
 | Monospace 폰트 (CSS 1줄)     | ★☆☆    | 🟡 중간 | P1       |
 | Actuator 외부 링크           | ★☆☆    | 🟡 중간 | P1       |
-| Summary Card (이체 완료)     | ★★☆    | 🔴 높음 | P0       |
+| Summary Card (주문 체결)     | ★★☆    | 🔴 높음 | P0       |
 | traceparent 노출             | ★★☆    | 🟡 중간 | P1       |
 | Retry CTA + useReducer reset | ★★☆    | 🔴 높음 | P0       |
 | SSE 이벤트 패널              | ★★★    | 🟡 중간 | P2       |
@@ -449,15 +450,16 @@ FinTech/General Interviewer Track
 
 | 패턴                   | `data-testid`                     | E2E 검증 |
 | ---------------------- | --------------------------------- | -------- |
-| 이체 완료 Summary Card | `transfer-summary-card`           | ✅       |
-| traceparent 노출       | `transfer-trace-id`               | ✅       |
-| Retry CTA (잔액 부족)  | `transfer-retry-btn`              | ✅       |
+| 주문 체결 Summary Card | `order-summary-card`              | ✅       |
+| traceparent 노출       | `order-trace-id`                  | ✅       |
+| Retry CTA (보유수량 부족)  | `order-retry-btn`                 | ✅       |
 | OTP auto-submit        | `otp-input` (6자리 완성 감지)     | ✅       |
 | Korean error message   | `error-message`                   | ✅       |
 | Actuator 링크          | `nav-actuator-link`               | ✅       |
-| FEP chaos 버튼         | `fep-chaos-btn`                   | ✅       |
+| FEP chaos 드롭다운     | `fep-chaos-select`                | ✅       |
 | CB fallback 메시지     | `cb-fallback-msg`                 | ✅       |
-| 이체 참조번호          | `transfer-ref`                    | ✅       |
+| 주문 ClOrdID            | `order-clordid`                   | ✅       |
+| 포지션 수량           | `position-qty-after`              | ✅       |
 | Swagger pre-fill       | Swagger UI (Playwright 접근 가능) | ⚠️       |
 
 #### PRD↔Inspiration 매핑
@@ -465,7 +467,7 @@ FinTech/General Interviewer Track
 | PRD 요구사항                   | 영감 소스                   | 채택 패턴                            | 우선순위 |
 | ------------------------------ | --------------------------- | ------------------------------------ | -------- |
 | FR-01 (로그인/OTP)             | 토스                        | OTP auto-submit                      | P0       |
-| FR-03 (이체 플로우)            | 토스                        | 3-step 모달, Summary Card, Retry CTA | P0       |
+| FR-03 (주문 플로우)            | 토스                        | 3-step 모달, Summary Card, Retry CTA | P0       |
 | NFR-07 (Usability — 한국어 UX) | 카카오뱅크                  | 도메인 어휘, 마스킹, 원화 포맷       | P0       |
 | NFR-08 (Developer Experience)  | Stripe Dashboard + API Docs | traceparent, Swagger pre-fill, SSE   | P1       |
 
@@ -475,31 +477,43 @@ FinTech/General Interviewer Track
 
 | `data-testid` 값              | 화면                         | 출처 단계      |
 | ----------------------------- | ---------------------------- | -------------- |
-| `transfer-ref`                | Transfer C (완료)            | Step 3         |
-| `cb-fallback-msg`             | Transfer C (CB 발동)         | Step 3         |
-| `fep-chaos-btn`               | Admin / FEP 제어             | Step 4         |
-| `transfer-trace-id`           | Transfer C (완료)            | Step 5 Round 1 |
+| `order-clordid`               | Order C (체결)             | Step 3         |
+| `cb-fallback-msg`             | Order C (CB 발동)          | Step 3         |
+| `fep-chaos-select`            | Admin / FEP 제어             | Step 4         |
+
+> **Q3 합의사항 — FEP Chaos 드롭다운 HTML 명세 (Phase 1 구현 기준):**
+> ```html
+> <select id="fep-chaos-select" data-testid="fep-chaos-select">
+>   <option value="IGNORE" selected>IGNORE (정상)</option>
+>   <option value="DISCONNECT" disabled>DISCONNECT (Phase 2)</option>
+>   <option value="MALFORMED_RESP" disabled>MALFORMED_RESP (Phase 2)</option>
+> </select>
+> ```
+> Phase 1에서는 IGNORE만 활성화. DISCONNECT/MALFORMED_RESP는 `disabled` 속성으로 UI에 노출하되 선택 불가.
+> IGNORE 선택 시 FEP Simulator가 주문 수신을 무시 → Circuit Breaker OPEN 유발 → `cb-fallback-msg` 렌더.
+| `order-trace-id`              | Order C (체결)             | Step 5 Round 1 |
 | `nav-actuator-link`           | Navigation                   | Step 5 Round 2 |
-| `transfer-retry-btn`          | Transfer (실패 상태)         | Step 5 Round 2 |
-| `transfer-summary-card`       | Transfer C (완료)            | Step 5 Round 4 |
-| `otp-input`                   | Transfer C (OTP)             | Step 5 Round 4 |
-| `otp-input-{0~5}`             | Transfer C — 개별 OTP 칸     | Step 6 Round 1 |
+| `order-retry-btn`             | Order (실패 상태)         | Step 5 Round 2 |
+| `order-summary-card`          | Order C (체결)             | Step 5 Round 4 |
+| `otp-input`                   | Order B (OTP)                | Step 5 Round 4 |
+| `otp-input-{0~5}`             | Order B — 개별 OTP 칸    | Step 6 Round 1 |
 | `error-message`               | 전체 에러 상태               | Step 5 Round 4 |
-| `transfer-stepper-step-a`     | Transfer 모달 — Step A       | Step 6 Round 2 |
-| `transfer-stepper-step-b`     | Transfer 모달 — Step B       | Step 6 Round 2 |
-| `transfer-stepper-step-c`     | Transfer 모달 — Step C       | Step 6 Round 2 |
-| `account-card-{accountId}`    | AccountList — 개별 계좌 카드 | Step 6 Round 2 |
-| `transfer-modal`              | Transfer 모달 컨테이너       | Step 6 Round 4 |
-| `account-detail-{accountId}`  | AccountDetail 화면           | Step 6 Round 4 |
+| `order-stepper-step-a`        | Order 모달 — Step A       | Step 6 Round 2 |
+| `order-stepper-step-b`        | Order 모달 — Step B       | Step 6 Round 2 |
+| `order-stepper-step-c`        | Order 모달 — Step C       | Step 6 Round 2 |
+| `position-qty-after`          | Order C (체결후 포지션)   | Step 6 Round 3 |
+| `portfolio-card-{symbol}`     | PortfolioList — 개별 포지션 카드 | Step 6 Round 2 |
+| `order-modal`                 | Order 모달 컨테이너       | Step 6 Round 4 |
+| `account-detail-{accountId}`  | PortfolioDetail 화면           | Step 6 Round 4 |
 | `session-expired-toast`       | 세션 만료 Toast              | Step 6 Round 4 |
 | `login-username`              | Login 화면                   | Step 7 Round 1 |
 | `login-password`              | Login 화면                   | Step 7 Round 1 |
 | `login-submit`                | Login 화면                   | Step 7 Round 1 |
-| `account-detail-transfer-btn` | AccountDetail — 이체 버튼    | Step 7 Round 1 |
-| `transfer-input-recipient`    | Transfer-A — 수취인 입력     | Step 7 Round 1 |
-| `transfer-input-amount`       | Transfer-B — 금액 입력       | Step 7 Round 1 |
-| `account-detail-loading`      | AccountDetail — 로딩 스피너  | Step 7 Round 4 |
-| `transaction-list`            | AccountDetail — 거래 내역    | Step 7 Round 4 |
+| `account-detail-order-btn`    | PortfolioDetail — 매도 버튼    | Step 7 Round 1 |
+| `order-input-symbol`          | Order-A — 종목코드 입력     | Step 7 Round 1 |
+| `order-input-qty`             | Order-B — 수량 입력       | Step 7 Round 1 |
+| `account-detail-loading`      | PortfolioDetail — 로딩 스피너  | Step 7 Round 4 |
+| `order-list`                   | PortfolioDetail — 주문 내역    | Step 7 Round 4 |
 
 ---
 
@@ -627,10 +641,10 @@ npx shadcn@latest add sheet tooltip
 
 | 컴포넌트              | 역할                                 | 핵심 테스트                        | `data-testid`                   |
 | --------------------- | ------------------------------------ | ---------------------------------- | ------------------------------- |
-| `TransferStepper`     | A→B→C 단계 표시                      | 현재 step 표시, step 진행          | `transfer-stepper-step-{a/b/c}` |
-| `AccountCard`         | 계좌번호 마스킹 + 잔액 표시          | `110-***-123456` 렌더링            | `account-card-{accountId}`      |
+| `OrderStepper`        | A→B→C 단계 표시                      | 현재 step 표시, step 진행          | `order-stepper-step-{a/b/c}`    |
+| `PortfolioCard`         | 계좌번호 마스킹 + 포지션 표시        | `110-***-123456` 렌더링            | `account-card-{accountId}`      |
 | `ErrorMessage`        | `role="alert"` + Korean error 포맷   | alert role presence, Korean text   | `error-message`                 |
-| `TransferSummaryCard` | 이체 완료 Summary Card               | ref + trace ID + amount 표시       | `transfer-summary-card`         |
+| `OrderSummaryCard`    | 주문 체결 Summary Card               | ClOrdID + trace ID + 수량 표시      | `order-summary-card`            |
 | `OTPInput`            | 6칸 분리 + 자동 포커스 + auto-submit | 6자리 완성 → API 호출 자동 trigger | `otp-input`, `otp-input-{0~5}`  |
 
 > **Step 6/7 경계:** CLI 명령어, 의존성, 컴포넌트 선언까지 Step 6 범위. OTP auto-submit trigger 조건, `useReducer` step state machine 설계, modal open/close interaction flow는 **Step 7 (Defining Experience)** 에서 정의.
@@ -641,12 +655,12 @@ npx shadcn@latest add sheet tooltip
 
 ### Defining Experience
 
-**"계좌에서 계좌로 이체하고, 참조번호와 실시간 알림을 받는다."**
+**"포지션에서 주문하고, ClOrdID와 실시간 체결 알림을 받는다."**
 
-FIX의 defining experience는 이체 플로우 A→B→C다. 이 플로우가 완주될 때:
+FIX의 defining experience는 주문 플로우 A→B→C다. 이 플로우가 완주될 때:
 
-- Bank interviewer: 한국 은행 도메인 어휘, OTP 단계, 원화 포맷이 살아있음을 확인한다
-- FinTech interviewer: SSE 실시간 알림, OTP auto-submit, Circuit Breaker fallback이 동작함을 DevTools로 확인한다
+- Bank interviewer: 한국 증권사 도메인 어휘, OTP 단계, 포지션 포맷이 살아있음을 확인한다
+- FinTech interviewer: SSE 실시간 냈림, OTP auto-submit, Circuit Breaker fallback이 동작함을 DevTools로 확인한다
 - yeongjae: "이 시스템이 실제로 동작한다"는 통제감을 갖는다
 
 이 경험이 완벽하면 나머지(로그인, 계좌 목록, 에러 상태)는 자연히 따라온다.
@@ -657,13 +671,13 @@ FIX의 defining experience는 이체 플로우 A→B→C다. 이 플로우가 �
 | ---- | -------------------------------------------- | ----------------- | -------------------------------------------- |
 | 1    | `localhost:3000` 접속                        | Login             | —                                            |
 | 2    | `demo` / `demo1234` 입력                     | Login             | `login-username`, `login-password`           |
-| 3    | 로그인 버튼 클릭 → `/accounts` redirect      | Login             | `login-submit`                               |
-| 4    | AccountCard 클릭 → `/accounts/:id`           | AccountList       | `account-card-110234567890`                  |
-| 5    | "이체" 버튼 클릭 → Transfer modal 오픈       | AccountDetail     | `account-detail-transfer-btn`                |
-| 6    | 수취인 선택 (history 클릭 or 직접 입력)      | Transfer-A        | `transfer-input-recipient`                   |
-| 7    | ₩500,000 입력 + "다음" 클릭                  | Transfer-B        | `transfer-input-amount`                      |
-| 8    | OTP 6자리 입력 → 자동 submit                 | Transfer-C        | `otp-input`                                  |
-| 9    | Summary Card + trace ID 확인, SSE Toast 수신 | Transfer-Complete | `transfer-summary-card`, `transfer-trace-id` |
+| 3    | 로그인 버튼 클릭 → `/portfolio` redirect      | Login             | `login-submit`                               |
+| 4    | PortfolioCard 클릭 → `/portfolio/:id`           | Portfolio List    | `account-card-110234567890`                  |
+| 5    | "매도" 버튼 클릭 → Order modal 오픈        | PortfolioDetail   | `account-detail-order-btn`                   |
+| 6    | 종목 선택 (005930 삼성전자)                  | Order-A           | `order-input-symbol`                         |
+| 7    | 100 입력 + "다음" 클릭                     | Order-B           | `order-input-qty`                            |
+| 8    | OTP 6자리 입력 → 자동 submit                 | Order-C           | `otp-input`                                  |
+| 9    | Summary Card + trace ID 확인, SSE Toast 수신 | Order-Complete    | `order-summary-card`, `order-trace-id`       |
 
 ### User Mental Model
 
@@ -672,7 +686,7 @@ FIX의 defining experience는 이체 플로우 A→B→C다. 이 플로우가 �
 - 기존 경험: 한국 시중은행 내부 시스템, 인터넷 뱅킹 관리 도구
 - 기대 모델: 계좌 선택 → 금액 입력 → OTP 인증 → 완료 확인. 이 4단계가 익숙하다
 - 혼란 포인트: 영어 레이블, 기술 용어 노출 → "이건 은행 시스템 같지 않다"
-- 성공 신호: "잔액이 부족합니다", "이체 한도를 초과했습니다" — 이 문장을 보는 순간 신뢰 형성
+- 성공 신호: "보유수량이 부족합니다", "주문 한도를 초과했습니다" — 이 문장을 보는 순간 신뢰 형성
 
 **FinTech Interviewer (Evaluator B):**
 
@@ -686,30 +700,30 @@ FIX의 defining experience는 이체 플로우 A→B→C다. 이 플로우가 �
 - 기존 경험: 직접 만든 시스템 — 모든 동작을 안다
 - 기대 모델: 시연 스크립트대로 흐른다. 어떤 질문이 와도 UI로 즉시 가리킬 수 있다
 - 혼란 포인트: 예상치 못한 에러, seed data 초기화 실패
-- 성공 신호: Transfer C 화면의 참조번호 + SSE 알림 도착 = 시연 완료
+- 성공 신호: Order C 화면의 ClOrdID + SSE 체결 알림 도착 = 시연 완료
 
 ### Success Criteria
 
-1. **≤3분 완주:** 로그인 → 계좌 선택 → 이체 A→B→C → 완료 확인까지 9 steps, 3분 이내
+1. **≤3분 완주:** 로그인 → 포지션 선택 → 주문 A→B→C → 체결 확인까지 9 steps, 3분 이내
 2. **Zero-config 시작:** `docker compose up` → seed data 자동 투입 → `demo`/`demo1234` 로그인 즉시 성공
 3. **OTP 마찰 없음:** 6자리 입력 완료 → 버튼 없이 자동 submit
-4. **실시간 알림 도착:** Transfer C 완료 → SSE event → UI Toast 2초 내 — DevTools stream 확인 가능
-5. **에러도 성공:** 잔액 부족 → 한국어 에러 메시지 → Retry CTA → Step B 자연스러운 복귀
-6. **Curiosity 유발:** Transfer C 화면에서 `traceparent` 값을 보고 면접관이 질문 시작
+4. **실시간 체결 알림 도착:** Order C 완료 → SSE event → UI Toast 2초 내 — DevTools stream 확인 가능
+5. **에러도 성공:** 보유수량 부족 → 한국어 에러 메시지 → Retry CTA → Step B 자연스러운 복귀
+6. **Curiosity 유발:** Order C 화면에서 `traceparent` 값을 보고 면접관이 질문 시작
 
 ### Novel vs. Established Patterns
 
 **Established Patterns (직접 채택):**
 
-- 3-step 이체 모달: 토스/카카오뱅크에서 Bank interviewer가 이미 아는 패턴 → 교육 불필요
+- 3-step 주문 모달: 토스/한국 증권사 앱에서 Bank interviewer가 이미 아는 패턴 → 교육 불필요
 - OTP 6자리 입력: 모든 국내 은행 앱에서 표준 → 즉각 인식
 - 계좌번호 마스킹: `110-***-123456` — 국내 표준 패턴
 - 원화 포맷 + 한국어 에러 메시지: 도메인 표준
 
 **Novel Combinations (FIX 고유):**
 
-- **이체 완료 화면의 `traceparent` 노출:** 일반 뱅킹 앱에 없는 요소 — "왜 여기에 이게?"라는 질문이 설계된 대화 진입점
-- **DevTools-as-Second-Screen:** 이체 플로우가 UI + DevTools 동시 진행으로 완성됨. Network 탭을 자연스럽게 열게 만드는 UX
+- **주문 체결 화면의 `traceparent` 노출:** 일반 증권 앱에 없는 요소 — "왜 여기에 이게?"라는 질문이 설계된 대화 진입점
+- **DevTools-as-Second-Screen:** 주문 플로우가 UI + DevTools 동시 진행으로 완성됨. Network 탭을 자연스럽게 열게 만드는 UX
 - **실패 상태의 포트폴리오화:** 에러 화면이 성공 화면만큼 설계됨 — Bank: "이 에러 메시지가 실제 은행 앱이랑 같다", FinTech: "에러 응답 구조가 Stripe 스타일이다"
 
 ### Experience Mechanics
@@ -719,23 +733,23 @@ FIX의 defining experience는 이체 플로우 A→B→C다. 이 플로우가 �
 - `/login` 라우팅 — `BrowserRouter` 기본 경로
 - `login-username` input: `demo` (의도적 no pre-fill — 면접관이 직접 입력하는 과정이 시연)
 - `login-password` input: `demo1234`
-- `login-submit` 버튼 → POST `/api/auth/login` → `Set-Cookie: sessionId` (HttpOnly) → `/accounts` redirect
+- `login-submit` 버튼 → POST `/api/v1/auth/login` → `Set-Cookie: sessionId` (HttpOnly) → `/portfolio` redirect
 - **실패:** 잘못된 자격증명 → `data-testid="error-message"` + "아이디 또는 비밀번호가 올바르지 않습니다"
-- **PrivateRoute 패턴:** `/accounts`, `/accounts/:id`는 인증 guard 적용
+- **PrivateRoute 패턴:** `/portfolio`, `/portfolio/:symbol`는 인증 guard 적용
   ```ts
   function PrivateRoute({ children }: { children: ReactNode }) {
     const { isAuthenticated } = useAuth()
     return isAuthenticated ? children : <Navigate to="/login" replace />
   }
   ```
-- **`useAuth` hook:** HttpOnly 쿠키는 JS 직접 읽기 불가 → 앱 시작 시 `GET /api/auth/me` 호출로 인증 상태 초기화
+- **`useAuth` hook:** HttpOnly 쿠키는 JS 직접 읽기 불가 → 앱 시작 시 `GET /api/v1/auth/me` 호출로 인증 상태 초기화
   ```ts
   function useAuth() {
     const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(
       null,
     );
     useEffect(() => {
-      fetch("/api/auth/me")
+      fetch("/api/v1/auth/me")
         .then((r) => setIsAuthenticated(r.ok))
         .catch(() => setIsAuthenticated(false));
     }, []);
@@ -743,123 +757,121 @@ FIX의 defining experience는 이체 플로우 A→B→C다. 이 플로우가 �
   }
   ```
 
-#### Account Flow Mechanics (Steps 4-5)
+#### Portfolio Flow Mechanics (Steps 4-5)
 
-**AccountList (`/accounts`):**
+**PortfolioList (`/portfolio`):**
 
-Seed data — `demo` 계정의 계좌 2개:
+Seed data — `demo` 계정의 포지션 1개:
 
-- `account-card-110234567890`: 입출금 계좌, ₩1,000,000, `110-234-567890` (이체에 사용)
-- `account-card-220345678901`: 적금 계좌, ₩5,000,000, `220-345-678901` (잔액 표시만)
+- `portfolio-card-005930`: 삼성전자(005930), 500주, 현재가 ₩70,000, 평가금액 ₩35,000,000
 
-각 `AccountCard`에 계좌 유형 배지 (입출금 / 적금) 표시 — 카카오뱅크 Step 5 패턴.
+각 `PortfolioCard`에 종목명·보유수량·평가금액 표시 — 카카오뱅크 Step 5 카드 패턴 적용.
 
-Empty state: seed data 없음 → "등록된 계좌가 없습니다" 표시.
+Empty state: seed data 없음 → "보유 종목이 없습니다" 표시.
 
-**AccountDetail (`/accounts/:id`):**
+**PortfolioDetail (`/portfolio/:id`):**
 
-- `Promise.all`로 `GET /api/accounts/:id` + `GET /api/accounts/:id/transactions` 병렬 요청
+- `Promise.all`로 `GET /api/v1/portfolio/:id` + `GET /api/v1/portfolio/:id/orders` 병렬 요청
 - 로딩 중: `data-testid="account-detail-loading"` + `Loader2 animate-spin`
 - 렌더링 후:
   - 계좌번호 마스킹 (`110-***-123456`)
-  - 잔액: ₩1,000,000
-  - 오늘 이체 가능: ₩500,000
-  - 거래 내역 (`data-testid="transaction-list"`): 날짜별 그루핑 → 프론트 `Array.reduce` 처리
-  - "이체" 버튼 (`data-testid="account-detail-transfer-btn"`)
+  - 포지션: 삼성전자(005930) 500주
+  - 오늘 매도 가능: 500주
+  - 주문 내역 (`data-testid="order-list"`): 날짜별 그루핑 → 프론트 `Array.reduce` 처리
+  - "매도" 버튼 (`data-testid="account-detail-order-btn"`)
 
-#### Transfer Flow A→B→C Mechanics (Steps 5-9)
+#### Order Flow A→B→C Mechanics (Steps 5-9)
 
 **Initiation:**
 
-- `account-detail-transfer-btn` 클릭 → `transfer-modal` Dialog 오픈 — URL 변경 없음
-- `useReducer` 초기화: `{ step: 'A', recipient: '', recipientFromHistory: false, amount: 0, otpValue: '' }`
-- `transfer-stepper-step-a` active
+- `account-detail-order-btn` 클릭 → `order-modal` Dialog 오픈 — URL 변경 없음
+- `useReducer` 초기화: `{ step: 'A', symbol: '', qty: 0, otpValue: '' }`
+- `order-stepper-step-a` active
 
-**Step A — 수취인 선택:**
+**Step A — 종목 선택:**
 
 ```
 ┌─────────────────────────────┐
-│ 이체           [A]─B─C      │  ← transfer-stepper
+│ 매도           [A]─B─C      │  ← order-stepper
 ├─────────────────────────────┤
-│ 최근 이체                   │
+│ 보유 종목                   │
 │ ┌─────────────────────────┐ │
-│ │ demo2 · 220-345-678901  │ │  ← 클릭 → 자동 입력 (recipientFromHistory: true)
+│ │ 삼성전자 · 005930       │ │  ← 클릭 → 자동 입력
 │ └─────────────────────────┘ │
 │                             │
 │ 직접 입력                   │
-│ [___________________]       │  ← transfer-input-recipient
+│ [___________________]       │  ← order-input-symbol
 │                             │
-│              [다음 →]       │  ← disabled if recipient empty or invalid format
+│              [다음 →]       │  ← disabled if symbol empty
 └─────────────────────────────┘
 ```
 
-- 수취인 계좌번호 validation: 공백 또는 포맷 불일치 시 "다음" 버튼 disabled
-- `dispatch({ type: 'NEXT' })` → `step: 'B'`, `transfer-stepper-step-b` active
+- 종목코드 validation: 공백 또는 포맷 불일치 시 "다음" 버튼 disabled
+- `dispatch({ type: 'NEXT' })` → `step: 'B'`, `order-stepper-step-b` active
 
-**Step B — 금액 입력:**
+**Step B — 수량 입력:**
 
-- `transfer-input-amount`: 입력값 실시간 `₩500,000` 포맷 변환
-- 잔액/한도 동시 표시: "잔액: ₩1,000,000 / 오늘 이체 가능: ₩500,000"
-- 잔액 초과 즉시 인라인 에러: `data-testid="error-message"` + `role="alert"`
+- `order-input-qty`: 입력값 실시간 `100주` 포맷 변환
+- 포지션/한도 동시 표시: "가용수량: 500주 / 오늘 매도 가능: 500주"
+- 보유수량 초과 즉시 인라인 에러: `data-testid="error-message"` + `role="alert"`
 - `dispatch({ type: 'PREV' })` → Step A 복귀 가능
-- `dispatch({ type: 'NEXT' })` → `step: 'C'`, `transfer-stepper-step-c` active
+- `dispatch({ type: 'NEXT' })` → `step: 'C'`, `order-stepper-step-c` active
 
 **Step C — OTP 인증:**
 
 - `OTPInput` (`otp-input`, `otp-input-{0~5}`): 각 칸 입력 → 다음 칸 자동 포커스
-- 6자리 완성 → `aria-busy="true"` → POST `/api/transfers` **자동 호출** (버튼 클릭 불필요)
+- 6자리 완성 → `aria-busy="true"` → POST `/api/v1/orders/sessions/{sessionId}/execute` **자동 호출** (버튼 클릭 불필요)
 - OTP 오류: 6칸 clear + `otp-input-0` 포커스 복귀 + `data-testid="error-message"`
 - `dispatch({ type: 'PREV' })` → Step B 복귀 가능
 
 **Completion:**
 
-- POST `/api/transfers` 성공 응답 → `dispatch({ type: 'COMPLETE', payload: result })` **즉시** → `TransferSummaryCard` 렌더
+- POST `/api/v1/orders/sessions/{sessionId}/execute` 성공 응답 → `dispatch({ type: 'COMPLETE', payload: result })` **즉시** → `OrderSummaryCard` 렌더
 - SSE event 수신 → **별도 `useEffect`** EventSource listener → Toast 표시 (POST 완료와 독립적 — SSE 지연에도 Summary Card 정상 렌더)
-- `TransferSummaryCard` (`data-testid="transfer-summary-card"`):
-  - 이체 금액 (₩500,000)
-  - 수취인 계좌 (마스킹)
-  - 참조번호 (`data-testid="transfer-ref"`)
-  - Trace ID — `traceparent` W3C 형식 (`data-testid="transfer-trace-id"`, Monospace 폰트)
-- "닫기" 버튼 → modal dismiss → AccountDetail 복귀
+- `OrderSummaryCard` (`data-testid="order-summary-card"`):
+  - 주문 수량 (100주)
+  - 종목 (삼성전자 005930)
+  - ClOrdID (`data-testid="order-clordid"`)
+  - Trace ID — `traceparent` W3C 형식 (`data-testid="order-trace-id"`, Monospace 폰트)
+  - 체결 후 잔여 포지션 (`data-testid="position-qty-after"`)
+- "닫기" 버튼 → modal dismiss → PortfolioDetail 복귀
 
 #### Error Recovery
 
-| 에러 케이스     | UI 동작                                            | `data-testid`                         | Modal                  |
-| --------------- | -------------------------------------------------- | ------------------------------------- | ---------------------- |
-| 잔액 부족       | Step B 인라인 에러 + "금액 수정" CTA               | `error-message`, `transfer-retry-btn` | 유지 (Step B)          |
-| OTP 오류        | 6칸 clear + 포커스 복귀 + 에러 메시지              | `error-message`                       | 유지 (Step C)          |
-| CB 발동         | `step: 'ERROR'` 전환 + Stepper `[⚠️]` + CB 메시지  | `cb-fallback-msg`                     | **유지 (ERROR state)** |
-| 세션 만료 (401) | `session-expired-toast` + 3초 후 `/login` redirect | `session-expired-toast`               | dismiss                |
-| 네트워크 오류   | `error-message` + "닫기" 버튼                      | `error-message`                       | 유지 → 사용자 dismiss  |
+| 에러 케이스     | UI 동작                                            | `data-testid`                      | Modal                  |
+| --------------- | -------------------------------------------------- | ---------------------------------- | ---------------------- |
+| 보유수량 부족   | Step B 인라인 에러 + "수량 수정" CTA               | `error-message`, `order-retry-btn` | 유지 (Step B)          |
+| OTP 오류        | 6칸 clear + 포커스 복귀 + 에러 메시지              | `error-message`                    | 유지 (Step C)          |
+| CB 발동         | `step: 'ERROR'` 전환 + Stepper `[⚠️]` + CB 메시지  | `cb-fallback-msg`                  | **유지 (ERROR state)** |
+| 세션 만료 (401) | `session-expired-toast` + 3초 후 `/login` redirect | `session-expired-toast`            | dismiss                |
+| 네트워크 오류   | `error-message` + "닫기" 버튼                      | `error-message`                    | 유지 → 사용자 dismiss  |
 
 > **CB 발동 시 modal 유지 (Winston Round 2):** 자동 dismiss 대신 `step: 'ERROR'` state로 전환 — 면접관이 CB fallback 메시지를 충분히 읽을 시간 확보.
 
 #### useReducer State Machine
 
 ```ts
-type TransferState = {
+type OrderState = {
   step: "A" | "B" | "C" | "COMPLETE" | "ERROR";
-  recipient: string;
-  recipientFromHistory: boolean; // Seed data 빠른 선택 여부
-  amount: number;
+  symbol: string;
+  qty: number;
   otpValue: string;
-  result?: TransferResult;
+  result?: OrderResult;
   error?: string;
 };
 
-type TransferAction =
+type OrderAction =
   | { type: "NEXT" }
   | { type: "PREV" } // C→B, B→A (이전 step 복귀)
-  | { type: "RESET" } // ERROR→A (완전 초기화, 새 이체 시도)
-  | { type: "SET_RECIPIENT"; payload: string }
-  | { type: "SET_RECIPIENT_FROM_HISTORY"; payload: string }
-  | { type: "SET_AMOUNT"; payload: number }
+  | { type: "RESET" } // ERROR→A (완전 초기화, 새 주문 시도)
+  | { type: "SET_SYMBOL"; payload: string }
+  | { type: "SET_QTY"; payload: number }
   | { type: "SET_OTP"; payload: string }
-  | { type: "COMPLETE"; payload: TransferResult }
+  | { type: "COMPLETE"; payload: OrderResult }
   | { type: "ERROR"; payload: string };
 ```
 
-> **`PREV` vs `RESET`:** `PREV`는 step을 하나씩 되돌림 (B→A, C→B). `RESET`은 ERROR state에서 호출 — recipient, amount, otpValue 전체 초기화 후 Step A 복귀. SSE `EventSource`는 `COMPLETE` 또는 ERROR 시 반드시 `EventSource.close()` cleanup.
+> **`PREV` vs `RESET`:** `PREV`는 step을 하나씩 되돌림 (B→A, C→B). `RESET`은 ERROR state에서 호출 — symbol, qty, otpValue 전체 초기화 후 Step A 복귀. SSE `EventSource`는 `COMPLETE` 또는 ERROR 시 반드시 `EventSource.close()` cleanup.
 
 ### Demonstrator Contingency Paths
 
@@ -867,29 +879,29 @@ yeongjae가 면접 시연 중 예상 외 상황 발생 시 즉각 대응 경로:
 
 | 상황                         | 대응                                                  | UI 증거                             |
 | ---------------------------- | ----------------------------------------------------- | ----------------------------------- |
-| "Circuit Breaker가 뭐죠?"    | `fep-chaos-btn` 클릭 → CB fallback 화면 시연          | `fep-chaos-btn` → `cb-fallback-msg` |
+| "Circuit Breaker가 뭐죠?"    | `fep-chaos-select` IGNORE 선택 → CB fallback 화면 시연       | `fep-chaos-select` → `cb-fallback-msg` |
 | "SSE가 실제로 동작하나요?"   | DevTools Network 탭 → `text/event-stream` 라이브 시연 | Network 탭 직접                     |
-| "OTP는 어떻게 검증하나요?"   | Swagger `/api/auth/verify-otp` 엔드포인트 설명        | `nav-actuator-link` → Swagger       |
-| "잔액 초과를 시도해보면?"    | Step B에서 ₩2,000,000 입력 → 인라인 에러 즉시         | `error-message`                     |
+| "OTP는 어떻게 검증하나요?"   | Swagger `POST /api/v1/orders/sessions/{sessionId}/otp/verify` 엔드포인트 설명 | `nav-actuator-link` → Swagger       |
+| "보유수량 초과를 시도해보면?" | Step B에서 600주 입력 → 인라인 에러 즉시         | `error-message`                     |
 | "계좌 원장은 어디서 보나요?" | Actuator 링크 → `/actuator/health` → DB 상태 JSON     | `nav-actuator-link`                 |
 | "Redis는 실제로 쓰나요?"     | "세션이 Redis에 저장됩니다" + Actuator metrics 설명   | `nav-actuator-link`                 |
 
 ### Core E2E Test Scenarios
 
 ```
-[TC-01] Happy path 이체 완주
-  Given: demo 계정 로그인, 입출금 계좌 잔액 ₩1,000,000
-  When: Transfer A→B(₩500,000)→C(OTP 6자리) 완주
-  Then: transfer-summary-card 표시
-        transfer-ref 값 존재
-        transfer-trace-id W3C traceparent 형식
+[TC-01] Happy path 주문 체결 완주
+  Given: demo 계정 로그인, 삼성전자(005930) 포지션 500주
+  When: Order A→B(100주)→C(OTP 6자리) 완주
+  Then: order-summary-card 표시
+        order-clordid 값 존재
+        order-trace-id W3C traceparent 형식
         SSE Toast 2초 내 수신
 
-[TC-02] 잔액 부족
-  Given: Step B에서 ₩2,000,000 입력
+[TC-02] 보유수량 부족
+  Given: Step B에서 600주 입력
   Then: error-message role="alert" 즉시 표시
-        transfer-retry-btn 표시
-        Step B 유지 (transfer-stepper-step-b active)
+        order-retry-btn 표시
+        Step B 유지 (order-stepper-step-b active)
 
 [TC-03] OTP 오류
   Given: Step C에서 잘못된 OTP 6자리 입력
@@ -898,31 +910,31 @@ yeongjae가 면접 시연 중 예상 외 상황 발생 시 즉각 대응 경로:
         error-message 표시
 
 [TC-04] CB 발동
-  Given: fep-chaos-btn 클릭 후 이체 시도
+  Given: fep-chaos-select IGNORE 선택 후 주문 시도
   Then: cb-fallback-msg 표시
-        transfer-modal 유지 (ERROR state)
+        order-modal 유지 (ERROR state)
         Stepper ERROR 표시
 
-[TC-05] 이체 중 세션 만료
-  Given: POST /api/transfers mock → 401
+[TC-05] 주문 중 세션 만료
+  Given: POST /api/v1/orders/sessions mock → 401
   Then: session-expired-toast 표시
         3초 후 page.url() === '/login'
 
-[TC-06] AccountList Empty State
+[TC-06] PortfolioList Empty State
   Given: seed data 없음 (reset 상태)
-  Then: "등록된 계좌가 없습니다" 표시
+  Then: "보유 종목이 없습니다" 표시
         account-card-* 없음
 
 [TC-07] 로그인 실패
   Given: username="wrong", password="wrong"
   When: login-submit 클릭
   Then: error-message 표시
-        page.url() !== '/accounts'
+        page.url() !== '/portfolio'
 
-[TC-08] AccountList seed data 렌더링
+[TC-08] PortfolioList seed data 렌더링
   Given: demo 로그인 성공
-  Then: account-card-110234567890 표시 (입출금)
-        account-card-220345678901 표시 (적금)
+  Then: account-card-110234567890 표시 (주식매매)
+        account-card-220345678901 표시 (CMA)
         두 카드 모두 계좌 유형 배지 포함
 ```
 
@@ -1026,7 +1038,7 @@ yeongjae가 면접 시연 중 예상 외 상황 발생 시 즉각 대응 경로:
 
 | Level      | Tailwind class            | Size | Weight | Use case                                    |
 | ---------- | ------------------------- | ---- | ------ | ------------------------------------------- |
-| Display    | `text-2xl font-bold`      | 24px | 700    | 화면 제목 (AccountList, AccountDetail 헤딩) |
+| Display    | `text-2xl font-bold`      | 24px | 700    | 화면 제목 (PortfolioList, PortfolioDetail 헤딩) |
 | Heading    | `text-xl font-semibold`   | 20px | 600    | 모달 제목, 섹션 헤딩                        |
 | Subheading | `text-base font-semibold` | 16px | 600    | 카드 레이블, 그룹 제목                      |
 | Body       | `text-sm`                 | 14px | 400    | 기본 본문, 입력 필드 값                     |
@@ -1040,8 +1052,8 @@ yeongjae가 면접 시연 중 예상 외 상황 발생 시 즉각 대응 경로:
 - Line height: Tailwind 기본 `leading-normal` (1.5) — 한국어 가독성 적합
 - 금액 표시: `font-mono text-base font-semibold` — ₩1,000,000
 - **`break-keep`:** 한국어 문장 줄 바꿈 — `ErrorMessage`, 에러 텍스트 전반
-- **`break-all`:** hex/ID 문자열 (trace ID, 참조번호) — `TransferSummaryCard` trace ID row
-- 한국어 버튼 min-width: `min-w-[80px]` (2-4글자 기준), Transfer 모달 액션 버튼: `w-full`
+- **`break-all`:** hex/ID 문자열 (trace ID, 참조번호) — `OrderSummaryCard` trace ID row
+- 한국어 버튼 min-width: `min-w-[80px]` (2-4글자 기준), 주문 모달 액션 버튼: `w-full`
 
 ### Spacing & Layout Foundation
 
@@ -1056,11 +1068,11 @@ yeongjae가 면접 시연 중 예상 외 상황 발생 시 즉각 대응 경로:
 | 컴포넌트            | Visual 스펙                                                         | 비고                                |
 | ------------------- | ------------------------------------------------------------------- | ----------------------------------- |
 | `LoginCard`         | `max-w-sm bg-surface border border-border rounded-xl shadow-sm p-8` | Login 화면 중앙 카드                |
-| `AccountCard`       | `p-4 border border-border rounded-lg bg-surface`                    | 계좌 목록 항목                      |
-| `TransferModal`     | `max-w-md p-6 space-y-4` (Dialog)                                   | 이체 모달                           |
+| `PortfolioCard`       | `p-4 border border-border rounded-lg bg-surface`                    | 계좌 목록 항목                      |
+| `OrderModal`        | `max-w-md p-6 space-y-4` (Dialog)                                   | 주문 모달                           |
 | Input + Label       | `gap-1.5`                                                           | 레이블-입력 간격                    |
 | Button (primary)    | `min-w-[80px] h-10`                                                 | 한국어 2-4글자 기준                 |
-| Button (full-width) | `w-full h-10`                                                       | Transfer 모달 내 "다음", "이체하기" |
+| Button (full-width) | `w-full h-10`                                                       | Order 모달 내 "다음", "주문하기" |
 | Button stack        | `gap-2`                                                             | 버튼 그룹                           |
 | `OTPInput` 개별 칸  | `w-10 h-12 text-center text-xl font-mono border rounded`            | 6칸, 상태별 border/bg               |
 | Section divider     | `py-3`                                                              | 카드 내 구분                        |
@@ -1098,8 +1110,8 @@ yeongjae가 면접 시연 중 예상 외 상황 발생 시 즉각 대응 경로:
 **Layout 원칙:**
 
 - Single column — 스크롤 없이 주요 액션이 fold 내 위치
-- AccountList: `space-y-3` 수직 배치
-- Transfer Modal: Dialog, 중앙 오버레이, `max-w-md`
+- PortfolioList: `space-y-3` 수직 배치
+- 주문 Modal: Dialog, 중앙 오버레이, `max-w-md`
 - Navigation: 상단 고정 `h-14`
 
 ### Icon System
@@ -1112,9 +1124,9 @@ yeongjae가 면접 시연 중 예상 외 상황 발생 시 즉각 대응 경로:
 | ----------- | -------------------------- | ------------------------ |
 | 로딩 스피너 | `Loader2` + `animate-spin` | 처리 중 상태             |
 | 외부 링크   | `ExternalLink`             | Actuator 링크            |
-| 목록 진입   | `ChevronRight`             | AccountCard 우측         |
+| 목록 진입   | `ChevronRight`             | PortfolioCard 우측         |
 | 에러/경고   | `AlertCircle`              | ErrorMessage 좌측 아이콘 |
-| 완료        | `CheckCircle`              | Transfer 완료 상태       |
+| 완료        | `CheckCircle`              | 주문 체결 상태           |
 | 모달 닫기   | `X`                        | Dialog close 버튼        |
 
 **아이콘 원칙:**
@@ -1147,16 +1159,16 @@ import AxeBuilder from "@axe-core/playwright";
 
 const screens = [
   { name: "Login", path: "/login", selector: undefined },
-  { name: "AccountList", path: "/accounts", selector: undefined },
+  { name: "PortfolioList", path: "/portfolio", selector: undefined },
   {
-    name: "AccountDetail",
-    path: "/accounts/110234567890",
+    name: "PortfolioDetail",
+    path: "/portfolio/005930",
     selector: undefined,
   },
   {
-    name: "TransferModal",
-    path: "/accounts/110234567890",
-    selector: '[data-testid="transfer-modal"]',
+    name: "OrderModal",
+    path: "/portfolio/110234567890",
+    selector: '[data-testid="order-modal"]',
   },
 ];
 
@@ -1187,9 +1199,9 @@ for (const screen of screens) {
 | --- | ----------------------- | -------------------------------------- | ----------------------------------------------------------- |
 | D1  | Minimal Trust           | 최소 UI, 기관 금융 신뢰감              | ✅ Login 화면 최적                                          |
 | D2  | Architecture Showcase   | Actuator 상시 노출, trace ID 전면 배치 | ✅ Navigation + 완료 화면 최적                              |
-| D3  | Toss-Inspired Card      | 현대 한국 핀테크, 카드 히어로          | ✅ AccountList 최적                                         |
-| D4  | Data-Dense Professional | 테이블 레이아웃, 브레드크럼, 고밀도    | ✅ AccountDetail Transaction Table 최적                     |
-| D5  | Progressive Focus       | 단일 액션/화면, 접근성 우선            | 〇 Transfer 단계별 집중에 유용하나 Demo 흐름 느림           |
+| D3  | Toss-Inspired Card      | 현대 한국 핀테크, 카드 히어로          | ✅ PortfolioList 최적                                         |
+| D4  | Data-Dense Professional | 테이블 레이아웃, 브레드크럼, 고밀도    | ✅ PortfolioDetail Order History Table 최적                     |
+| D5  | Progressive Focus       | 단일 액션/화면, 접근성 우선            | 〇 주문 단계별 집중에 유용하나 Demo 흐름 느림           |
 | D6  | Hybrid Showcase         | D1+D2+D3+D4 요소 조합                  | ✅✅ **채택** — 금융 신뢰 + 기술 차별화 + 현대 UI 동시 달성 |
 
 ### Chosen Direction
@@ -1204,21 +1216,21 @@ for (const screen of screens) {
 | ------------------- | ---------------------- | ---------------------------------------------------------- |
 | **Login**           | D1 Minimal Trust       | 낮은 진입 장벽, 기관 금융 신뢰감                           |
 | **Navigation**      | D2 Architecture        | Actuator 상시 노출, Session Timer (`⏱ 14:52`), breadcrumb  |
-| **AccountList**     | D3 Toss-Card           | 현대적, 잔액 즉시 가독 (`text-xl font-mono`), ChevronRight |
-| **AccountDetail**   | D3 Hero + D4 Table     | 잔액 히어로 + 거래 내역 compact table + trace link         |
-| **Transfer Dialog** | D1 Dialog + Stepper    | 3-step Dialog, focus 유지, 인터뷰 임팩트                   |
-| **Transfer 완료**   | D2 Accent Summary      | `--color-accent` 참조번호 카드 + traceparent 노출          |
+| **PortfolioList**   | D3 Toss-Card           | 현대적, 포지션 즉시 가독 (`text-xl font-mono`), ChevronRight |
+| **PortfolioDetail** | D3 Hero + D4 Table     | 포지션 히어로 + 주문 내역 compact table + trace link       |
+| **주문 Dialog**     | D1 Dialog + Stepper    | 3-step Dialog, focus 유지, 인터뷰 임팩트                   |
+| **주문 체결 완료**  | D2 Accent Summary      | `--color-accent` ClOrdID 카드 + traceparent 노출           |
 | **Error/CB 상태**   | D1 구조 + `role=alert` | `break-keep` 에러 메시지, 재시도 버튼                      |
 
 ### Design Rationale
 
 1. **신뢰(Trust):** D1 Login Card의 공백과 절제는 한국 금융 기관의 시각적 언어와 공명한다. 불필요한 요소 제거 = 신뢰 신호.
 
-2. **기술 차별화(Architecture Visibility):** D2 Navigation에서 Actuator 링크와 Session Timer가 항상 보인다. Transfer 완료 화면의 `--color-accent` 블록에 traceparent가 리터럴로 표시된다. 인터뷰어가 "이건 진짜 분산 트레이싱이 있는 시스템"임을 즉각 인식.
+2. **기술 차별화(Architecture Visibility):** D2 Navigation에서 Actuator 링크와 Session Timer가 항상 보인다. 주문 체결 화면의 `--color-accent` 블록에 traceparent가 리터럴로 표시된다. 인터뷰어가 "이건 진짜 분산 트레이싱이 있는 시스템"임을 즉각 인식.
 
-3. **현대 핀테크(Modern FinTech):** D3 AccountList의 카드형 잔액 표시는 Toss·KakaoBank 사용자에게 친숙하다. 인터뷰어의 "아, 이거 써봤어요" 반응 유발.
+3. **현대 핀테크(Modern FinTech):** D3 PortfolioList의 카드형 포지션 표시는 Toss·KakaoBank 사용자에게 친숙하다. 인터뷰어의 "아, 이거 써봤어요" 반응 유발.
 
-4. **데이터 밀도(Data Density):** D4 Transaction Table의 compact 레이아웃은 개발자 페르소나(인터뷰어)에게 최적 — 한 화면에 날짜, 상대방, 금액, 상태, trace 링크 모두 표시.
+4. **데이터 밀도(Data Density):** D4 Order History Table의 compact 레이아웃은 개발자 페르소나(인터뷰어)에게 최적 — 한 화면에 날짜, 종목명, 금액, 상태, trace 링크 모두 표시.
 
 5. **일관성 보장:** 4개 Direction을 혼합하더라도 `globals.css` OKLCH 토큰 단일 소스가 시각적 일관성을 유지한다.
 
@@ -1232,17 +1244,17 @@ for (const screen of screens) {
 
 - `Navigation.tsx` — Logo + breadcrumb + Actuator link
 - `LoginCard.tsx` — D1 Minimal Trust Card
-- `AccountList.tsx` + `AccountCard.tsx` — D3 Card with balance hero
+- `PortfolioList.tsx` + `PortfolioCard.tsx` — D3 Card with position hero
 
 **Phase 2 (P0 — 핵심 플로우):**
 
-- `AccountDetail.tsx` — D3 Hero Balance + transfer button
-- `TransferDialog.tsx` — Dialog, 3-step Stepper
-- `TransferSummary.tsx` — D2 Accent Card with ref + traceparent
+- `PortfolioDetail.tsx` — D3 Hero Position + order button
+- `OrderDialog.tsx` — Dialog, 3-step Stepper
+- `OrderSummary.tsx` — D2 Accent Card with ClOrdID + traceparent
 
 **Phase 3 (P1 — 데이터 레이어):**
 
-- `TransactionTable.tsx` — D4 compact table with trace link
+- `OrderHistoryTable.tsx` — D4 compact table with trace link
 - Breadcrumb 통합 (`aria-label="breadcrumb"` + `aria-current="page"`)
 
 **Phase 4 (P1 — 상태 관리):**
@@ -1258,12 +1270,12 @@ for (const screen of screens) {
 
 | `data-testid`                 | 화면              | 용도                                |
 | ----------------------------- | ----------------- | ----------------------------------- |
-| `transaction-row-{id}`        | AccountDetail     | 거래 행 단위 셀렉터                 |
-| `transaction-amount-{id}`     | AccountDetail     | 금액 셀                             |
-| `transaction-status-{id}`     | AccountDetail     | 상태 배지 셀                        |
-| `transaction-trace-link-{id}` | AccountDetail     | Actuator 추적 링크                  |
-| `breadcrumb-accounts`         | AccountDetail nav | "계좌 목록" 링크                    |
-| `breadcrumb-current`          | AccountDetail nav | 현재 페이지 (`aria-current="page"`) |
+| `order-row-{id}`              | PortfolioDetail     | 주문 행 단위 셀렉터                 |
+| `order-amount-{id}`           | PortfolioDetail     | 금액 셀                             |
+| `order-status-{id}`           | PortfolioDetail     | 상태 배지 셀                        |
+| `order-trace-link-{id}`       | PortfolioDetail     | Actuator 추적 링크                  |
+| `breadcrumb-accounts`         | PortfolioDetail nav | "계좌 목록" 링크                    |
+| `breadcrumb-current`          | PortfolioDetail nav | 현재 페이지 (`aria-current="page"`) |
 
 **신규 E2E TC (Step 9 추가):**
 
@@ -1273,8 +1285,8 @@ for (const screen of screens) {
   Then: "세션이 곧 만료됩니다. 계속 사용하시겠습니까?" Toast 표시
         "계속 사용" 버튼 클릭 시 GET /api/v1/auth/session 요청 전송
 
-[TC-10] AccountDetail breadcrumb 접근성
-  Given: AccountDetail 진입
+[TC-10] PortfolioDetail breadcrumb 접근성
+  Given: PortfolioDetail 진입
   Then: data-testid="breadcrumb-accounts" 링크에 "계좌 목록" 텍스트 존재
         data-testid="breadcrumb-current" 요소에 aria-current="page" 속성 존재
 ```
@@ -1289,10 +1301,10 @@ for (const screen of screens) {
 
 | #   | Journey            | 엔트리                         | 성공 정의                         | 연결 NFR               |
 | --- | ------------------ | ------------------------------ | --------------------------------- | ---------------------- |
-| J1  | Authentication     | `/login`                       | 세션 발급 (JSESSIONID) + AccountList 렌더링 | NFR-02, NFR-03         |
-| J2  | Account Discovery  | AccountList                    | AccountDetail 잔액·거래 내역 확인 | NFR-01, NFR-06         |
-| J3  | **Transfer A→B→C** | "이체하기" 버튼                | traceparent 포함 완료 화면        | NFR-04, NFR-05, NFR-06 |
-| J4  | Error Recovery     | Transfer 실패 / CB / 세션 만료 | 사용자가 정상 경로 복귀           | NFR-05, NFR-08         |
+| J1  | Authentication     | `/login`                       | 세션 발급 (JSESSIONID) + PortfolioList 렌더링 | NFR-02, NFR-03         |
+| J2  | Portfolio Discovery  | PortfolioList                  | PortfolioDetail 포지션·주문 내역 확인 | NFR-01, NFR-06         |
+| J3  | **Order A→B→C**  | "매도하기" 버튼                | traceparent 포함 체결 화면        | NFR-04, NFR-05, NFR-06 |
+| J4  | Error Recovery     | Order 실패 / CB / 세션 만료 | 사용자가 정상 경로 복귀           | NFR-05, NFR-08         |
 
 ### J1 — Authentication Flow
 
@@ -1303,8 +1315,8 @@ flowchart TD
     C --> D["로그인 버튼 클릭\n(login-submit)"]
     D --> E{API 응답}
     E -->|200 OK + Set-Cookie| F["JSESSIONID HttpOnly Cookie 자동설정\nmember 정보 useAuthStore 저장"]
-    F --> G["/accounts 리다이렉트"]
-    G --> H([AccountList 화면])
+    F --> G["/portfolio 리다이렉트"]
+    G --> H([PortfolioList 화면])
     E -->|401 Unauthorized| I["ErrorMessage (role=alert, break-keep)\n'아이디 또는 비밀번호가 올바르지 않습니다'"]
     I --> C
     E -->|Network Error| J["ErrorMessage: '네트워크 오류'"]
@@ -1333,74 +1345,74 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A([AccountList 진입]) --> B["V99 Seed Data 로딩\n(account-detail-loading)"]
+    A([PortfolioList 진입]) --> B["V99 Seed Data 로딩\n(account-detail-loading)"]
     B --> C{로딩 결과}
     C -->|성공| D["카드 렌더링\naccount-card-110234567890\naccount-card-220345678901"]
     C -->|API 오류| E["ErrorMessage\n재시도 버튼"]
     E --> B
-    D --> F["AccountCard 클릭"]
-    F --> G["AccountDetail 로딩\nbreadcrumb 업데이트\n(breadcrumb-accounts / breadcrumb-current)"]
+    D --> F["PortfolioCard 클릭"]
+    F --> G["PortfolioDetail 로딩\nbreadcrumb 업데이트\n(breadcrumb-accounts / breadcrumb-current)"]
     G --> H{상세 로딩}
-    H -->|성공| I["Hero 잔액 (detail-hero-balance)\nTransactionTable (transaction-list)"]
-    H -->|오류| J["ErrorMessage on AccountDetail"]
-    I --> K["거래 내역 행\ntransaction-row-{id}"]
+    H -->|성공| I["Hero 잔액 (detail-hero-balance)\nOrderHistoryTable (order-list)"]
+    H -->|오류| J["ErrorMessage on PortfolioDetail"]
+    I --> K["주문 내역 행\norder-row-{id}"]
     K --> L{사용자 선택}
-    L -->|trace link 클릭| M["Actuator 새 탭 열기\ntransaction-trace-link-{id}\n(target=_blank rel=noopener)"]
-    L -->|이체하기 클릭| N([Transfer Journey])
-    L -->|계좌 목록 이동| A
+    L -->|trace link 클릭| M["Actuator 새 탭 열기\norder-trace-link-{id}\n(target=_blank rel=noopener)"]
+    L -->|매도하기 클릭| N([Order Journey])
+    L -->|포트폴리오 목록 이동| A
 
-    I -->|빈 거래 목록| O["'아직 거래 내역이 없습니다'\n(transaction-list-empty)"]
+    I -->|빈 주문 목록| O["'아직 주문 내역이 없습니다'\n(order-list-empty)"]
 ```
 
 **최적화:**
 
-- 첫 번째 AccountCard: primary border로 시각 강조 (demo 진입 유도)
-- Transaction Table: 기본 10건, 스크롤 하단 시 +10건 페이징
+- 첫 번째 PortfolioCard: primary border로 시각 강조 (demo 진입 유도)
+- Order History Table: 기본 10건, 스크롤 하단 시 +10건 페이징
 - trace link: `target="_blank" rel="noopener noreferrer"` — NFR-06 보안
 
-### J3 — Transfer A→B→C (핵심 Proof Point)
+### J3 — Order A→B→C (핵심 Proof Point)
 
 ```mermaid
 flowchart TD
-    A([이체하기 클릭]) --> B["TransferDialog 열림\n(transfer-modal)\nStepper Step-A 활성화\n(transfer-stepper-step-a)"]
+    A([매도하기 클릭]) --> B["OrderDialog 열림\n(order-modal)\nStepper Step-A 활성화\n(order-stepper-step-a)"]
 
-    subgraph stepA ["Step A — 수취인 입력"]
-        B --> C["transfer-input-recipient 입력"]
-        C --> D{계좌 유효성 blur}
-        D -->|유효| E["수취인 이름 미리보기"]
+    subgraph stepA ["Step A — 종목 선택"]
+        B --> C["order-input-symbol 입력"]
+        C --> D{종목코드 유효성 blur}
+        D -->|유효| E["종목명 미리보기 (삼성전자)"]
         D -->|유효하지 않음| F["inline border-destructive 에러"]
         F --> C
         E --> G["다음 버튼 활성화"]
     end
 
-    G --> H["Stepper Step-B\n(transfer-stepper-step-b)"]
+    G --> H["Stepper Step-B\n(order-stepper-step-b)"]
 
-    subgraph stepB ["Step B — 금액 + OTP"]
-        H --> I["transfer-input-amount\n(blur → ₩쉼표 포맷, 내부 number)"]
-        I --> J{금액 유효성}
-        J -->|잔액 초과| JA["'잔액이 부족합니다 (현재: ₩X)'"]
-        J -->|일 한도 초과| JB["'일일 이체 한도 초과'"]
-        J -->|동일 계좌| JC["'같은 계좌로는 이체할 수 없습니다'"]
+    subgraph stepB ["Step B — 수량 + OTP"]
+        H --> I["order-input-qty\n(실시간 숫자 포맷, 최대 보유수량 표시)"]
+        I --> J{수량 유효성}
+        J -->|보유수량 초과| JA["'보유수량이 부족합니다 (가용: X주)'"]
+        J -->|일 한도 초과| JB["'일일 매도 한도 초과'"]
+        J -->|0 이하| JC["'1주 이상 입력해 주세요'"]
         JA & JB & JC --> I
         J -->|유효| K["OTP 입력\notp-input-0 ~ otp-input-5\naria-label='OTP n번째 자리'\n(마지막 칸 완성 → 확인 버튼 자동 포커스)"]
         K --> L{OTP 검증}
         L -->|성공| M["Stepper Step-C 활성화"]
         L -->|실패 1-2회| N["ErrorMessage: 'OTP 오류'\n재입력 (otp-input-0 자동 포커스)"]
         N --> K
-        L -->|실패 3회| O["OTP 잠금 + 이체 취소"]
+        L -->|실패 3회| O["OTP 잠금 + 주문 취소"]
     end
 
-    M --> P["이체 요약\n(수취인, 금액, 수수료)"]
-    P --> Q["이체하기 버튼"]
+    M --> P["주문 요약\n(종목, 수량, ClOrdID 미리보기)"]
+    P --> Q["주문하기 버튼"]
     Q --> R["disabled + Loader2 animate-spin"]
 
-    R --> S{이체 API}
-    S -->|201 Created| T["TransferSummary\ntransfer-summary-card\ntransfer-ref\ntransfer-trace-id"]
+    R --> S{주문 API}
+    S -->|201 Created| T["OrderSummary\norder-summary-card\norder-clordid\norder-trace-id\nposition-qty-after"]
     T --> U([완료 화면])
-    U --> V["계좌로 돌아가기\n(btn-outline)"]
-    V --> W([AccountDetail — 잔액 업데이트])
+    U --> V["포트폴리오로 돌아가기\n(btn-outline)"]
+    V --> W([PortfolioDetail — 포지션 업데이트])
 
-    S -->|503 + X-CB-State: OPEN| X["cb-fallback-msg (role=alert)\ntransfer-retry-btn\n(30초 카운트다운 후 재활성화)"]
+    S -->|503 + X-CB-State: OPEN| X["cb-fallback-msg (role=alert)\norder-retry-btn\n(10초 카운트다운 후 재활성화)"]
     X --> Y{재시도}
     Y -->|HALF-OPEN 성공| T
     Y -->|HALF-OPEN 실패| X
@@ -1414,12 +1426,12 @@ flowchart TD
 
 - OTP 마지막 칸 완성 → `"확인"` 버튼 자동 포커스 (submit 아님 — 의도치 않은 제출 방지)
 - 클라이언트 blur 검증 + 서버 submit 검증 이중 구조
-- Transfer 완료 화면: 참조번호 클립보드 복사 (P2, `CheckCircle` 피드백)
-- **Circuit Breaker 헤더:** `HTTP 503 + X-CB-State: OPEN + Retry-After: 30`
+- 주문 체결 화면: ClOrdID 클립보드 복사 (P2, `CheckCircle` 피드백)
+- **Circuit Breaker 헤더:** `HTTP 503 + X-CB-State: OPEN + Retry-After: 10`
 
 ```ts
-// TransferState (useReducer)
-type TransferState = {
+// OrderState (useReducer)
+type OrderState = {
   step:
     | "idle"
     | "step-a"
@@ -1428,7 +1440,7 @@ type TransferState = {
     | "submitting"
     | "complete"
     | "error";
-  recipient: string;
+  symbol: string;
   amount: number;
   otp: string[]; // 6자리
   otpAttempts: number; // 최대 3회
@@ -1449,10 +1461,10 @@ flowchart TD
     C --> D["5초 후 자동 /login 리다이렉트\n또는 토스트 클릭 즉시"]
     D --> E([Login 화면])
 
-    B -->|CB OPEN 503| F["cb-fallback-msg (role=alert)\n'이체 서비스 일시 중단'"]
-    F --> G["transfer-retry-btn\n30초 카운트다운"]
+    B -->|CB OPEN 503| F["cb-fallback-msg (role=alert)\n'주문 서비스 일시 중단'"]
+    F --> G["order-retry-btn\n10초 카운트다운"]
     G --> H{재시도}
-    H -->|HALF-OPEN 성공| I([이체 정상 처리])
+    H -->|HALF-OPEN 성공| I([주문 정상 처리])
     H -->|CB 여전히 OPEN| F
 
     B -->|네트워크 오류| J["ErrorMessage + 재시도 버튼 (break-keep)"]
@@ -1461,7 +1473,7 @@ flowchart TD
     K -->|실패| J
 
     B -->|404 계좌 없음| M["'존재하지 않는 계좌'\n계좌 목록 링크"]
-    M --> N([AccountList])
+    M --> N([PortfolioList])
 
     B -->|500 서버 오류| O["ErrorMessage + 오류 코드 (mono)\nActuator 링크 병기 (nav-actuator-link)"]
 ```
@@ -1478,14 +1490,14 @@ flowchart TD
 <Routes>
   <Route path="/login" element={<LoginPage />} />
   <Route element={<ProtectedLayout />}>   {/* 세션 검증, 만료 시 /login?redirect 리다이렉트 */}
-    <Route path="/accounts" element={<AccountListPage />} />
-    <Route path="/accounts/:accountId" element={<AccountDetailPage />} />
+    <Route path="/portfolio" element={<PortfolioListPage />} />
+    <Route path="/portfolio/:symbol" element={<PortfolioDetailPage />} />
   </Route>
   <Route path="*" element={<Navigate to="/login" />} />
 </Routes>
 ```
 
-- `TransferDialog`는 AccountDetail 내 상태 — URL 변경 없음 (P2: `?modal=transfer`)
+- `OrderDialog`는 PortfolioDetail 내 상태 — URL 변경 없음 (P2: `?modal=order`)
 - `useAuthStore` (Zustand) → `member: MemberInfo | null` 만 관리; JSESSIONID는 브라우저 쿠키 자동 처리
 
 ### Journey Patterns
@@ -1493,7 +1505,7 @@ flowchart TD
 #### Navigation Pattern
 
 - 전 화면: `h-14` Navigation (Actuator link + Session Timer + logout)
-- AccountDetail: breadcrumb 추가 (`계좌 목록 > {계좌명}`)
+- PortfolioDetail: breadcrumb 추가 (`계좌 목록 > {계좌명}`)
 - 뒤로가기: `react-router navigate(-1)` 대신 breadcrumb 명시적 링크
 
 #### Loading Pattern
@@ -1510,13 +1522,13 @@ flowchart TD
 
 #### Progressive Disclosure Pattern
 
-- Transfer A → B → C: 각 단계에서 이전 단계 데이터 요약 표시
+- Order A → B → C: 각 단계에서 이전 단계 데이터 요약 표시
 - 취소는 항상 최초 액션으로 접근 가능 (Dialog X 버튼)
 
 ### Flow Optimization Principles
 
 1. **Minimal Distance to Value:** Login(4) → List(1) → Detail(1) → A(2) → B(8) → C(1) → Complete — 7단계
-2. **이중 검증:** 클라이언트 blur + 서버 submit — 이체 금액/한도/동일계좌
+2. **이중 검증:** 클라이언트 blur + 서버 submit — 주문 수량/한도/중복주문
 3. **에러는 맥락 내 복구:** 에러 발생 위치에서 재시도 가능, 루트 이동 최소화
 4. **로딩 상태 시각화:** `Loader2` 즉시 표시 → 인터뷰어 불안 방지
 5. **Demo 시나리오 내성:** OTP 1회 실패 → 재입력 성공도 Demo Script에 포함 → 자연스러운 흐름
@@ -1526,35 +1538,35 @@ flowchart TD
 | `data-testid`            | 화면          | 용도                  |
 | ------------------------ | ------------- | --------------------- |
 | `nav-logout-btn`         | Navigation    | 로그아웃 버튼 (FR-10) |
-| `transaction-list-empty` | AccountDetail | 빈 거래 내역 상태     |
+| `order-list-empty`        | PortfolioDetail | 빈 주문 내역 상태     |
 
 ### 신규 E2E TC (Step 10)
 
 ```
-[TC-11] Transfer 전체 Happy Path
-  Given: demo 로그인, 입출금 계좌 선택
-  When: 이체하기 → 수취인(220-345-678901) → 금액(50000) → OTP(123456) → 이체
-  Then: transfer-summary-card 표시
-        transfer-ref 텍스트 존재 (REF-XXXX 패턴)
-        transfer-trace-id 텍스트 존재 (traceparent 패턴)
-        AccountDetail 재진입 시 잔액 ₩50,000 감소 확인
+[TC-11] Order 전체 Happy Path
+  Given: demo 로그인, 포지션(005930 삼성전자 500주) 선택
+  When: 매도하기 → 종목(005930) → 수량(100) → OTP(123456) → 주문
+  Then: order-summary-card 표시
+        order-clordid 텍스트 존재 (UUID v4 패턴)
+        order-trace-id 텍스트 존재 (traceparent 패턴)
+        PortfolioDetail 재진입 시 포지션 100주 감소 확인
 
 [TC-12] Circuit Breaker Fallback
-  Given: fep-chaos-btn으로 CB OPEN 강제
-  When: 이체 시도
+  Given: fep-chaos-select IGNORE 선택으로 CB OPEN 강제
+  When: 주문 시도
   Then: cb-fallback-msg 표시
-        transfer-retry-btn 표시
+        order-retry-btn 표시
         HTTP 503 응답 확인
 
-[TC-13] 빈 거래 내역 상태
-  Given: 신규 계좌 (거래 없음)
-  Then: data-testid="transaction-list-empty" 표시
+[TC-13] 빈 주문 내역 상태
+  Given: 신규 계좌 (주문 없음)
+  Then: data-testid="order-list-empty" 표시
 
 [TC-14] OTP 1회 실패 후 재입력 성공
-  Given: Transfer Step-B 진입
-  When: OTP 잘못 입력 → error-message 확인 → OTP 재입력 → 이체
+  Given: Order Step-B 진입
+  When: OTP 잘못 입력 → error-message 확인 → OTP 재입력 → 주문
   Then: error-message 1회 표시 확인
-        transfer-summary-card 정상 표시
+        order-summary-card 정상 표시
 ```
 
 ---
@@ -1568,13 +1580,13 @@ shadcn/ui + Tailwind v4에서 즉시 사용 가능한 컴포넌트:
 | shadcn 컴포넌트  | FIX 용도                                        |
 | ---------------- | ----------------------------------------------- |
 | `Button`         | 전 화면 CTA, 취소, 로그아웃                     |
-| `Input`          | 로그인 ID/PW, 수취인, 금액 입력                 |
+| `Input`          | 로그인 ID/PW, 종목코드, 수량 입력                 |
 | `Label`          | 모든 Form 레이블                                |
-| `Dialog`         | `TransferDialog` (3-step 이체)                  |
+| `Dialog`         | `OrderDialog` (3-step 주문)                  |
 | `Toast / Sonner` | `session-expired-toast`, CB 알림                |
 | `Badge`          | 상태 배지 (완료/실패/처리중), 계좌 유형         |
 | `Separator`      | 카드 구분선                                     |
-| `Skeleton`       | `AccountCardSkeleton`, `TransactionRowSkeleton` |
+| `Skeleton`       | `PortfolioCardSkeleton`, `OrderRowSkeleton` |
 
 `LoginCard`는 shadcn `Card + Input + Button` 조합 — `LoginPage.tsx` 인라인 구성 (별도 파일 불필요).
 
@@ -1598,27 +1610,27 @@ interface NavigationProps {
 
 ---
 
-#### `AccountCard`
+#### `PortfolioCard`
 
-**Purpose:** AccountList 계좌 항목 — 잔액 즉시 가독  
+**Purpose:** PortfolioList 계좌 항목 — 잔액 즉시 가독  
 **Anatomy:** `[계좌명 + 유형 배지] / [잔액 text-xl mono] / [계좌번호 + ChevronRight]`  
 **States:** default / hover (shadow 증가) / focused  
 **Props:**
 
 ```ts
-interface AccountCardProps {
+interface PortfolioCardProps {
   account: Account;
   onClick: (accountId: string) => void;
 }
 ```
 
 **`data-testid`:** `account-card-{accountId}`  
-**Accessibility:** `<button>` 래퍼, `aria-label="{name} 계좌 상세 보기"`
+**Accessibility:** `<button>` 래퍼, `aria-label="{symbolName} 포지션 상세 보기"`
 
 **Skeleton:**
 
 ```tsx
-// AccountCardSkeleton (shadcn Skeleton)
+// PortfolioCardSkeleton (shadcn Skeleton)
 <div className="p-4 border border-border rounded-lg space-y-3">
   <Skeleton className="h-4 w-20" />
   <Skeleton className="h-7 w-32" />
@@ -1630,7 +1642,7 @@ interface AccountCardProps {
 
 #### `OTPInput`
 
-**Purpose:** Transfer Step-B 6자리 OTP 입력  
+**Purpose:** Order Step-B 6자리 OTP 입력  
 **Anatomy:** 6개 `<input>` 칸, 각 `w-10 h-12 text-center font-mono`  
 **States:** `default` / `filled` (border-primary + bg-primary/5) / `error` (border-destructive + bg-destructive/5) / `disabled`  
 **Props:**
@@ -1655,51 +1667,51 @@ interface OTPInputProps {
 
 ---
 
-#### `TransferStepper`
+#### `OrderStepper`
 
-**Purpose:** Transfer Dialog 3단계 진행 시각화  
+**Purpose:** 주문 Dialog 3단계 진행 시각화  
 **Anatomy:** 원(done/active/pending) + 연결선  
 **States per circle:** `done` (primary fill + ✓) / `active` (primary + ring) / `pending` (muted border)  
 **Props:**
 
 ```ts
-interface TransferStepperProps {
+interface OrderStepperProps {
   currentStep: "step-a" | "step-b" | "step-c";
 }
 // done: stepNum < current, active: === current, pending: > current
 ```
 
-**`data-testid`:** `transfer-stepper-step-{a/b/c}`  
-**Accessibility:** container `aria-label="이체 진행 상황"`
+**`data-testid`:** `order-stepper-step-{a/b/c}`  
+**Accessibility:** container `aria-label="주문 진행 상황"`
 
 ---
 
-#### `TransactionTable`
+#### `OrderHistoryTable`
 
-**Purpose:** AccountDetail 거래 내역 — 날짜/상대방/금액/상태/trace  
-**컬럼:** 날짜(20%) / 상대방(40%) / 금액(20%) / 상태(15%) / Trace(5%)  
+**Purpose:** PortfolioDetail 주문 내역 — 날짜/종목명/금액/상태/trace  
+**컬럼:** 날짜(20%) / 종목명(40%) / 금액(20%) / 상태(15%) / Trace(5%)  
 **금액 색상 규칙:**
 
-- 입금 (`amount > 0`): `+₩X,XXX` / `text-success`
-- 출금 (`amount < 0`): `-₩X,XXX` / `text-foreground`
+- 매수/CREDIT (`amount > 0`): `+₩X,XXX` / `text-success`
+- 매도/DEBIT (`amount < 0`): `-₩X,XXX` / `text-foreground`
 - 실패 상태: 금액 색상 변경 없음, 상태 배지만 `badge-error`  
   **Props:**
 
 ```ts
-interface TransactionTableProps {
-  transactions: Transaction[];
+interface OrderHistoryTableProps {
+  orders: Order[];
   isLoading?: boolean;
   actuatorBaseUrl?: string; // VITE_ACTUATOR_URL
 }
 ```
 
-**`data-testid`:** `transaction-list`, `transaction-row-{id}`, `transaction-amount-{id}`, `transaction-status-{id}`, `transaction-trace-link-{id}`, `transaction-list-empty`  
+**`data-testid`:** `order-list`, `order-row-{id}`, `order-amount-{id}`, `order-status-{id}`, `order-trace-link-{id}`, `order-list-empty`  
 **Accessibility:** `<table>` + `<thead scope="col">`, trace `aria-label="Actuator에서 {id} 추적"`
 
 **Skeleton:**
 
 ```tsx
-// TransactionRowSkeleton (×3)
+// OrderRowSkeleton (×3)
 <tr>
   <td>
     <Skeleton className="h-3 w-16" />
@@ -1721,23 +1733,23 @@ interface TransactionTableProps {
 
 ---
 
-#### `TransferSummary`
+#### `OrderSummary`
 
-**Purpose:** 이체 완료 화면 — 참조번호 + traceparent 강조  
-**Anatomy:** `CheckCircle + "이체 완료"` / `AccentCard(참조번호)` / `AccentCard(trace ID)` / `btn-outline "계좌로 돌아가기"`  
+**Purpose:** 주문 체결 화면 — ClOrdID + traceparent 강조  
+**Anatomy:** `CheckCircle + "주문 체결"` / `AccentCard(ClOrdID)` / `AccentCard(trace ID)` / `btn-outline "포트폴리오로 돌아가기"`  
 **Props:**
 
 ```ts
-interface TransferSummaryProps {
+interface OrderSummaryProps {
   referenceNo: string;
   traceId: string;
   amount: number;
-  recipient: string;
+  symbol: string;
   onBack: () => void;
 }
 ```
 
-**`data-testid`:** `transfer-summary-card`, `transfer-ref`, `transfer-trace-id`  
+**`data-testid`:** `order-summary-card`, `order-clordid`, `order-trace-id`  
 **Accessibility:** `role="status"` on container, trace ID `break-all font-mono text-xs`
 
 ---
@@ -1757,7 +1769,7 @@ interface ErrorMessageProps {
 }
 ```
 
-**`data-testid`:** `error-message`, `transfer-retry-btn` (retry variant)  
+**`data-testid`:** `error-message`, `order-retry-btn` (retry variant)  
 **Accessibility:** `role="alert"`, `aria-live="assertive"`, 텍스트 `break-keep`
 
 ---
@@ -1791,51 +1803,51 @@ src/
       Breadcrumb.tsx
     auth/
       (LoginCard — LoginPage.tsx 인라인)
-    accounts/
-      AccountCard.tsx
-      AccountCardSkeleton.tsx
-      AccountList.tsx
-      AccountDetail.tsx
-      TransactionTable.tsx
-      TransactionRowSkeleton.tsx
-    transfer/
-      TransferDialog.tsx
-      TransferStepper.tsx
+    portfolio/
+      PortfolioCard.tsx
+      PortfolioCardSkeleton.tsx
+      PortfolioList.tsx
+      PortfolioDetail.tsx
+      OrderHistoryTable.tsx
+      OrderRowSkeleton.tsx
+    order/
+      OrderDialog.tsx
+      OrderStepper.tsx
       OTPInput.tsx
-      TransferSummary.tsx
+      OrderSummary.tsx
     common/
       ErrorMessage.tsx
   hooks/
     useSessionExpiry.ts
-    useTransfer.ts
+    useOrder.ts
   lib/
     utils.ts        ← cn() (shadcn 기본)
     formatters.ts   ← formatBalance, formatAccountNumber, formatDate
   types/
-    index.ts        ← Account, Transaction, AccountType, TransactionStatus
+    index.ts        ← Account, Order, PositionType, OrderStatus
 ```
 
 **공통 타입:**
 
 ```ts
 // src/types/index.ts
-export type AccountType = "입출금" | "적금";
-export type TransactionStatus = "완료" | "실패" | "처리중";
+export type PositionType = "위탁계좌" | "CMA";
+export type OrderStatus = "완료" | "실패" | "처리중";
 
 export interface Account {
   accountId: string;
   name: string;
-  type: AccountType;
+  type: PositionType;
   balance: number;
   accountNumber: string;
 }
 
-export interface Transaction {
+export interface Order {
   id: string;
   date: string; // ISO 8601
   counterpart: string;
-  amount: number; // 양수=입금, 음수=출금
-  status: TransactionStatus;
+  amount: number; // 양수=매수(CREDIT), 음수=매도(DEBIT)
+  status: OrderStatus;
   traceId: string;
 }
 ```
@@ -1867,17 +1879,17 @@ VITE_ACTUATOR_URL=http://localhost:8080
 
 **계좌번호 마스킹 정책:**
 
-- AccountList/Detail: 전체 표시 (본인 계좌)
-- Transfer 이체 확인 단계: `110-***-5678` 부분 마스킹
+- PortfolioList/Detail: 전체 표시 (본인 계좌)
+- 주문 확인 단계: `110-***-5678` 부분 마스킹
 
 ### Implementation Roadmap
 
 | Phase  | 컴포넌트                                                           | 이유             |
 | ------ | ------------------------------------------------------------------ | ---------------- |
-| **P0** | `Navigation`, `AccountCard`, `AccountList`, `AccountDetail`        | Demo 첫 화면     |
-| **P0** | `TransferDialog`, `TransferStepper`, `OTPInput`, `TransferSummary` | 핵심 Proof Point |
-| **P1** | `TransactionTable`, `ErrorMessage`, `SessionExpiryToast`           | 품질 + 완성도    |
-| **P2** | `AccountCardSkeleton`, `TransactionRowSkeleton`, 클립보드 복사     | 폴리싱           |
+| **P0** | `Navigation`, `PortfolioCard`, `PortfolioList`, `PortfolioDetail`        | Demo 첫 화면     |
+| **P0** | `OrderDialog`, `OrderStepper`, `OTPInput`, `OrderSummary` | 핵심 Proof Point |
+| **P1** | `OrderHistoryTable`, `ErrorMessage`, `SessionExpiryToast`           | 품질 + 완성도    |
+| **P2** | `PortfolioCardSkeleton`, `OrderRowSkeleton`, 클립보드 복사     | 폴리싱           |
 
 **Vitest 테스트 구조:**
 
@@ -1885,12 +1897,12 @@ VITE_ACTUATOR_URL=http://localhost:8080
 src/__tests__/
   components/
     OTPInput.test.tsx          ← 최우선 (포커스 이동 로직 복잡)
-    TransferStepper.test.tsx
-    TransactionTable.test.tsx
+    OrderStepper.test.tsx
+    OrderHistoryTable.test.tsx
     ErrorMessage.test.tsx
     SessionExpiryToast.test.tsx
   hooks/
-    useTransfer.test.ts
+    useOrder.test.ts
     useSessionExpiry.test.ts
   lib/
     formatters.test.ts
@@ -1901,11 +1913,11 @@ src/__tests__/
 | 컴포넌트           | DoD                                                        |
 | ------------------ | ---------------------------------------------------------- |
 | `Navigation`       | breadcrumb 조건부, logout 동작                             |
-| `AccountCard`      | 3개 상태, data-testid, aria-label                          |
+| `PortfolioCard`      | 3개 상태, data-testid, aria-label                          |
 | `OTPInput`         | 6칸 포커스 자동이동, filled/error 상태, aria-label 6개     |
-| `TransferStepper`  | 3단계 상태 전환, data-testid 3개                           |
-| `TransactionTable` | 빈 상태, 금액 색상 구분, trace link, skeleton              |
-| `TransferSummary`  | ref + traceId 표시, break-all, 계좌로 돌아가기             |
+| `OrderStepper`  | 3단계 상태 전환, data-testid 3개                           |
+| `OrderHistoryTable` | 빈 상태, 금액 색상 구분, trace link, skeleton              |
+| `OrderSummary`  | ref + traceId 표시, break-all, 포트폴리오로 돌아가기             |
 | `ErrorMessage`     | role=alert, retry 버튼 조건부, break-keep                  |
 | `SessionExpiryToast` | SSE 이벤트 수신, 연장 클릭, aria-live                   |
 
@@ -1916,8 +1928,8 @@ src/__tests__/
 ### Button Hierarchy
 
 ```
-Primary   (--primary)     : 메인 CTA — "로그인", "이체하기", "다음"
-Outline   (border-border) : 보조 액션 — "취소", "이전", "계좌로 돌아가기"
+Primary   (--primary)     : 메인 CTA — "로그인", "매도하기", "다음"
+Outline   (border-border) : 보조 액션 — "취소", "이전", "포트폴리오로 돌아가기"
 Ghost     (no border)     : 삼차 액션 — 로그아웃, 클립보드 복사(P2)
 Destructive               : FIX에서 미사용 (에러는 ErrorMessage 컴포넌트로 처리)
 ```
@@ -1925,15 +1937,15 @@ Destructive               : FIX에서 미사용 (에러는 ErrorMessage 컴포�
 **버튼 규칙:**
 
 - 한 화면/Dialog에 Primary 최대 1개
-- Primary 크기: Transfer Dialog 내 `w-full`, 페이지 레벨 `min-w-[80px]`
+- Primary 크기: 주문 Dialog 내 `w-full`, 페이지 레벨 `min-w-[80px]`
 - 두 버튼 나란히: `Outline(왼)` + `Primary(오)` — 취소 → 확인 순서 (한국 UX 관례)
-- Loading 중 텍스트 변경: `"이체하기"` → `"처리 중..."` + `Loader2 animate-spin mr-2`
-- `aria-label`도 동기화: `aria-label={isLoading ? "처리 중" : "이체하기"}`
+- Loading 중 텍스트 변경: `"매도하기"` → `"처리 중..."` + `Loader2 animate-spin mr-2`
+- `aria-label`도 동기화: `aria-label={isLoading ? "처리 중" : "매도하기"}`
 
 ```tsx
-<Button disabled={isLoading} aria-label={isLoading ? "처리 중" : "이체하기"}>
+<Button disabled={isLoading} aria-label={isLoading ? "처리 중" : "매도하기"}>
   {isLoading && <Loader2 className="size-4 animate-spin mr-2" />}
-  {isLoading ? "처리 중..." : "이체하기"}
+  {isLoading ? "처리 중..." : "매도하기"}
 </Button>
 ```
 
@@ -1943,7 +1955,7 @@ Destructive               : FIX에서 미사용 (에러는 ErrorMessage 컴포�
 | ------------------- | --------------------------- | ----------------------------------------------------- | -------------------------- |
 | 인라인 에러 (Input) | border-destructive + 메시지 | `<p className="text-destructive text-sm break-keep">` | "OTP가 올바르지 않습니다"  |
 | 페이지 에러 (API)   | `ErrorMessage` 컴포넌트     | `role="alert" aria-live="assertive"`                  | CB fallback, 네트워크 오류 |
-| 성공 (완료)         | 전용 완료 화면              | `TransferSummary` + `CheckCircle size-8`              | 이체 완료                  |
+| 성공 (완료)         | 전용 완료 화면              | `OrderSummary` + `CheckCircle size-8`              | 주문 체결 완료                  |
 | 경고 (세션)         | Toast (Sonner)              | `session-expired-toast`                               | "세션이 곧 만료됩니다"     |
 | 경고 (세션 만료)    | Toast (Sonner)              | `SessionExpiryToast` `role="alert"`                   | "5분 후 자동 로그아웃됩니다." |
 
@@ -1977,12 +1989,12 @@ Background (0) < Page Content (1) < Navigation (10) < Dialog Overlay (50) < Toas
 
 - 아이디 입력: `autoComplete="username"`
 - 비밀번호: `autoComplete="current-password"`
-- 수취인 계좌번호: `autoComplete="off"`
+- 종목코드 입력: `autoComplete="off"`
 - 금액: `autoComplete="off"`
 
 **검증 타이밍:**
 
-- `blur`: 계좌번호, 금액 (잔액 초과, 동일계좌, 한도 초과)
+- `blur`: 종목코드, 금액 (잔액 초과, 일일 한도 초과)
 - `submit`: 전체 재검증 (서버 최종 확인)
 - `change`: OTPInput만 — 입력 즉시 다음 칸 이동
 
@@ -1997,14 +2009,14 @@ submit  : number 타입으로 변환
 
 **필수 표시:** `*` 없음 — FIX의 모든 Input은 필수
 
-**수취인 미리보기 (blur 검증 성공 시):**
+**종목 검증 결과 (종목코드 blur 성공 시):**
 
 ```tsx
 {
-  recipientName && (
+  symbolName && (
     <div className="flex items-center gap-2 text-sm text-success mt-1">
       <CheckCircle className="size-4" />
-      <span>{recipientName}</span>
+      <span>{symbolName}</span>
     </div>
   );
 }
@@ -2017,11 +2029,11 @@ submit  : number 타입으로 변환
 **화면 전환 방식:**
 
 ```
-Login          → AccountList   : navigate('/accounts')
-AccountList    → AccountDetail : navigate('/accounts/:id')
-AccountDetail  → Transfer      : Dialog 열기 (URL 유지)
-Transfer       → AccountDetail : Dialog 닫기 → 데이터 refetch
-AccountDetail  → AccountList   : breadcrumb 클릭
+Login          → PortfolioList   : navigate('/portfolio')
+PortfolioList    → PortfolioDetail : navigate('/portfolio/:symbol')
+PortfolioDetail  → Order         : Dialog 열기 (URL 유지)
+Order          → PortfolioDetail : Dialog 닫기 → 데이터 refetch
+PortfolioDetail  → PortfolioList   : breadcrumb 클릭
 ```
 
 **SPA 포커스 관리 (WCAG 2.4.3):**
@@ -2038,9 +2050,9 @@ useEffect(() => {
 
 ### Modal & Overlay Patterns
 
-**TransferDialog 동작 규칙:**
+**OrderDialog 동작 규칙:**
 
-- 열기: `onOpenAutoFocus` → 첫 Input (`transfer-input-recipient`) 포커스
+- 열기: `onOpenAutoFocus` → 첫 Input (`order-input-symbol`) 포커스
 - 닫기 허용: `X` 버튼, `ESC` 키, 배경 클릭 → `RESET` dispatch
 - 닫기 차단: `step === 'submitting'` 상태에서 `X` 버튼 `disabled`, ESC `e.preventDefault()`
 - 포커스 트랩: shadcn Dialog 기본 제공 (Tab 사이클)
@@ -2048,7 +2060,7 @@ useEffect(() => {
 
 ```tsx
 <DialogContent
-  onOpenAutoFocus={(e) => { e.preventDefault(); recipientInputRef.current?.focus() }}
+  onOpenAutoFocus={(e) => { e.preventDefault(); symbolInputRef.current?.focus() }}
   onEscapeKeyDown={(e) => { if (isSubmitting) e.preventDefault() }}
 >/>
 ```
@@ -2060,18 +2072,18 @@ useEffect(() => {
 | 상황               | 패턴                                | 컴포넌트                    |
 | ------------------ | ----------------------------------- | --------------------------- |
 | 버튼 액션 중       | `Loader2 animate-spin` + `disabled` | Button 내부                 |
-| 페이지 데이터 로딩 | Skeleton 3개 항목                   | `AccountCardSkeleton` ×3    |
-| 거래 내역 로딩     | Skeleton 행 3개                     | `TransactionRowSkeleton` ×3 |
+| 페이지 데이터 로딩 | Skeleton 3개 항목                   | `PortfolioCardSkeleton` ×3    |
+| 주문 내역 로딩     | Skeleton 행 3개                     | `OrderRowSkeleton` ×3 |
 
 **Empty State 규칙:**
 
 ```tsx
 <div
-  data-testid="transaction-list-empty"
+  data-testid="order-list-empty"
   className="py-8 text-center text-muted text-sm"
 >
-  <p>아직 거래 내역이 없습니다</p>
-  <p className="text-xs mt-1">이체 후 거래가 여기에 표시됩니다</p>
+  <p>아직 주문 내역이 없습니다</p>
+  <p className="text-xs mt-1">주문 후 내역이 여기에 표시됩니다</p>
 </div>
 ```
 
@@ -2081,7 +2093,7 @@ useEffect(() => {
 **표준 컴포넌트 구현 구조 (모든 페이지):**
 
 ```tsx
-if (isLoading) return <AccountCardSkeleton count={3} />;
+if (isLoading) return <PortfolioCardSkeleton count={3} />;
 if (error) return <ErrorMessage message={error} onRetry={execute} />;
 if (!data?.length) return <EmptyState message="..." />;
 return <DataComponent data={data} />;
@@ -2095,36 +2107,36 @@ return <DataComponent data={data} />;
 | ------------------ | ------------ | ------------------------------------------ |
 | 계좌 잔액 (히어로) | `₩5,420,000` | `text-2xl font-bold font-mono`             |
 | 계좌 잔액 (카드)   | `₩5,420,000` | `text-xl font-bold font-mono text-primary` |
-| 거래 입금          | `+₩50,000`   | `font-mono text-success`                   |
-| 거래 출금          | `-₩200,000`  | `font-mono text-foreground`                |
-| 이체 확인 금액     | `₩50,000`    | `font-mono font-semibold`                  |
+| 체결 매수     | `+₩50,000`   | `font-mono text-success`                   |
+| 체결 매도     | `-₩200,000`  | `font-mono text-foreground`                |
+| 주문 확인 수량     | `₩50,000`    | `font-mono font-semibold`                  |
 
 - `₩0`: 숫자로 표현 ("잔액 없음" 텍스트 미사용 — 일관성)
 - 소수점 없음: `toLocaleString('ko-KR', { maximumFractionDigits: 0 })`
-- 출금 시 적색 사용 금지 — 실패 상태 배지만 `text-destructive`
+- 매도 시 적색 사용 금지 — 실패 상태 배지만 `text-destructive`
 
 **날짜/시간:** `MM/DD HH:mm` — `font-mono text-xs text-muted`
 
 **계좌번호:**
 
 - 목록/상세 전체 표시: `font-mono text-sm text-muted`
-- 이체 확인 단계 부분 마스킹: `110-***-5678` — `font-mono text-sm`
+- 주문 확인 단계 부분 마스킹: `110-***-5678` — `font-mono text-sm`
 
 **상태 배지:**
 
 ```ts
 // lib/badges.ts
-export const TRANSACTION_STATUS_BADGE = {
+export const ORDER_STATUS_BADGE = {
   완료: "bg-green-100 text-green-700",
   실패: "bg-red-100 text-red-700",
   처리중: "bg-yellow-100 text-yellow-700",
-} as const satisfies Record<TransactionStatus, string>;
+} as const satisfies Record<OrderStatus, string>;
 ```
 
 **trace ID / 참조번호:**
 
-- 강조 컨테이너: `--color-accent` 배경 (`TransferSummary`)
-- 인라인: `font-mono text-xs break-all text-muted` (TransactionTable)
+- 강조 컨테이너: `--color-accent` 배경 (`OrderSummary`)
+- 인라인: `font-mono text-xs break-all text-muted` (OrderHistoryTable)
 
 ### Common Utilities & Hooks
 
@@ -2160,7 +2172,7 @@ export function useApi<T>(apiFn: () => Promise<T>) {
 }
 ```
 
-> **`useApi` 적용 범위:** AccountList, AccountDetail 등 단순 fetch — Transfer는 복잡 다단계 상태로 별도 `useTransfer(useReducer)` 사용
+> **`useApi` 적용 범위:** PortfolioList, PortfolioDetail 등 단순 fetch — Order는 복잡 다단계 상태로 별도 `useOrder`er(useReducer)` 사용
 
 **`lib/errors.ts`:**
 
@@ -2187,7 +2199,7 @@ export const getErrorMessage = (err: unknown): string => {
 
 ```
 [TC-P01] 버튼 Loading 패턴
-  When: 이체하기 버튼 클릭
+  When: 매도하기 버튼 클릭
   Then: aria-label="처리 중", Loader2 아이콘 존재, button[disabled]
 
 [TC-P02] 에러 메시지 패턴
@@ -2195,12 +2207,12 @@ export const getErrorMessage = (err: unknown): string => {
   Then: role="alert" 존재, AlertCircle 아이콘 존재, break-keep 클래스
 
 [TC-P03] 빈 상태 패턴
-  When: 거래 없는 계좌 AccountDetail
-  Then: transaction-list-empty 존재, "아직 거래 내역이 없습니다" 텍스트
+  When: 주문 없는 계좌 PortfolioDetail
+  Then: order-list-empty 존재, "아직 주문 내역이 없습니다" 텍스트
 
 [TC-P04] Dialog 포커스 패턴
-  When: TransferDialog 열림
-  Then: transfer-input-recipient 포커스
+  When: OrderDialog 열림
+  Then: order-input-symbol 포커스
         ESC 키 → Dialog 닫힘 (submitting 아닐 때)
         Submit 중 ESC → Dialog 유지
 ```
@@ -2221,15 +2233,15 @@ export const getErrorMessage = (err: unknown): string => {
 
 - `max-w-lg` (512px) 단일 컴럼 중앙 정렬
 - Navigation `h-14` 상단 고정, Actuator + Session Timer + logout 모두 표시
-- TransferDialog `max-w-md` 중앙 오버레이
-- TransactionTable 5컴럼 모두 표시
+- OrderDialog `max-w-md` 중앙 오버레이
+- OrderHistoryTable 5컴럼 모두 표시
 
 **Mobile (< 640px):**
 
 - 단일 컴럼 변경 없음 (`max-w-lg px-4` 구조 유지)
-- TransactionTable 컴럼 축약:
+- OrderHistoryTable 컴럼 축약:
   ```tsx
-  // 날짜: hidden → 상대방 새빗 서브텍스트로 대체
+  // 날짜: hidden → 종목명 서브텍스트로 대체
   <th className="hidden sm:table-cell">날짜</th>
   <td>
     <div>{counterpart}</div>
@@ -2248,7 +2260,7 @@ export const getErrorMessage = (err: unknown): string => {
 
 | 이름 | 폭     | FIX 적용                                       |
 | ---- | ------ | ---------------------------------------------- |
-| `sm` | 640px  | TransactionTable 날짜/trace 컴럼 표시          |
+| `sm` | 640px  | OrderHistoryTable 날짜/trace 컴럼 표시          |
 | `md` | 768px  | Navigation Actuator 텍스트, Session Timer 표시 |
 | `lg` | 1024px | 추가 변경 없음 (단일 컴럼 유지)                |
 
@@ -2284,7 +2296,7 @@ export const getErrorMessage = (err: unknown): string => {
 | 3.3.1 Error Identification   | A    | `role="alert"` + 구체적 에러 텍스트                          |
 | 3.3.2 Labels or Instructions | A    | 모든 Input `<label htmlFor>`                                 |
 | 4.1.2 Name, Role, Value      | A    | `aria-label`, `aria-busy`, `aria-current`                    |
-| 4.1.3 Status Messages        | AA   | `role="status"` TransferSummary, `role="alert"` ErrorMessage |
+| 4.1.3 Status Messages        | AA   | `role="status"` OrderSummary, `role="alert"` ErrorMessage |
 
 **`aria-live` 패턴 주의:**
 
@@ -2308,7 +2320,7 @@ export const getErrorMessage = (err: unknown): string => {
 
 ```bash
 npm run test:a11y   # playwright test e2e/a11y.spec.ts
-# 4개 화면: Login, AccountList, AccountDetail, TransferModal
+# 4개 화면: Login, PortfolioList, PortfolioDetail, OrderModal
 # axe violations = 0 목표
 ```
 
@@ -2317,8 +2329,8 @@ npm run test:a11y   # playwright test e2e/a11y.spec.ts
 ```
 □ Tab 순서: Login ID → PW → 로그인 버튼
 □ Enter: 로그인 버튼 제출
-□ AccountList: Tab으로 카드 이동, Enter로 상세 진입
-□ TransferDialog: Tab 포커스 트랩 확인
+□ PortfolioList: Tab으로 카드 이동, Enter로 상세 진입
+□ OrderDialog: Tab 포커스 트랩 확인
 □ OTPInput: 숫자 입력 → 다음 칸 자동 이동
 □ Dialog ESC: 닫혈 확인 (Submit 중 제외)
 □ breadcrumb: Tab 접근, Enter 이동
@@ -2439,7 +2451,7 @@ export function useMediaQuery(query: string): boolean {
 const prefersReduced = useMediaQuery('(prefers-reduced-motion: reduce)')
 <Button disabled={isLoading}>
   {isLoading && !prefersReduced && <Loader2 className="size-4 animate-spin mr-2" />}
-  {isLoading ? "처리 중..." : "이체하기"}
+  {isLoading ? "처리 중..." : "매도하기"}
 </Button>
 ```
 
@@ -2457,24 +2469,24 @@ const prefersReduced = useMediaQuery('(prefers-reduced-motion: reduce)')
 ```
 [TC-R01] 모바일 레이아웃 (375px)
   Given: viewport width=375
-  Then: AccountList 가로 오버플로우 없음
-        TransactionTable 날짜/trace 컴럼 숨김
+  Then: PortfolioList 가로 오버플로우 없음
+        OrderHistoryTable 날짜/trace 컴럼 숨김
         OTPInput 6칸 화면 내 모두 표시
 
 [TC-R02] 화면공유 모드 (800px)
   Given: viewport width=800
   Then: Navigation Actuator 텍스트 표시
         Session Timer 표시
-        TransactionTable 전체 컴럼 표시
+        OrderHistoryTable 전체 컴럼 표시
 
 [TC-A01] 전체 화면 axe violations = 0
-  Given: Login, AccountList, AccountDetail, TransferModal 순회
+  Given: Login, PortfolioList, PortfolioDetail, OrderModal 순회
   Then: violations.length === 0 (각 화면)
 
 [TC-A02] 키보드 전용 Login
   Given: 마우스 없이 Tab+Enter만 사용
   When: Tab×3 → Enter
-  Then: AccountList 화면 진입 성공
+  Then: PortfolioList 화면 진입 성공
 
 [TC-A03] 스크린리더 에러 알림
   Given: Login 실패
@@ -2483,7 +2495,7 @@ const prefersReduced = useMediaQuery('(prefers-reduced-motion: reduce)')
 
 [TC-A04] prefers-reduced-motion Loader2 fallback
   Given: prefers-reduced-motion: reduce 설정
-  When: 이체하기 클릭
+  When: 매도하기 클릭
   Then: animate-spin 클래스 없음, "처리 중..." 텍스트 표시
 ```
 

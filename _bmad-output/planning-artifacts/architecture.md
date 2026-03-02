@@ -30,59 +30,60 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 
 Six capability domains, all implemented in `channel-service` unless noted:
 
-| Domain        | Key Capabilities                                                                                              |
-| ------------- | ------------------------------------------------------------------------------------------------------------- |
-| Auth          | Login/logout, Redis session externalization, forced session invalidation (admin), session TTL enforcement     |
-| Account       | Authenticated account list with masked account numbers, account detail                                        |
-| Transfer      | 3-phase state machine: Prepare → OTP Verify → Execute; same-bank (InnoDB ACID) and interbank (FEP saga) paths |
-| Notification  | SSE `EventSource` stream — transfer results, deposit events, security alerts; session-expiry push event       |
-| Admin         | Force-logout (Redis bulk purge), audit log query (`ROLE_ADMIN` only)                                          |
-| Observability | Structured JSON logs, W3C `traceparent` propagation, Actuator metrics/circuit breaker exposure                |
+| Domain        | Key Capabilities                                                                                                      |
+| ------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Auth          | Login/logout, Redis session externalization, forced session invalidation (admin), session TTL enforcement             |
+| Portfolio     | Authenticated position list with masked account numbers, available cash, position detail per symbol                   |
+| Orders        | 3-phase state machine: Prepare → OTP Verify → Execute; Order Book matching (CoreBanking); FEP Gateway routing (FIX 4.2) |
+| Notification  | SSE `EventSource` stream — order execution results, position updates, security alerts; session-expiry push event      |
+| Admin         | Force-logout (Redis bulk purge), audit log query (`ROLE_ADMIN` only)                                                  |
+| Observability | Structured JSON logs, W3C `traceparent` propagation, Actuator metrics/circuit breaker exposure                        |
 
 7 non-negotiable acceptance scenarios drive CI gate:
 
-1. Same-bank transfer E2E happy path
-2. Concurrent debit (10 threads) → exactly 5 COMPLETED, balance = ₩0
-3. OTP failure blocks transfer
-4. Duplicate `clientRequestId` → idempotent result
+1. Stock order E2E happy path (Buy → Order Book → FEP FILLED)
+2. Concurrent sell (10 threads × 100 shares on 500-share position) → exactly 5 FILLED, available_qty = 0
+3. OTP failure blocks order execution
+4. Duplicate `ClOrdID` → idempotent result
 5. FEP timeout → circuit breaker OPEN after 3 failures
 6. Session invalidated after logout → 401 on next call
-7. SUM(DEBIT) == SUM(CREDIT) after N transfers
+7. SUM(BUY executed_qty) − SUM(SELL executed_qty) == positions.quantity after N executions
 
 **Test Layer Mapping (Architectural Constraint — prevents false-green mock tests):**
 
-| Scenario                         | Test Layer                                            | Rationale                                            |
-| -------------------------------- | ----------------------------------------------------- | ---------------------------------------------------- |
-| #1 E2E happy path                | `@SpringBootTest` + MockMvc + Testcontainers          | Full channel→core wiring required                    |
-| #2 Concurrent debit (10 threads) | Testcontainers + `ExecutorService` + `CountDownLatch` | Real InnoDB `select ... for update` — EAGER mode     |
-| #3 OTP failure blocks            | Unit test, `TransferSessionService`                   | Pure state machine logic, no I/O                     |
-| #4 Idempotency                   | Integration, real MySQL                               | `UNIQUE INDEX` behavior requires real engine         |
-| #5 Circuit breaker OPEN          | Integration + WireMock/FEP stub                       | Resilience4j sliding window config validation        |
-| #6 Session invalidated           | Integration, real Redis                               | Key deletion + `SETNX` behaviour requires real Redis |
-| #7 SUM(DEBIT)==SUM(CREDIT)       | Testcontainers, N-transfer loop                       | Ledger integrity requires real InnoDB transactions   |
+| Scenario                              | Test Layer                                            | Rationale                                               |
+| ------------------------------------- | ----------------------------------------------------- | ------------------------------------------------------- |
+| #1 E2E happy path                     | `@SpringBootTest` + MockMvc + Testcontainers          | Full channel→core→fep-gateway→fep-simulator wiring required |
+| #2 Concurrent sell (10 threads)       | Testcontainers + `ExecutorService` + `CountDownLatch` | Real InnoDB `select ... for update` on position row     |
+| #3 OTP failure blocks                 | Unit test, `OrderSessionService`                      | Pure state machine logic, no I/O                        |
+| #4 ClOrdID idempotency                | Integration, real MySQL                               | `UNIQUE INDEX` behavior requires real engine            |
+| #5 Circuit breaker OPEN               | Integration + WireMock/FEP stub                       | Resilience4j sliding window config validation           |
+| #6 Session invalidated                | Integration, real Redis                               | Key deletion + `SETNX` behaviour requires real Redis    |
+| #7 SUM(BUY)−SUM(SELL)==positions.quantity | Testcontainers, N-execution loop                      | Position integrity requires real InnoDB transactions    |
 
 **Non-Functional Requirements:**
 
 | NFR Category                | Requirement                                                                              | Architectural Impact                                                                                 |
 | --------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| Concurrency                 | `SELECT FOR UPDATE` on balance writes                                                    | Pessimistic lock on account entity (EAGER mode); QueryDSL daily-limit runs inside lock scope         |
-| Concurrent session race     | `AUTHED→EXECUTING` state transition must be atomic                                       | Redis `SET txn-lock:{sessionId} NX EX 30` before CoreBanking call; `NX` failure → `CORE-003`         |
-| Security                    | HttpOnly + Secure + SameSite=Strict cookie, CSRF Synchronizer Token, PII masking, step-up OTP | Spring Security + `HttpSessionCsrfTokenRepository` + `AccountNumber.masked()` in `channel-common`    |
-| Resilience                  | Circuit breaker OPEN after 3 FEP timeouts; compensating credit on failure                | Resilience4j on `FepClient`; saga compensation in `InterbankTransferService` (Channel-owned)         |
-| Idempotency                 | `client_request_id` UNIQUE at DB level                                                   | `UNIQUE INDEX idx_idempotency (client_request_id)` in `core_db.transfer_records`                     |
+| Concurrency                 | `SELECT FOR UPDATE` on position writes                                                   | Pessimistic lock on position entity (EAGER mode); QueryDSL daily-sell-limit runs inside lock scope   |
+| Concurrent session race     | `AUTHED→EXECUTING` state transition must be atomic                                       | Redis `SET ch:txn-lock:{sessionId} NX EX 30` before CoreBanking call; `NX` failure → `CORE-003`      |
+| Security                    | HttpOnly + Secure + SameSite cookie, CSRF Double Submit Cookie, PII masking, step-up OTP | Spring Security + `CookieCsrfTokenRepository` (`XSRF-TOKEN` → `X-XSRF-TOKEN`) + `AccountNumber.masked()` in `channel-common`  |
+| Resilience                  | Circuit breaker OPEN after 3 FEP timeouts (Resilience4j `slidingWindowSize=3`); compensating position reversal on post-commit failure | **단일 CB 레이어**: Resilience4j `@CircuitBreaker(name="fep")` on `FepClient` in **corebank-service** — `slidingWindowSize=3`, `failureRateThreshold=100`, `waitDurationInOpenState=10s`. CB OPEN preemptive: no `@Transactional`, no order record, no position change. Post-commit FEP failure: compensating position reversal via `OrderSessionRecoveryService` (corebank-service-owned). CB state: `localhost:8081/actuator/circuitbreakers` |
+| Idempotency                 | `ClOrdID` UNIQUE at DB level                                                             | `UNIQUE INDEX idx_clordid (cl_ord_id)` in `core_db.orders`                                          |
 | Observability (Demo)        | Actuator selectively exposed for screenshare demo                                        | `circuitbreakers` + `health` endpoints accessible without auth; FEP chaos endpoint robustly designed |
-| Rate Limiting               | Login: 5 req/min/IP; OTP: 3/session; Prepare: 10 req/min/userId                          | Bucket4j + Redis-backed `Filter` on 3 endpoints only                                                 |
-| Test Coverage               | CoreBanking ≥ 80%, Channel ≥ 70%, FEP ≥ 60%                                              | JaCoCo in Gradle; real MySQL + Redis via Testcontainers (H2 disqualified at architecture level)      |
-| Cold Start (Demo Guarantee) | `docker compose up` → first API call ≤ 90s                                               | `depends_on: condition: service_healthy` mandatory; Flyway DDL targeting < 3s total migration time   |
+| Rate Limiting               | Login: 5 req/min/IP; OTP: 3/session; Order Prepare: 10 req/min/userId                   | Bucket4j + Redis-backed `Filter` on 3 endpoints only                                                |
+| Test Coverage               | CoreBanking ≥ 80%, Channel ≥ 70%, FEP Gateway ≥ 60%, FEP Simulator ≥ 60%                 | JaCoCo in Gradle; real MySQL + Redis via Testcontainers (H2 disqualified for runtime/integration, OpenAPI generation-only profile exception) |
+| Cold Start (Demo Guarantee) | `docker compose up` → first API call ≤ 120s (Vault + vault-init initialization accounts for extended window vs. non-Vault baseline) | `depends_on: condition: service_healthy` mandatory; Flyway DDL targeting < 3s total migration time  |
 
 **Scale & Complexity:**
 
-- Primary domain: Distributed backend system (fintech / Korean banking)
+- Primary domain: Distributed backend system (fintech / Korean bank-affiliated securities 채널계/계정계/대외계)
 - Complexity level: **High**
-- Deployable units: 3 (channel-service:8080, corebank-service:8081, fep-simulator:8082)
-- Databases: 2 MySQL schemas (`channel_db`, `core_db`) + Redis
-- Gradle modules: 6 channel modules + corebank + fep + channel-common
+- Deployable units: 4 (channel-service:8080, corebank-service:8081, fep-gateway:8083, fep-simulator:8082)
+- Databases: 3 MySQL schemas (`channel_db`, `core_db`, `fep_db`) + Redis
+- Gradle modules: 6 channel modules + corebank + fep-gateway + fep-simulator + channel-common
 - Frontend: React Web (5 screens, demo layer only)
+- FIX Protocol: FIX 4.2 via QuickFIX/J (FEP Gateway ↔ FEP Simulator segment only)
 
 ---
 
@@ -90,17 +91,17 @@ Six capability domains, all implemented in `channel-service` unless noted:
 
 | Constraint                         | Detail                                                                                                                                                                                                |
 | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Java 21 + Spring Boot 3.x          | Non-negotiable; baseline for all 3 services                                                                                                                                                           |
-| MySQL InnoDB only                  | H2 disqualified at architecture level — does not implement `SELECT FOR UPDATE` equivalently                                                                                                           |
+| Java 21 + Spring Boot 3.x          | Non-negotiable; baseline for all 4 backend services (`channel-service`, `corebank-service`, `fep-gateway`, `fep-simulator`)                                                                          |
+| MySQL InnoDB only                  | H2 disqualified for runtime/integration paths — does not implement `SELECT FOR UPDATE` equivalently; exception: build-time OpenAPI generation profile may use isolated in-memory datasource only for spec emission |
 | Testcontainers mandatory           | `MySQLContainer("mysql:8.0")` + `RedisContainer` for all integration tests; `testcontainers.reuse.enable=true` in `~/.testcontainers.properties` is **CI-gate prerequisite**                          |
-| No distributed transactions        | Compensating state transitions for interbank path; InnoDB ACID for same-bank path                                                                                                                     |
-| Redis EXPIRE enforcement           | Session TTL 30min, OTP TTL 180s, TransferSession TTL 600s — no scheduler cleanup                                                                                                                      |
-| QueryDSL APT config                | **Week 1 spike required.** Done = `QTransferRecord` generated, confirmed in `build/generated/sources/annotationProcessor`, one working `JPAQueryFactory` query executing against Testcontainers MySQL |
+| No distributed transactions        | Compensating state transitions for FEP order path; InnoDB ACID for order session commit                                                                                                               |
+| Redis EXPIRE enforcement           | Session TTL 30min, OTP TTL 600s, OrderSession TTL 600s — no scheduler cleanup                                                                                                                        |
+| QueryDSL APT config                | **Week 1 spike required.** Done = `QOrder` generated, confirmed in `build/generated/sources/annotationProcessor`, one working `JPAQueryFactory` query (daily-sell-qty-sum) executing against Testcontainers MySQL |
 | `docker compose up` cold start     | `depends_on: condition: service_healthy` on all services; Flyway DDL targeting < 3s migration on cold boot                                                                                            |
 | No Keycloak (MVP)                  | Spring Security `AuthenticationProvider` interface used (Spring standard, zero extra cost — enables Keycloak drop-in post-MVP)                                                                        |
 | No Kafka (MVP)                     | Synchronous REST between services; Kafka/outbox pattern is vision-phase — no `NotificationPublisher` interface pre-built                                                                              |
-| Gradle module dependency direction | `channel-common` = zero Spring dependencies (pure Java only); nothing depends on `channel-app` except entry point                                                                                     |
-| X-Internal-Secret filter           | **Copy-paste for MVP across 3 services** (~20 lines each); `// TODO: extract to core-common` comment marks each copy; conscious duplication documented here                                           |
+| Gradle module dependency direction | `channel-common` = zero Spring dependencies (pure Java only); nothing depends on `channel-service` except entry point                                                                                     |
+| X-Internal-Secret filter           | **Copy-paste for MVP across 3 internal services** (~20 lines each: corebank/fep-gateway/fep-simulator); `// TODO: extract to core-common` comment marks each copy; conscious duplication documented here |
 
 ---
 
@@ -108,17 +109,17 @@ Six capability domains, all implemented in `channel-service` unless noted:
 
 | Concern                  | Scope                                | Implementation                                                                                                                                                                                                                                                                                                                                                                              |
 | ------------------------ | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Trace propagation        | All 3 services                       | `traceparent` + `X-Correlation-Id` headers; MDC injection via `OncePerRequestFilter`                                                                                                                                                                                                                                                                                                        |
+| Trace propagation        | All 4 backend services               | `traceparent` + `X-Correlation-Id` headers; MDC injection via `OncePerRequestFilter`                                                                                                                                                                                                                                                                                                        |
 | PII masking              | Channel layer (logs + API responses) | `AccountNumber.masked()` in `channel-common`; unit-tested — full number must never appear in output                                                                                                                                                                                                                                                                                         |
-| Error code taxonomy      | All services                         | API 응답: `CHANNEL-xxx` / `TRF-xxx` / `CORE-xxx` / `FEP-xxx` / `SYS-xxx` → `GlobalExceptionHandler` → standard response envelope; `AUTH-xxx`는 Spring Security 내부 코드 (RULE-031, P-F5)                                                                                                                                                                                                                                                                                        |
-| Docker network isolation | Compose layer                        | `external-net` (Channel only, port 8080 exposed), `core-net` (Channel↔CoreBanking), `fep-net` (CoreBanking↔FEP); no ports on CoreBanking or FEP                                                                                                                                                                                                                                             |
+| Error code taxonomy      | All services                         | API 응답: `CHANNEL-xxx` / `ORD-xxx` / `CORE-xxx` / `FEP-xxx` / `SYS-xxx` → `GlobalExceptionHandler` → standard response envelope; `AUTH-xxx`는 Spring Security 내부 코드 (RULE-031, P-F5). **FEP RC 코드**: `RC=9001 NO_ROUTE` / `RC=9002 POOL_EXHAUSTED` / `RC=9003 NOT_LOGGED_ON` / `RC=9004 TIMEOUT` / `RC=9005 KEY_EXPIRED` / `RC=9097 ORDER_REJECTED` / `RC=9098 CIRCUIT_OPEN` / `RC=9099 CONCURRENCY_FAILURE`                                                                                                                                                                                                                                                                                                |
+| Docker network isolation | Compose layer                        | `external-net` (Channel only, port 8080 exposed), `core-net` (Channel↔CoreBanking), `gateway-net` (CoreBanking↔FEP Gateway:8083), `fep-net` (FEP Gateway↔FEP Simulator:8082); no ports on CoreBanking, FEP Gateway, or FEP Simulator exposed to host                                                                                                                                                                                                                                                                                                                                             |
 | Internal API secret      | Service-to-service                   | `X-Internal-Secret` header validated by `OncePerRequestFilter` (copy-paste MVP); `INTERNAL_API_SECRET` env var                                                                                                                                                                                                                                                                              |
-| Saga ownership           | Channel ↔ CoreBanking                | **Channel-service is the saga orchestrator** — owns `InterbankTransferService`, calls CoreBanking execute, issues compensating credit on FEP failure; CoreBanking executes atomically                                                                                                                                                                                                       |
+| Saga ownership           | Channel ↔ CoreBanking                | **Channel-service is the saga orchestrator** — owns `OrderExecutionService`, calls CoreBanking execute, issues compensating position release on FEP failure; CoreBanking executes Order Book + position mutation atomically                                                                                                                                                                |
 | Audit logging            | Channel layer                        | `audit_logs` + `security_events` tables; scheduled purge (90/180 days)                                                                                                                                                                                                                                                                                                                      |
-| Rate limiting            | Channel layer                        | Bucket4j Filter on 3 endpoints only (login, OTP verify, transfer prepare)                                                                                                                                                                                                                                                                                                                   |
-| CSRF                     | Channel ↔ React                      | Synchronizer Token (`HttpSessionCsrfTokenRepository`); `GET /api/v1/auth/csrf` → 로그인 전 CSRF 토큰 조회; React axios interceptor injects `X-CSRF-TOKEN` on all non-GET; 로그인 성공 후 재조회 필수 (`changeSessionId()` 후 토큰 재발급) |
+| Rate limiting            | Channel layer                        | Bucket4j Filter on 3 endpoints only (login, OTP verify, order prepare)                                                                                                                                                                                                                                                                                                                   |
+| CSRF                     | Channel ↔ React/Mobile               | Double Submit Cookie (`CookieCsrfTokenRepository.withHttpOnlyFalse()`); `GET /api/v1/auth/csrf`로 `XSRF-TOKEN` 발급 후 모든 non-GET에 `X-XSRF-TOKEN` 주입; 로그인 성공 후 재조회 필수 (`changeSessionId()` 후 토큰 재발급) |
 | SSE lifecycle            | Channel ↔ Frontend                   | SSE endpoint is session-aware push channel; backend must push session-expiry event proactively before TTL expires; CORS `allowCredentials=true` must explicitly cover `/api/v1/notifications/stream`; production (cross-origin Vercel→EC2): `allowCredentials=true` + exact origins required (`fix-xxx.vercel.app`, `localhost:5173`); `EventSource({ withCredentials: true })` on frontend |
-| Demo infrastructure      | Actuator + FEP chaos                 | `circuitbreakers` + `health` accessible without auth for screenshare; `PUT /fep-internal/config` robustly designed (chaos endpoint is a demo use case, not test-only)                                                                                                                                                                                                                       |
+| Demo infrastructure      | Actuator + FEP chaos                 | `circuitbreakers` + `health` accessible without auth for screenshare; `PUT /fep-internal/rules` robustly designed (chaos endpoint is a demo use case, not test-only)                                                                                                                                                                                                                       |
 | ADR format               | Architecture document                | Key decisions use lightweight ADR: Context → Decision → Consequences; pessimistic lock rationale and simulation boundaries documented for verbatim interview narration                                                                                                                                                                                                                      |
 
 ---
@@ -129,11 +130,12 @@ _Decisions that look like shortcuts but are deliberate, with the production path
 
 | Simplification                                    | Why Correct for MVP                                                                    | Production Path                                                                        |
 | ------------------------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `X-Internal-Secret` copy-pasted across 3 services | 60 lines total; shared library adds Gradle publishing complexity with zero callers     | Extract to `core-common` library post-MVP; `// TODO` comment marks each copy           |
+| `X-Internal-Secret` copy-pasted across 3 internal services | ~60 lines total; shared library adds Gradle publishing complexity with zero callers | Extract to `core-common` library post-MVP; `// TODO` comment marks each copy           |
 | No `NotificationPublisher` interface abstraction  | Kafka is vision-phase; pre-building the interface adds speculative code with no caller | Add interface when Kafka is scoped; `NotificationService` → refactor boundary is clean |
 | TOTP (Google Authenticator RFC 6238) instead of SMS OTP | Real-world 2FA UX; no telephony costs; TOTP secret in Vault (NFR-grade key management); `OtpService` interface preserved for replaceability | Replace `TotpOtpService` with HSM-backed TOTP provider; Vault integration unchanged |
-| Synchronous REST between services                 | No Kafka needed for 3-service MVP; simpler to reason about and debug during demo       | Add Outbox pattern + Kafka when event streaming is scoped                              |
-| `fep-simulator` single chaos config (3 params)    | Bounded scope prevents FEP becoming its own project                                    | Expand fault injection modes post-MVP                                                  |
+| Synchronous REST between services                 | No Kafka needed for 4-backend-service MVP; simpler to reason about and debug during demo | Add Outbox pattern + Kafka when event streaming is scoped                              |
+| TLS Credential management (TLS_CERT/LOGON_PASSWORD/ADMIN_TOKEN) in `fep-gateway` | Real PKI/CA infrastructure adds external dependency; DB-managed credential store demonstrates the FIX 4.2 session security pattern (자격증명 생성·갱신·만료 관리) without external CA; `CredentialService` interface preserved for replaceability | Swap `LocalCredentialService` with real PKI/CA integration; `fep_security_keys` 테이블 구조 유지 |
+| `fep-simulator` `simulator_rules` 5-action rule engine | `simulator_rules` 테이블(APPROVE/DECLINE/IGNORE/DISCONNECT/MALFORMED_RESP + TTL + 금액/Symbol 매칭)은 단순 3-param mock을 넘어 실제 FEP 장애 유형을 시뮬레이션 — "단순 mock이 아니라 프로토콜 레벨 장애 패턴을 이해한다"는 포트폴리오 신호 | 규칙 엔진 범위는 MVP 완성 후 확장 가능 (Symbol-prefix 매칭, 시간대 스케줄 등) |
 
 ---
 
@@ -144,10 +146,10 @@ _Primary framing device for interviewer objections. Each boundary documented as:
 | Real Component          | FIX Simulator                                        | Interface Contract                                                            | Production Delta                                                | Talking Point                                              |
 | ----------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------- |
 | SMS OTP delivery gateway | TOTP via Google Authenticator (RFC 6238); secret in Vault `secret/fix/member/{memberId}/totp-secret` | `OtpService.generateSecret()` / `OtpService.confirmEnrollment()` / `OtpService.verify()` | Add SMS gateway if required; TOTP secret optionally from HSM; Vault stays | "I chose TOTP: stronger 2FA, zero telephony cost, Vault key management" |
-| 금융결제원 FEP gateway  | `fep-simulator` on port 8082                         | `POST /fep/v1/interbank/transfer` → `ACCEPTED`/`REJECTED`/`TIMEOUT_SIMULATED` | Replace `FepClient` baseUrl; same Resilience4j decorator        | "Tests the circuit breaker, not the wire"                  |
-| KYC/AML screening       | Not implemented                                      | Documented boundary in README                                                 | Add `KycService` at Prepare step                                | "Compliance boundary is explicit and documented"           |
-| 공인인증서 (공동인증서) | Spring Security session cookie                       | `AuthenticationProvider` interface                                            | Swap `AuthenticationProvider` implementation for PKI provider   | "Spring Security abstracts the trust anchor"               |
-| Real PII (주민등록번호) | Faker-generated test data                            | `AccountNumber.masked()` utility                                              | No change to masking logic; swap seed data                      | "Masking pattern is production-correct; data is synthetic" |
+| KRX FEP gateway (FIX 4.2)  | **FEP Gateway** (`fep-gateway:8083`) + **FEP Simulator** (`fep-simulator:8082`) — Gateway는 FIX 4.2 변환·라우팅·키 관리를 담당; Simulator는 가상 거래소로 QuickFIX/J SocketAcceptor 역할 + Chaos 주입 | `POST /fep/v1/orders` (JSON/HTTP, CoreBanking→Gateway) → Gateway가 FIX 4.2 `NewOrderSingle(35=D)`로 변환 → Simulator 응답 `ExecutionReport(35=8)` | FEP Gateway의 `fep_institutions.host/port`를 실제 KRX 기관 IP로 교체; `fep_protocol_specs` 기관별 FIX 4.2 필드 명세 커스터마이즈 | "Gateway가 프로토콜 변환·키 관리를 담당하고; CB는 corebank-service FepClient에서 관리; Simulator가 거래소를 모사한다 — 와이어는 교체되지만 아키텍처는 유지된다" |
+| KSD (예탁결제원) settlement | Not implemented                                      | Documented boundary in README                                                 | Add `SettlementService` at post-execution step                          | "Settlement boundary is explicit and documented"           |
+| 공인인증서 (공동인증서) | Spring Security session cookie                       | `AuthenticationProvider` interface                                            | Swap `AuthenticationProvider` implementation for PKI provider           | "Spring Security abstracts the trust anchor"               |
+| Real PII (주민등록번호) | Faker-generated test data                            | `AccountNumber.masked()` utility                                              | No change to masking logic; swap seed data                              | "Masking pattern is production-correct; data is synthetic" |
 
 ---
 
@@ -155,7 +157,7 @@ _Primary framing device for interviewer objections. Each boundary documented as:
 
 ### Primary Technology Domain
 
-Distributed backend system — Gradle multi-module monolith + 2 satellite services + React demo frontend. Two starters apply: Spring Initializr (backend × 3 services) + Vite (frontend).
+Distributed backend system — Gradle multi-module monolith + 3 satellite services (corebank, fep-gateway, fep-simulator) + React demo frontend. Two starters apply: Spring Initializr (backend × 4 services) + Vite (frontend).
 
 ---
 
@@ -163,8 +165,8 @@ Distributed backend system — Gradle multi-module monolith + 2 satellite servic
 
 **ADR: Spring MVC (servlet stack) over WebFlux**
 
-- **Context:** Three Spring Boot services with blocking JPA + `@Transactional` + `@Lock(PESSIMISTIC_WRITE)` data layer.
-- **Decision:** All 3 services use `spring-boot-starter-web` (servlet stack). WebFlux rejected.
+- **Context:** Four Spring Boot backend services with blocking JPA + `@Transactional` + `@Lock(PESSIMISTIC_WRITE)` data layer.
+- **Decision:** All 4 backend services use `spring-boot-starter-web` (servlet stack). WebFlux rejected.
 - **Consequences:** `SseEmitter` + `@Async` for SSE (correct for blocking data layer). Mixing reactive controllers with blocking JPA would block the event loop — a production footgun. All services on servlet stack for homogeneity and blocking data layer compatibility.
 
 **Initialization — `channel-service` (boot entry module):**
@@ -184,7 +186,8 @@ spring init \
 
 **Dependencies for `corebank-service`:** `web,data-jpa,data-redis,actuator,validation,flyway,mysql`
 
-**Dependencies for `fep-app`:** `web,actuator,validation`
+**Dependencies for `fep-gateway`:** `web,actuator,validation`
+**Dependencies for `fep-simulator`:** `web,actuator,validation`
 
 **Additional `build.gradle` dependencies (manually added):**
 
@@ -196,10 +199,10 @@ annotationProcessor 'com.querydsl:querydsl-apt:5.x.x:jakarta'
 // Resilience4j
 implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.x.x'
 
-// Bucket4j (rate limiting, channel-app only)
+// Bucket4j (rate limiting, channel-service only)
 implementation 'com.giffing.bucket4j.spring.boot.starter:bucket4j-spring-boot-starter:0.x.x'
 
-// springdoc-openapi (channel-app + fep-app only)
+// springdoc-openapi (channel-service + corebank-service + fep-gateway + fep-simulator for spec generation)
 implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.x.x'
 
 // Testcontainers (all modules via testing-support)
@@ -208,7 +211,7 @@ testImplementation project(':testing-support')
 
 **QueryDSL APT Placement Rule:**
 
-> `annotationProcessor 'com.querydsl:querydsl-apt:...:jakarta'` belongs **only on the module that declares `@Entity` classes** (e.g., `corebank-domain`). Q-class output dir: `build/generated/sources/annotationProcessor/java/main`. The consuming module (e.g., `corebank-app`) adds `implementation project(':corebank-domain')` — the Q-classes are resolved transitively. **This is the Week 1 spike's actual complexity**, not dependency resolution.
+> `annotationProcessor 'com.querydsl:querydsl-apt:...:jakarta'` belongs **only on the module that declares `@Entity` classes** (e.g., `corebank-domain`). Q-class output dir: `build/generated/sources/annotationProcessor/java/main`. The consuming module (e.g., `corebank-service`) adds `implementation project(':corebank-domain')` — the Q-classes are resolved transitively. **This is the Week 1 spike's actual complexity**, not dependency resolution.
 
 **Architectural decisions provided by starter:**
 
@@ -267,7 +270,7 @@ vi.stubGlobal("EventSource", MockEventSource);
 **Day-1 required — `src/utils/format.ts`:**
 
 ```ts
-// Korean ₩ formatter — used in Account List, Account Detail, Transfer Flow (3+ screens)
+// Korean ₩ formatter — used in Portfolio List, Portfolio Detail, Order Flow (3+ screens)
 export const formatKRW = (amount: number): string =>
   new Intl.NumberFormat("ko-KR", { style: "currency", currency: "KRW" }).format(
     amount,
@@ -308,7 +311,7 @@ export const formatKRW = (amount: number): string =>
 - Same `docker-compose.yml` used locally runs on EC2 via SSH
 - `docker compose up -d` on EC2 — no translation layer, no task definitions
 - MySQL + Redis run as compose services on EC2 (sufficient for portfolio traffic)
-- Security group: port 8080 open to internet (or behind reverse proxy); ports 8081/8082 internal only
+- Security group: port 8080 open to internet (or behind reverse proxy); ports 8081/8082/8083 internal only
 
 **Vercel deployment:**
 
@@ -361,7 +364,7 @@ VITE_API_BASE_URL=https://fix-api.example.com
 > ⚠️ **P-F2**: 아래는 초기 설계 참고용 구버전 트리입니다. **실제 구현 기준은 아래 '최종 확정 Gradle 모듈 구조 (7개)'** 및 '완전한 프로젝트 디렉토리 트리' 섹션을 따르세요.
 
 ```
-fix/                              ← root Gradle project (7-module 확정 구조: core-common, testing-support, channel-domain, channel-service, corebank-domain, corebank-service, fep-service)
+fix/                              ← root Gradle project (8-module 확정 구조: core-common, testing-support, channel-domain, channel-service, corebank-domain, corebank-service, fep-gateway, fep-simulator)
   settings.gradle.kts             ← includes all submodules
   build.gradle.kts                ← root buildscript (version catalog only, no plugins applied)
   core-common/                    ← Pure Java: 공통 상수/예외/유틸 (zero Spring deps)
@@ -372,13 +375,14 @@ fix/                              ← root Gradle project (7-module 확정 구�
   channel-service/                ← Spring Boot entry (channel-service:8080)
   corebank-domain/                ← JPA entities + repositories (APT target for QueryDSL)
   corebank-service/               ← Spring Boot entry (corebank-service:8081)
-  fep-service/                    ← Spring Boot entry (fep-simulator:8082)
+  fep-gateway/                    ← Spring Boot entry (fep-gateway:8083)
+  fep-simulator/                  ← Spring Boot entry (fep-simulator:8082)
   fix-frontend/                   ← Vite + React + TypeScript (pnpm)
     src/
       lib/axios.ts                ← axios instance (withCredentials, baseURL from env)
       utils/format.ts             ← formatKRW() and shared formatters
       test/setup.ts               ← EventSource mock stub
-  docker-compose.yml              ← channel + corebank + fep + mysql + redis
+  docker-compose.yml              ← channel + corebank + fep-gateway + fep-simulator + mysql + redis
   .env.example                    ← committed; .env gitignored
   .github/
     workflows/
@@ -410,10 +414,10 @@ spring.flyway.locations: classpath:db/migration
 
 **Seed data guarantees deterministic test scenarios:**
 
-- `accountId=1`: balance ₩1,000,000 (10-thread concurrency test target)
+- `accountId=1`: position 500주 (005930 삼성전자), available_qty=500, cash ₩5,000,000 (10-thread concurrency SELL test target)
 - `userId=1` (`user` / `user@fix.com`): registered OTP secret, active session-capable user
-- `accountId=2` (`dest`): transfer destination, active
-- Both accounts in `core_db.accounts`; `user` credentials in `channel_db.members`
+- `accountId=2`: 도착 포트폴리오 (BUY 주문 수신 대상), cash ₩10,000,000
+- 모든 세션 수신 데이터는 `core_db.positions`; `user` 자격증명은 `channel_db.members`
 
 ---
 
@@ -423,10 +427,10 @@ _Architecture cannot be validated until all 5 pass. These are the exit criteria 
 
 | Story                             | Done Condition                                                                                                                                                                                                |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| S1.1 Gradle multi-module scaffold | All modules compile; `channel-app` starts on :8080; `settings.gradle.kts` includes all modules; dependency direction rules verified                                                                           |
-| S1.2 QueryDSL APT spike           | `QTransferRecord` generated in `corebank-domain`; confirmed in `build/generated/sources/annotationProcessor`; one `JPAQueryFactory` query runs against Testcontainers MySQL                                   |
-| S1.3 `testing-support` module     | Singleton `MySQLContainer` + `RedisContainer` with `.withReuse(true)`; one test from each of `channel-app` and `corebank-app` uses shared containers; `testcontainers.reuse.enable=true` documented in README |
-| S1.4 Docker Compose local         | `docker compose up` → all 3 services healthy; `depends_on: condition: service_healthy` confirmed; cold start ≤ 90s; `pnpm dev` connects via Vite proxy                                                        |
+| S1.1 Gradle multi-module scaffold | All modules compile; `channel-service` starts on :8080; `settings.gradle.kts` includes all modules; dependency direction rules verified                                                                           |
+| S1.2 QueryDSL APT spike           | `QOrder` generated in `corebank-domain`; confirmed in `build/generated/sources/annotationProcessor`; one `JPAQueryFactory` query (daily-sell-qty-sum) runs against Testcontainers MySQL                |
+| S1.3 `testing-support` module     | Singleton `MySQLContainer` + `RedisContainer` with `.withReuse(true)`; one test from each of `channel-service` and `corebank-service` uses shared containers; `testcontainers.reuse.enable=true` documented in README |
+| S1.4 Docker Compose local         | `docker compose up` → all 4 backend services healthy; `depends_on: condition: service_healthy` confirmed; cold start ≤ 120s (Vault + vault-init baseline); `pnpm dev` connects via Vite proxy             |
 | S1.5 Vite + React scaffold        | `fix-web/` created; Vite proxy configured; `vitest.setup.ts` with `EventSource` mock; `formatKRW()` utility in `src/utils/format.ts`; seed data migration runs on `test` profile                              |
 
 ---
@@ -444,12 +448,12 @@ _Flat reference for implementers. Every named decision, rule, and ADR. Reference
 | D-001 | `RestClient` for service-to-service HTTP                                                        | API & Communication         |
 | D-002 | Tailwind CSS for frontend styling                                                               | Frontend Architecture       |
 | D-003 | Lombok enabled (with entity safety rules)                                                       | Data Architecture           |
-| D-004 | Matrix Build CI (3 parallel jobs per service)                                                   | Infrastructure & Deployment |
+| D-004 | Matrix Build CI (4 parallel jobs per service)                                                   | Infrastructure & Deployment |
 | D-005 | `FepClient` as Spring bean for AOP proxy (`@CircuitBreaker`)                                    | API & Communication         |
 | D-006 | Manual DTO mapping for MVP (< 10 entity types)                                                  | Data Architecture           |
-| D-007 | `application.yml` throughout all 3 services                                                     | Infrastructure & Deployment |
+| D-007 | `application.yml` throughout all 4 backend services                                             | Infrastructure & Deployment |
 | D-008 | `NotificationContext` (React Context + `useReducer`) for SSE global state                       | Frontend Architecture       |
-| D-009 | Account number format validated in Channel (`^\d{10,14}$`); same-account guard `TRF-004`        | API & Communication         |
+| D-009 | Symbol format validated in Channel (`^\d{6}$` KRX 표준); duplicate-order guard `ORD-004`         | API & Communication         |
 | D-010 | Structured JSON logging via `logstash-logback-encoder`                                          | Infrastructure & Deployment |
 | D-011 | `BCryptPasswordEncoder` strength 12; Argon2 post-MVP upgrade path                               | Auth & Security             |
 | D-012 | WireMock for `FepClient` circuit breaker tests; FEP chaos endpoint = demo/manual only           | Infrastructure & Deployment |
@@ -460,7 +464,7 @@ _Flat reference for implementers. Every named decision, rule, and ADR. Reference
 | D-017 | Package convention: `com.fix.{service}.{module}.{layer}` (Step 6: `io.github.*` → `com.fix.*` 변경)              | Data Architecture           |
 | D-018 | `GlobalExceptionHandler` hierarchy: exception → HTTP status → error code                        | API & Communication         |
 | D-019 | `SseEmitter` timeout = `Long.MAX_VALUE`; lifecycle managed by session events                    | API & Communication         |
-| D-020 | Seed users/accounts: 2 users, 3 accounts, fixed credentials                                     | Data Architecture           |
+| D-020 | Seed: `demo` (포지션 005930 500주, 현금 ₩5M), `admin` (ROLE_ADMIN); fixed credentials                                     | Data Architecture           |
 | D-021 | API versioning enforced at `SecurityConfig` path matchers (not just controller annotations)     | Auth & Security             |
 | D-022 | Password policy: min 8 chars, 1 uppercase, 1 digit, 1 special; `AUTH-007`                       | Auth & Security             |
 | D-023 | `useEffect` + `axios` for data fetching; React Router `loader` not used                         | Frontend Architecture       |
@@ -473,19 +477,19 @@ _Flat reference for implementers. Every named decision, rule, and ADR. Reference
 | -------- | ---------------------------------------------------------------------------------------------------------------------- | --------------------------- |
 | RULE-001 | `@Transactional` on service layer only; repositories transaction-free                                                  | Data Architecture           |
 | RULE-002 | `MockMvc` only; `WebTestClient` forbidden; `spring-boot-starter-webflux` must not appear in test classpath             | Infrastructure & Deployment |
-| RULE-003 | TC-TRF-08 test method must NOT use `@Transactional`; cleanup via `@AfterEach` SQL reset                                | Infrastructure & Deployment |
+| RULE-003 | TC-ORD-08 test method must NOT use `@Transactional`; cleanup via `@AfterEach` SQL reset                                | Infrastructure & Deployment |
 | RULE-004 | CI triggers: `push main` + `pull_request → main`; PRs blocked if CI fails                                              | Infrastructure & Deployment |
 | RULE-005 | Trunk-based branching; `main` always deployable; feature branches `feat/{name}`; no long-lived `develop`               | Infrastructure & Deployment |
 | RULE-006 | QueryDSL `annotationProcessor` on entity-owning module only (`corebank-domain`)                                        | Data Architecture           |
-| RULE-007 | `channel-common` = zero Spring dependencies (pure Java); nothing depends on `channel-app` except entry point           | Data Architecture           |
-| RULE-008 | `X-Internal-Secret` filter copy-pasted MVP (3 services); each copy has `// TODO: extract to core-common`               | Auth & Security             |
+| RULE-007 | `channel-common` = zero Spring dependencies (pure Java); nothing depends on `channel-service` except entry point           | Data Architecture           |
+| RULE-008 | `X-Internal-Secret` filter copy-pasted MVP (3 internal services: corebank/fep-gateway/fep-simulator); each copy has `// TODO: extract to core-common` | Auth & Security             |
 | RULE-009 | Lombok JPA entity: `@EqualsAndHashCode` forbidden; `@ToString` with lazy collections forbidden                         | Data Architecture           |
-| RULE-010 | `@SpringBootTest` in `channel-app` module only; other modules use `@ExtendWith(MockitoExtension.class)`                | Infrastructure & Deployment |
+| RULE-010 | `@SpringBootTest` in `channel-service` module only; other modules use `@ExtendWith(MockitoExtension.class)`                | Infrastructure & Deployment |
 | RULE-011 | `@Valid` on `@RequestBody`; `@Validated` for path/query params; never on service layer                                 | API & Communication         |
-| RULE-012 | Permit `/swagger-ui/**`, `/v3/api-docs/**` in `SecurityConfig.permitAll()` from day 1                                  | Auth & Security             |
+| RULE-012 | Permit `/swagger-ui/**`, `/v3/api-docs/**` in `SecurityConfig.permitAll()` for local/dev profiles only; keep docs disabled in prod | Auth & Security             |
 | RULE-013 | `@EnableAsync` on `ChannelAppConfig`; `NotificationService.push()` `@Async`; `SyncTaskExecutor` in tests               | API & Communication         |
 | RULE-014 | Docker healthcheck: MySQL `start_period: 30s`; Redis `start_period: 5s`; both required                                 | Infrastructure & Deployment |
-| RULE-015 | OTP attempt debounce: `SET ch:otp-attempt-ts:{transferSessionId} NX EX 1`; key exists → `CHANNEL-002`, no attempt consumed | Auth & Security             |
+| RULE-015 | OTP attempt debounce: `SET ch:otp-attempt-ts:{orderSessionId} NX EX 1`; key exists → HTTP 429 `RATE-001`, no attempt consumed | Auth & Security             |
 | RULE-016 | Testcontainers: fresh containers per CI job (GitHub-hosted VMs); `reuse=true` local dev only                           | Infrastructure & Deployment |
 | RULE-017 | JaCoCo thresholds enforced via `jacocoTestCoverageVerification` in each module's `build.gradle`; build fails at source | Infrastructure & Deployment |
 | RULE-018 | Stack trace never in response body; `traceId` from MDC always in response envelope                                     | API & Communication         |
@@ -499,39 +503,39 @@ _Flat reference for implementers. Every named decision, rule, and ADR. Reference
 
 | ID      | Title                                                          | Section           |
 | ------- | -------------------------------------------------------------- | ----------------- |
-| ADR-001 | Pessimistic Locking over Optimistic Locking for balance writes | Data Architecture |
+| ADR-001 | Pessimistic Locking over Optimistic Locking for position writes | Data Architecture |
 
 ---
 
-### ADR-001: Pessimistic Locking over Optimistic Locking
+### ADR-001: Pessimistic Locking over Optimistic Locking for Position Writes
 
 **Context:**
-`corebank-service` handles concurrent balance mutations — same-bank transfer debits and credits. Two standard JPA approaches exist: optimistic locking (`@Version` column, retry on `OptimisticLockingFailureException`) and pessimistic locking (`@Lock(LockModeType.PESSIMISTIC_WRITE)`, InnoDB `SELECT FOR UPDATE`).
+`corebank-service` handles concurrent position mutations — Order Book SELL execution consumes `available_qty` in the `positions` table. Two standard JPA approaches exist: optimistic locking (`@Version` column, retry on `OptimisticLockingFailureException`) and pessimistic locking (`@Lock(LockModeType.PESSIMISTIC_WRITE)`, InnoDB `SELECT FOR UPDATE`).
 
 **Decision:**
-Use `@Lock(LockModeType.PESSIMISTIC_WRITE)` on the `findById` account query in `AccountRepository` (Default **EAGER** mode). All balance write paths acquire this lock before any mutation. QueryDSL daily-limit aggregate query runs after the account row is locked.
-(Note: **DEFERRED** mode using `last_synced_ledger_ref` is reserved for Phase 2 Hot Accounts).
+Use `@Lock(LockModeType.PESSIMISTIC_WRITE)` on the `findBySymbol` query in `PositionRepository` (symbol-level row lock). All position write paths acquire this lock before any mutation. QueryDSL daily-sell-limit aggregate query runs after the position row is locked.
+(Note: **DEFERRED** mode is reserved for Phase 2 Hot Symbols).
 
 ```java
-// AccountRepository.java
+// PositionRepository.java
 @Lock(LockModeType.PESSIMISTIC_WRITE)
-@Query("SELECT a FROM Account a WHERE a.id = :id")
-Optional<Account> findByIdWithLock(@Param("id") Long id);
+@Query("SELECT p FROM Position p WHERE p.accountId = :accountId AND p.symbol = :symbol")
+Optional<Position> findBySymbolWithLock(@Param("accountId") Long accountId, @Param("symbol") String symbol);
 
-// TransferService.java — lock sequence
-Account source = accountRepository.findByIdWithLock(sourceId);  // SELECT FOR UPDATE
-Long todayTotal = ledgerRepository.sumTodayDebits(sourceId);    // shared lock sufficient (account already locked)
+// OrderExecutionService.java — lock sequence
+Position position = positionRepository.findBySymbolWithLock(accountId, symbol);  // SELECT FOR UPDATE
+Long todaySellQty = orderRepository.sumTodaySellQty(accountId, symbol);          // shared lock sufficient (position already locked)
 ```
 
 **Consequences:**
 
 - ✅ No retry logic required — lock serializes concurrent access; exactly one writer at a time
-- ✅ Lock hold time ~5–15ms (InnoDB row lock on single account row) — acceptable for banking transfer latency
-- ✅ Prevents phantom reads on balance field under concurrent load — TC-TRF-08 (`10 threads × ₩200,000 on ₩1,000,000`) provable with real InnoDB
-- ✅ QueryDSL daily-limit runs inside lock scope — no phantom debit aggregation
-- ❌ Under extreme contention (thousands of concurrent transfers on same account), throughput degrades linearly — acceptable for portfolio scale; documented in README
-- ❌ `@Version` optimistic retry would force OTP re-entry on conflict — unacceptable UX in banking transfer flow (30–120s user cost per retry)
-- **Interview talking point:** \_"Optimistic locking is wrong here — the retry cost for a failed transfer is user re-authentication, not a millisecond backoff. I chose the lock that matches the domain's latency tolerance, not the default Spring pattern."
+- ✅ Lock hold time ~5–15ms (InnoDB row lock on single position row) — acceptable for order execution latency
+- ✅ Prevents phantom reads on `available_qty` field under concurrent load — TC-ORD-08 (`10 threads × SELL 100주 on 500주 position`) provable with real InnoDB: exactly 5 FILLED, `available_qty = 0`
+- ✅ QueryDSL daily-sell-limit runs inside lock scope — no phantom sell aggregation
+- ❌ Under extreme contention (thousands of concurrent sell orders on same symbol), throughput degrades linearly — acceptable for portfolio scale; documented in README
+- ❌ `@Version` optimistic retry would force OTP re-entry on conflict — unacceptable UX in securities order flow (30–120s user cost per retry)
+- **Interview talking point:** _"낙관적 락은 여기에서 잘못된 선택이다 — 재시도 비용은 주문 재인증(OTP)이지 밀리초 백오프가 아니다. 도메인의 레이턴시 허용치에 맞는 락을 선택했다."
 
 ---
 
@@ -565,13 +569,14 @@ No MapStruct. All entity↔DTO conversions are explicit `toDto()` / `fromDto()` 
 | --------------------- | ----------------------------------------------------------------- | ------------------- |
 | Spring Session        | `spring:session:sessions:{sessionId}` (Spring Session managed)  | 30 min (sliding)    |
 | Session index         | `spring:session:index:...:{memberId}` (principal index)         | 30 min              |
-| Transfer session      | `ch:txn-session:{transferSessionId}`                             | 600s                |
+| Order session         | `ch:order-session:{orderSessionId}`                              | 600s                |
 | TOTP replay guard     | `ch:totp-used:{memberId}:{windowIndex}:{code}`                   | 60s                 |
-| Transfer execute lock | `ch:txn-lock:{transferSessionId}`                                | 30s                 |
+| Order execute lock    | `ch:txn-lock:{sessionId}`                                        | 30s                 |
 | Rate limit bucket     | `ch:ratelimit:{endpoint}:{identifier}`                           | per Bucket4j config |
-| OTP attempt debounce  | `ch:otp-attempt-ts:{transferSessionId}`                          | 1s                  |
-| OTP attempt counter   | `ch:otp-attempts:{transferSessionId}`                            | 180s                |
-| Idempotency key       | `ch:idempotency:{clientRequestId}`                               | 600s                |
+| OTP attempt debounce  | `ch:otp-attempt-ts:{orderSessionId}`                             | 1s                  |
+| OTP attempt counter   | `ch:otp-attempts:{sessionId}`                                    | 600s (SET NX EX 600 — matches order session TTL) |
+| Idempotency key       | `ch:idempotency:{clOrdID}`                                       | 600s                |
+| Recovery scheduler lock | `ch:recovery-lock:{sessionId}`                                 | 120s (NX — prevents double-processing of same EXECUTING session) |
 | FDS IP fail count     | `fds:ip-fail:{ip}`                                               | 10 min              |
 | FDS device            | `fds:device:{memberId}`                                          | 30 days             |
 
@@ -587,9 +592,9 @@ Layer suffixes: `controller`, `service`, `repository`, `domain`, `dto`, `config`
 
 Examples:
 
-- `com.fix.channel.transfer.service.TransferService`
-- `com.fix.channel.transfer.domain.TransferSession`
-- `com.fix.corebank.account.repository.AccountRepository`
+- `com.fix.channel.order.service.OrderExecutionService`
+- `com.fix.channel.order.domain.OrderSession`
+- `com.fix.corebank.order.repository.OrderRepository`
 - `com.fix.common.error.ErrorCode`
 
 **D-020 — Seed data**
@@ -605,7 +610,7 @@ status   | mode  |
 | 1         | 1      | `110-1234-5678` | ₩1,000,000 | ACTIVE   | EAGER |
 | 2         | 1      | `110-8765-4321` | ₩500,000   | ACTIVE   | EAGER |
 | 3         | 2      | `110-1111-2222` | ₩0         | ACTIVE   | EAGER |
-| 3         | 2      | `110-1111-2222` | ₩0         | 보통예금 (admin account)                   |
+| 3         | 2      | `110-1111-2222` | ₩0         | 주식매매계좌 (admin account)                   |
 
 ---
 
@@ -630,11 +635,11 @@ Error code: `AUTH-007 PASSWORD_POLICY_VIOLATION`. Applied via `@Pattern` on `Log
 
 **RULE-015 — OTP attempt debounce**
 
-Before consuming an OTP attempt: `SET ch:otp-attempt-ts:{transferSessionId} NX EX 1`. If key exists → return `CHANNEL-002` without decrementing attempt counter. Prevents accidental lockout from rapid auto-submit (UX spec: 6-digit auto-submit on completion).
+Before consuming an OTP attempt: `SET ch:otp-attempt-ts:{orderSessionId} NX EX 1`. If key exists → return HTTP 429 `RATE-001` without decrementing attempt counter. Prevents accidental lockout from rapid auto-submit (UX spec: 6-digit auto-submit on completion).
 
 **RULE-008 — X-Internal-Secret filter (conscious duplication)**
 
-`OncePerRequestFilter` validates `X-Internal-Secret` header on `corebank-service` and `fep-app`. Copy-pasted ~20 lines in each service. Each copy has:
+`OncePerRequestFilter` validates `X-Internal-Secret` header on `corebank-service`, `fep-gateway`, and `fep-simulator`. Copy-pasted ~20 lines in each service. Each copy has:
 
 ```java
 // TODO: extract to core-common when adding a 4th service
@@ -646,7 +651,7 @@ URL prefix enforced at `SecurityConfig` path matchers, not just controller annot
 
 1. `InternalSecretFilter` → validates `/internal/v1/**` and `/fep-internal/**` before reaching controllers
 2. Spring Security session auth → validates `/api/v1/**` (except per `permitAll()` list)
-3. `permitAll()` → `/api/v1/auth/login`, `/api/v1/auth/register`, `/api/v1/auth/csrf`, `/swagger-ui/**`, `/v3/api-docs/**`, `/actuator/health`, `/actuator/circuitbreakers`
+3. `permitAll()` → `/api/v1/auth/login`, `/api/v1/auth/register`, `/api/v1/auth/csrf`, `/actuator/health`, `/actuator/circuitbreakers` (+ `/swagger-ui/**`, `/v3/api-docs/**` in local/dev profiles only)
    > ℹ️ `/api/v1/auth/register` — login-flow.md Story 1.1에서 MVP에 포함됨 (BCrypt 해싱 + corebank 계좌 자동 생성)
 
 ---
@@ -662,25 +667,27 @@ Spring 6.1+ synchronous HTTP client. Used for all service-to-service calls (Chan
 `FepClient` must be a Spring-managed `@Component`. `@CircuitBreaker(name="fep", fallbackMethod="fepFallback")` on the service method — not on the `RestClient` call directly. Non-bean usage or same-class internal calls bypass AOP proxy → circuit breaker silently does nothing.
 
 ```java
-@Service
-public class InterbankTransferService {
+@Component
+public class FepClient {
     @CircuitBreaker(name = "fep", fallbackMethod = "fepFallback")
-    public FepResponse send(InterbankRequest req) {
-        return fepClient.post(req);  // RestClient call
+    public FepResponse send(FepOrderRequest req) {
+        return restClient.post()...;  // RestClient call to fep-gateway:8083
     }
-    private FepResponse fepFallback(InterbankRequest req, Exception e) {
-        // compensating credit logic
+    private FepResponse fepFallback(FepOrderRequest req, Exception e) {
+        // CB OPEN preemptive — no @Transactional was started, no order record, no position touched
+        // Returns RC=9098 CIRCUIT_OPEN to caller (FepOrderService)
+        return FepResponse.circuitOpen();
     }
 }
 ```
 
 **D-009 — Account number validation**
 
-Validated in `TransferService.prepare()` before any CoreBanking call:
+Validated in `OrderService.prepare()` before any CoreBanking call:
 
-- Format: `^\d{10,14}$` → fail with `TRF-004 DESTINATION_INVALID`
-- Same-account guard: `sourceAccount.accountNumber.equals(destinationAccountNumber)` → `TRF-004`
-  > ⚠️ P-C3: `sourceAccountId`(Long) vs `destinationAccountNumber`(String) 타입 불일치 수정 — 항등 비교 대신 값 비교 사용
+- Format: `^\d{6}$` (symbol code — KRX 6자리 숫자) → fail with `ORD-004 SYMBOL_INVALID`
+- Qty range guard: `qty < 1 || qty > availableQty` → `ORD-004`
+  > ⚠️ P-C3: 종목 코드 검증은 `SymbolValidator` 유틸리티로 분리 — 서비스 내 하드코딩 금지
 
 **D-013 — Notification dual-write**
 
@@ -718,7 +725,7 @@ Date format: ISO-8601 (`2026-02-23T14:32:11Z`). camelCase (not snake_case). Null
 | `AccessDeniedException`                    | 403  | `AUTH-006`           |
 | `ResourceNotFoundException`                | 404  | from exception field |
 | `OptimisticLockingFailureException`        | 409  | `CORE-003`           |
-| `DataIntegrityViolationException` (UNIQUE) | 409  | `TRF-007`            |
+| `DataIntegrityViolationException` (UNIQUE) | 409  | `ORD-007`            |
 | `MethodArgumentNotValidException`          | 422  | `VALIDATION-001`     |
 | `Exception` (catch-all)                    | 500  | `SYS-001`            |
 
@@ -778,7 +785,7 @@ Configured via `vite.config.ts` plugin. No separate `tailwind.config.js` needed 
 
 **D-008 — NotificationContext**
 
-Single `EventSource` instance owned by `NotificationContext`. Prevents duplicate connections across screens. Transfer Flow uses local `useReducer(transferReducer, initialState)` — no global state for form steps.
+Single `EventSource` instance owned by `NotificationContext`. Prevents duplicate connections across screens. Order Flow uses local `useReducer(orderReducer, initialState)` — no global state for form steps.
 
 ```tsx
 // src/context/NotificationContext.tsx
@@ -802,7 +809,7 @@ export function NotificationProvider({ children }) {
 **D-024 — Error boundary strategy**
 
 - `<ErrorBoundary>` wraps `<App />` — catch-all for unhandled React errors
-- All expected API errors (TRF-001, AUTH-003, FEP-003, etc.) handled inline per UX spec Korean messages
+- All expected API errors (ORD-001, AUTH-003, FEP-003, etc.) handled inline per UX spec Korean messages
 - No toast library — inline error `<div>` per screen per UX spec exactly
 
 ---
@@ -811,7 +818,7 @@ export function NotificationProvider({ children }) {
 
 **D-004 — Matrix Build CI**
 
-Three parallel GitHub Actions jobs: `channel-service`, `corebank-service`, `fep-simulator`. Each job runs on isolated GitHub-hosted runner VM — no Testcontainers port conflicts. Fresh containers per job is correct (not reuse).
+Four parallel GitHub Actions jobs: `channel-service`, `corebank-service`, `fep-gateway`, `fep-simulator`. Each job runs on isolated GitHub-hosted runner VM — no Testcontainers port conflicts. Fresh containers per job is correct (not reuse).
 
 JaCoCo thresholds per service enforced in `build.gradle` via `jacocoTestCoverageVerification` (RULE-017):
 
@@ -820,14 +827,14 @@ jacocoTestCoverageVerification {
     violationRules {
         rule {
             limit { minimum = 0.80 }  // corebank: 80%
-            // channel-app: 0.70, fep-app: 0.60
+            // channel-service: 0.70, fep-gateway: 0.60, fep-simulator: 0.60
         }
     }
 }
 check.dependsOn jacocoTestCoverageVerification
 ```
 
-CI badge row in README: `[build]` `[coverage-channel]` `[coverage-core]` `[coverage-fep]`
+CI badge row in README: `[build]` `[coverage-channel]` `[coverage-core]` `[coverage-fep-gateway]` `[coverage-fep-simulator]`
 
 **CI trigger (RULE-004):**
 
@@ -841,11 +848,11 @@ on:
 
 **D-007 — application.yml throughout**
 
-All 3 services use YAML config exclusively. No `.properties` files except `gradle.properties`. Profiles: `local` (dev), `test` (CI/Testcontainers), `deploy` (AWS EC2).
+All 4 backend services use YAML config exclusively. No `.properties` files except `gradle.properties`. Profiles: `local` (dev), `test` (CI/Testcontainers), `deploy` (AWS EC2).
 
 **D-010 — Structured logging**
 
-`logstash-logback-encoder` in all 3 services:
+`logstash-logback-encoder` in all 4 backend services:
 
 ```groovy
 implementation 'net.logstash.logback:logstash-logback-encoder:7.x'
@@ -880,7 +887,7 @@ CoreBank exposes `health` + `metrics` only (internal — no public Actuator demo
 testImplementation 'org.wiremock:wiremock-standalone:3.x.x'
 ```
 
-`FepClient` integration tests in `channel-app` use WireMock to simulate FEP timeout. FEP chaos endpoint (`PUT /fep-internal/config`) reserved for demo screenshare and manual verification — not in automated CI.
+`FepClient` integration tests in `channel-service` use WireMock to simulate FEP timeout. FEP chaos endpoint (`PUT /fep-internal/rules`) reserved for demo screenshare and manual verification — not in automated CI.
 
 **D-019 — Docker healthcheck specs**
 
@@ -909,7 +916,7 @@ healthcheck:
 Trunk-based with short-lived feature branches:
 
 - `main` always deployable (CI green required)
-- Feature branches: `feat/channel-auth`, `feat/transfer-state-machine`, `feat/fep-circuit-breaker`
+- Feature branches: `feat/channel-auth`, `feat/order-state-machine`, `feat/fep-circuit-breaker`
 - No long-lived `develop` branch
 - Merge via PR with CI gate (RULE-004)
 
@@ -929,7 +936,7 @@ Trunk-based with short-lived feature branches:
 | RULE-023 | AssertJ 강제 사용                         |
 | RULE-024 | Gradle 모듈 의존성 방향                   |
 | RULE-025 | 레이어 간 객체 변환 지점                  |
-| RULE-026 | TransferSession 상태 전환 규칙            |
+| RULE-026 | OrderSession 상태 전환 규칙            |
 | RULE-027 | AsyncStateWrapper 로딩/에러 패턴          |
 | RULE-028 | formatKRW 금액 포맷 강제                  |
 | RULE-029 | OTP 입력 UX 패턴                          |
@@ -949,7 +956,7 @@ Trunk-based with short-lived feature branches:
 | RULE-043 | QueryDSL 쿼리 작성 위치                   |
 | RULE-044 | Spring Security 필터 테스트 패턴          |
 | RULE-045 | NotificationContext SSE lifecycle         |
-| RULE-046 | Transfer Flow useReducer 상태 타입        |
+| RULE-046 | Order Flow useReducer 상태 타입        |
 | RULE-047 | axios 단일 인스턴스 인터셉터 패턴         |
 | RULE-048 | application.yml 프로파일 구조             |
 | RULE-049 | .env / VITE\_ 환경변수 관리               |
@@ -974,9 +981,9 @@ Trunk-based with short-lived feature branches:
 | RULE-068 | Actuator 보안 및 포트 분리                |
 | RULE-069 | Graceful Shutdown 패턴                    |
 | RULE-070 | HikariCP 커넥션 풀 설정                   |
-| RULE-071 | 이체 요청 Idempotency 패턴                |
-| RULE-072 | TransferSession 만료 처리                 |
-| RULE-073 | 잔액 동시성 3중 보호 구조                 |
+| RULE-071 | 주문 요청 Idempotency 패턴 (ClOrdID)      |
+| RULE-072 | OrderSession 만료 처리                    |
+| RULE-073 | 포지션 동시성 3중 보호 구조               |
 | RULE-074 | 서비스 배포 순서                          |
 | RULE-075 | docker-compose healthcheck 표준           |
 | RULE-076 | 인증 상태 Zustand `useAuthStore` 패턴   |
@@ -992,13 +999,13 @@ Trunk-based with short-lived feature branches:
 | Service 반환  | Optional 언래핑 후 반환                     | `Optional<T>` 전파                   |
 | Assertion     | `assertThat(x).isEqualTo(y)`                | `assertEquals(y, x)`                 |
 | 금액 표시     | `formatKRW(amount)`                         | `amount.toLocaleString()`            |
-| 상태 전환     | `TransferSessionService.transition()`       | 직접 Redis SET                       |
+| 상태 전환     | `OrderSessionService.transition()`          | 직접 Redis SET                       |
 | 모듈 의존     | `service → domain → (없음)`                 | `service → 타 서비스 domain`         |
 | 로딩 UI       | `<LoadingSpinner />` 컴포넌트               | `{loading && <div>}` inline          |
 | 로그 레벨     | ERROR = 시스템 장애만                       | ERROR = 비즈니스 예외                |
 | API 응답      | `{ success, data, error }` envelope         | naked entity 반환                    |
-| 비즈니스 상수 | `BusinessConstants.MAX_TRANSFER_AMOUNT_KRW` | magic number 인라인                  |
-| 도메인 용어   | `Transfer`, `Member`, `Account`             | `Transaction`, `User`, `BankAccount` |
+| 비즈니스 상수 | `BusinessConstants.MAX_SELL_QTY_PER_ORDER`  | magic number 인라인                  |
+| 도메인 용어   | `Order`, `Member`, `Position`               | `Transaction`, `User`, `BankAccount` |
 | 폼 유효성     | React Hook Form + Zod                       | `useState` 수동 검사                 |
 | axios 호출    | `lib/axios.ts` 인스턴스                     | `axios.get()` 직접 호출              |
 | Docker 빌드   | Jib Gradle 태스크                           | 단순 fat JAR Dockerfile              |
@@ -1026,9 +1033,9 @@ Trunk-based with short-lived feature branches:
 
 #### 데이터베이스
 
-- 테이블: `snake_case` 복수형 (`transfer_sessions`, `accounts`)
-- 컬럼: `snake_case` (`created_at`, `account_number`)
-- 인덱스: `idx_{table}_{columns}` (`idx_transfer_session_status`)
+- 테이블: `snake_case` 복수형 (`order_sessions`, `positions`)
+- 컬럼: `snake_case` (`created_at`, `available_qty`)
+- 인덱스: `idx_{table}_{columns}` (`idx_order_session_status`)
 - Flyway: `V{N}__{snake_case_description}.sql` (더블 언더스코어 필수)
 
 #### Java
@@ -1064,13 +1071,13 @@ src/test/java/
 src/
   pages/          # 라우트 단위 페이지
   components/
-    transfer/     # 이체 관련 컴포넌트
+    order/        # 주문 관련 컴포넌트
     common/       # 공통 컴포넌트 (AsyncStateWrapper, LoadingSpinner 등)
   context/        # NotificationContext 등 전역 상태
   hooks/          # use{Feature}.ts 커스텀 훅
   lib/            # axios.ts, schemas/ (Zod)
   utils/          # formatters.ts (formatKRW 등)
-  types/          # api.ts (ApiResponse<T>), transfer.ts 등
+  types/          # api.ts (ApiResponse<T>), order.ts 등
   test/           # 테스트 픽스처, MSW 핸들러
 ```
 
@@ -1113,7 +1120,7 @@ src/
 // 필수 적용:
 // - 입력 유효성 검사 (valid/invalid 케이스 ≥ 3)
 // - HTTP 상태 코드 분기 (401/403/404/422 동일 엔드포인트)
-// - 금액 경계값 (0원, 음수, 최대 이체 한도)
+// - 수량 경계값 (0주, 음수, 최대 주문 한도)
 ```
 
 ### RULE-023: AssertJ 강제
@@ -1128,7 +1135,8 @@ src/
 ```
 channel-service  →  channel-domain  →  (없음)
 corebank-service →  corebank-domain →  (없음)
-fep-service      →  fep-domain      →  (없음)
+fep-gateway      →  (없음)
+fep-simulator    →  (없음)
 *-service        →  core-common
 *-domain         →  core-common
 testing-support  →  core-common, *-domain
@@ -1150,24 +1158,24 @@ Service     → Controller: Response DTO 변환 (Service 책임)
 ❌ 금지: Repository가 DTO 반환
 ```
 
-### RULE-026: TransferSession 상태 전환
+### RULE-026: OrderSession 상태 전환
 
 ```java
-// 상태 전환은 반드시 TransferSessionService 내부에서만 수행
-void transition(String transferSessionId, TransferStatus expected, TransferStatus next)
-// → 내부에서 Redis key 합성: "ch:txn-session:" + transferSessionId  (P-F4: ID만 전달, key 합성은 서비스 내부 책임)
+// 상태 전환은 반드시 OrderSessionService 내부에서만 수행
+void transition(String orderSessionId, OrderSessionStatus expected, OrderSessionStatus next)
+// → 내부에서 Redis key 합성: "ch:order-session:" + orderSessionId  (P-F4: ID만 전달, key 합성은 서비스 내부 책임)
 // → Redis SETNX 또는 WATCH/MULTI로 원자성 보장
 // → expected 불일치 시 InvalidSessionStateException
 // ❌ 금지: Controller/다른 Service에서 직접 상태 값 SET
 
-// 허용 전환 FSM (P-13 확정값)
-// OTP_PENDING → AUTHED        (정상 OTP 검증)
-// OTP_PENDING → FAILED         (OTP 시도 초과)
-// OTP_PENDING → EXPIRED        (@Scheduled 30분 TTL)
-// AUTHED      → EXECUTING      (Redis SETNX 락 획득 직전)
-// AUTHED      → EXPIRED        (@Scheduled 10분 TTL)
-// EXECUTING   → COMPLETED      (코어뱅킹 성공)
-// EXECUTING   → FAILED         (코어뱅킹 실패/보상)
+// 허용 전환 FSM (주문 도메인 확정값)
+// PENDING_NEW  → AUTHED        (정상 OTP 검증)
+// PENDING_NEW  → FAILED        (OTP 시도 초과)
+// PENDING_NEW  → EXPIRED       (@Scheduled 10분 TTL)
+// AUTHED       → EXECUTING     (Redis SETNX ch:txn-lock 획득 직전)
+// AUTHED       → EXPIRED       (@Scheduled 10분 TTL)
+// EXECUTING    → COMPLETED     (Order Book 체결 + FEP 성공 — orders.status=FILLED, OrderSession=COMPLETED)
+// EXECUTING    → FAILED        (FEP 실패/보상 트랜잭션 완료 — orders.status=FAILED, sub_status=COMPENSATED)
 ```
 
 ### RULE-027: AsyncStateWrapper 로딩/에러 패턴
@@ -1198,12 +1206,11 @@ export const formatKRW = (amount: number): string =>
 ### RULE-029: OTP 입력 UX 패턴
 
 ```tsx
-// 1. 6자리 완성 시 자동 포커스 이동 없음 (단일 input)
-// 2. 숫자 외 입력 즉시 차단 (onKeyDown에서 preventDefault)
-// 3. 붙여넣기 허용 (onPaste에서 숫자만 추출)
-// 4. 제출 버튼 disabled: otpValue.length !== 6 || isSubmitting
-// 5. 1초 debounce는 서버 측 — 프론트는 UI disable만 담당
-// <input aria-label="OTP 인증 6자리" inputMode="numeric" />
+// 1. 6개 별도 <input maxLength={1}> 박스 — aria-label="Authentication code digit {n}"
+// 2. 각 박스에서 숫자 외 입력 즉시 차단 (onKeyDown에서 preventDefault)
+// 3. 마지막 자리 입력 시 자동 제출 (OTP auto-submit, Story 2.3 AC)
+// 4. 붙여넣기 허용 (onPaste에서 숫자만 추출하여 각 박스 배분)
+// 5. 1초 debounce는 서버 측 — 프론트는 박스 disable만 담당
 ```
 
 ### RULE-030: BusinessConstants
@@ -1211,10 +1218,10 @@ export const formatKRW = (amount: number): string =>
 ```java
 // core-common 모듈의 BusinessConstants 클래스에만 정의
 public final class BusinessConstants {
-    public static final long MAX_TRANSFER_AMOUNT_KRW = 5_000_000L;
-    public static final int  OTP_EXPIRY_SECONDS       = 180;
-    public static final int  SESSION_EXPIRY_SECONDS   = 1_800;
-    public static final int  OTP_MAX_ATTEMPTS         = 5;
+    public static final long MAX_ORDER_AMOUNT_KRW  = 5_000_000L;
+    public static final int  OTP_EXPIRY_SECONDS       = 600;  // ch:otp-attempts TTL (= order session TTL)
+    public static final int  SESSION_EXPIRY_SECONDS   = 600;  // ch:order-session TTL
+    public static final int  OTP_MAX_ATTEMPTS         = 3;
     private BusinessConstants() {}
 }
 // ❌ 금지: magic number 인라인 사용
@@ -1229,7 +1236,7 @@ public final class BusinessConstants {
   "error": {
     "code": "CORE-003",
     "message": "잔액이 부족합니다.",
-    "detail": "Insufficient balance for transfer",
+    "detail": "Insufficient position for order",
     "timestamp": "2026-02-23T10:30:00Z"
   }
 }
@@ -1244,19 +1251,21 @@ public final class BusinessConstants {
 | ----------- | ---- | ------------------------- | ---------------- |
 | CHANNEL-001 | 401  | 세션 없음/만료            | channel-service  |
 | CHANNEL-002 | 422  | OTP 불일치                | channel-service  |
-| CHANNEL-003 | 429  | OTP 시도 초과 (5회 초과 시) | channel-service  |
-| CHANNEL-004 | 409  | 이미 진행 중인 이체 세션  | channel-service  |
-| CHANNEL-005 | 400  | 이체 금액 유효성 오류     | channel-service  |
-| CORE-001    | 404  | 계좌 없음                 | corebank-service |
-| CORE-002    | 422  | 잔액 부족                 | corebank-service |
-| CORE-003    | 409  | 이체 잠금 획득 실패       | corebank-service |
-| CORE-004    | 422  | 1일 이체 한도 초과 (channel-service 1차 검증, corebank-service 2차 방어) | channel-service (primary) |
-| CORE-005    | 404  | 수취 계좌 없음            | corebank-service |
-| FEP-001     | 503  | FEP 서비스 불가 (CB Open) | fep-service      |
-| FEP-002     | 504  | FEP 응답 타임아웃         | fep-service      |
+| CHANNEL-003 | 429  | OTP 시도 초과 (3회 초과 시) | channel-service  |
+| CHANNEL-004 | 409  | 이미 진행 중인 주문 세션  | channel-service  |
+| CHANNEL-005 | 400  | 주문 수량 유효성 오류     | channel-service  |
+| RATE-001    | 429  | OTP 시도 디바운스 (1s burst guard 활성, 시도 횟수 미차감) | channel-service  |
+| CORE-001    | 404  | 종목 없음                 | corebank-service |
+| CORE-002    | 422  | 보유수량 부족                 | corebank-service |
+| CORE-003    | 409  | 포지션 잠금 획득 실패       | corebank-service |
+| CORE-004    | 500  | 트랜잭션 롤백 (내부 DB 오류)     | corebank-service |
+| CORE-005    | 404  | 종목 코드 없음            | corebank-service |
+| FEP-001     | 504  | FEP 응답 타임아웃 / HTTP 5xx (보상 트랜잭션 실행됨)         | corebank-service |
+| FEP-002     | 422  | FEP 거부 응답 (REJECTED\_BY\_FEP, FIX ExecutionReport MsgType=j — 보상 트랜잭션 실행됨) | corebank-service |
+| FEP-003     | 503  | FEP 서비스 불가 (CB Open — fallback 즉시 반환, FEP 호출 없음, 포지션 무변동) | corebank-service |
 | SYS-001     | 500  | 내부 시스템 오류          | 전체             |
-| TRF-004     | 422  | 이체 계좌 번호 형식 오류 또는 동일 계좌 이체 시도 | channel-service  |
-| TRF-007     | 409  | `clientRequestId` 중복 — 멱등성 위반 (FR-22) | channel-service  |
+| ORD-004     | 422  | 종목코드 형식 오류 또는 수량 범위 초과 | channel-service  |
+| ORD-007     | 409  | `clOrdID` 중복 — 멱등성 위반 (FR-22) | channel-service  |
 | VALIDATION-001 | 422 | 요청 필드 유효성 오류 (`@Valid` 실패) | 전체             |
 
 ### RULE-032: FepClient 구현 패턴
@@ -1268,10 +1277,10 @@ public class FepClient {
     // @CircuitBreaker AOP 프록시 요구 → final 클래스 금지
     // RestClient 사용 (WebClient 금지 — D-011)
 
-    @CircuitBreaker(name = "fep", fallbackMethod = "transferFallback")
-    public FepTransferResponse requestTransfer(FepTransferRequest req) { ... }
+    @CircuitBreaker(name = "fep", fallbackMethod = "orderFallback")
+    public FepOrderResponse requestOrder(FepOrderRequest req) { ... }
 
-    private FepTransferResponse transferFallback(FepTransferRequest req, Exception ex) {
+    private FepOrderResponse orderFallback(FepOrderRequest req, Exception ex) {
         // 항상 FEP_UNAVAILABLE 에러 코드 반환 (임의 성공 응답 금지)
     }
 }
@@ -1294,7 +1303,7 @@ public class FepClient {
 
 ```java
 // [SIMULATION] FEP 응답을 실제 FEP 서버 없이 Mock 처리
-// [SIMULATION] 계좌 잔액 차감을 Transaction 없이 Redis에서만 처리
+// [SIMULATION] 계좌 잔액 업데이트를 Transaction 없이 Redis에서만 처리
 // ❌ 금지: 시뮬레이션 로직이 실제 비즈니스 로직과 혼재
 ```
 
@@ -1325,7 +1334,7 @@ export interface ApiResponse<T> {
 // ❌ 금지: @Repository 구현 클래스
 // ❌ 금지: private 메서드 (AOP 프록시 우회)
 // ❌ 금지: 통합 테스트 클래스 레벨 (false green 방지)
-// 특수: TransferSessionService의 Redis 연산 → @Transactional 미적용
+// 특수: OrderSessionService의 Redis 연산 → @Transactional 미적용
 ```
 
 ### RULE-037: Resilience4j 설정 위치
@@ -1336,9 +1345,9 @@ resilience4j:
   circuitbreaker:
     instances:
       fep:
-        slidingWindowSize: 10
-        failureRateThreshold: 50
-        waitDurationInOpenState: 30s
+        slidingWindowSize: 3
+        failureRateThreshold: 100
+        waitDurationInOpenState: 10s
         permittedNumberOfCallsInHalfOpenState: 3
 ```
 
@@ -1350,7 +1359,7 @@ FixException (abstract, RuntimeException)
 │   ├── InvalidSessionStateException       → 409
 │   ├── InsufficientBalanceException       → 422
 │   ├── OtpVerificationException           → 422
-│   ├── DailyTransferLimitExceededException → 422
+│   ├── DailySellLimitExceededException → 422
 │   └── AccountNotFoundException           → 404
 └── SystemException (시스템 장애 → 5xx)
     ├── FepCommunicationException          → 503
@@ -1364,7 +1373,7 @@ FixException (abstract, RuntimeException)
 
 ```java
 // ✅ 올바른 패턴
-public TransferResultResponse initiateTransfer(InitiateTransferCommand command) { }
+public OrderResultResponse initiateOrder(InitiateOrderCommand command) { }
 public SessionStatusResponse getSessionStatus(String sessionId) { }
 
 // ❌ 금지: HttpServletRequest, BindingResult 등 웹 레이어 타입을 파라미터로
@@ -1437,7 +1446,7 @@ class TestAsyncConfig {
 
 @Test
 @WithMockUser(username = "test-user-id", roles = "USER")
-void 인증된_사용자는_이체_세션을_조회할_수_있다() { }
+void 인증된_사용자는_주문_세션을_조회할_수_있다() { }
 
 @Test
 void 인증_없이_보호된_엔드포인트_접근시_401_반환() { }
@@ -1458,10 +1467,10 @@ void 인증_없이_보호된_엔드포인트_접근시_401_반환() { }
 // ❌ 금지: 무한 재연결 루프
 ```
 
-### RULE-046: Transfer Flow useReducer 상태 타입
+### RULE-046: Order Flow useReducer 상태 타입
 
 ```ts
-type TransferStep =
+type OrderStep =
   | "INPUT"
   | "CONFIRM"
   | "OTP"
@@ -1470,17 +1479,17 @@ type TransferStep =
   | "FAILURE"
   | "EXPIRED"; // 세션 만료 시 (백엔드 EXPIRED 응답) — "세션이 만료되었습니다. 다시 시작해 주세요." 문구 + RESET 유도
 
-// 프론트엔드 TransferStep ⇔ 백엔드 TransferStatus 매핑 (P-B5)
+// 프론트엔드 OrderStep ⇔ 백엔드 OrderStatus 매핑 (P-B5)
 // INPUT       : 세션 미생성 (클라이언트 상태만)
-// OTP         : OTP_PENDING (서버 세션 OTP_PENDING)
-// OTP         : AUTHED      (서버 OTP 검증 성공, 상세 화면 직전 짧은 상태)
-// PROCESSING  : EXECUTING   (이체 실행 중)
-// SUCCESS     : COMPLETED   (이체 완료)
-// FAILURE     : FAILED      (이체 실패)
-// EXPIRED     : EXPIRED     (세션 만료 — 타임아웃 또는 OTP 시도 초과)
+// OTP         : PENDING_NEW  (세션 생성 완료, 사용자 OTP 입력 대기)
+// CONFIRM     : AUTHED       (OTP 검증 성공, 최종 주문 제출 대기)
+// PROCESSING  : EXECUTING    (주문 실행 중)
+// SUCCESS     : COMPLETED    (OrderSession 완료 / orders.status=FILLED)
+// FAILURE     : FAILED       (주문 실패)
+// EXPIRED     : EXPIRED      (세션 만료 — 타임아웃 또는 OTP 시도 초과)
 
-type TransferAction =
-  | { type: "PROCEED_TO_CONFIRM"; payload: TransferFormData }
+type OrderAction =
+  | { type: "PROCEED_TO_CONFIRM"; payload: OrderFormData }
   | { type: "REQUEST_OTP" }
   | { type: "SUBMIT_OTP"; payload: string }
   | { type: "FEP_RESULT"; payload: FepResult }
@@ -1539,11 +1548,11 @@ application-prod.yml      — AWS EC2
 # 형식: <type>(<scope>): <subject>
 #
 # type: feat | fix | refactor | test | docs | chore | style
-# scope: channel | corebank | fep | core-common | frontend | infra | ci
+# scope: channel | corebank | fep-gateway | fep-simulator | core-common | frontend | infra | ci
 #
 # 예시:
 # feat(channel): add OTP verification endpoint
-# fix(corebank): resolve pessimistic lock timeout on transfer
+# fix(corebank): resolve pessimistic lock timeout on order
 # test(channel): add @ParameterizedTest for OTP boundary cases
 
 # ❌ 금지: "fix bug", "update code", "WIP"
@@ -1594,10 +1603,10 @@ chore/<desc>                      — 설정/인프라
 ```java
 // @Cacheable 적용 대상 (MVP):
 // - 계좌 기본 정보 조회 (TTL 60s)
-// - 수취인 계좌 유효성 결과 (TTL 30s)
+// - 종목코드 유효성 결과 (TTL 30s)
 
 // 캐시 키: {service}:{entity}:{id} (예: corebank:account:ACC-001)
-// ❌ 금지: 잔액, 이체 상태 등 실시간 데이터에 @Cacheable
+// ❌ 금지: 포지션, 주문 상태 등 실시간 데이터에 @Cacheable
 // ❌ 금지: @CacheEvict 없는 @Cacheable
 
 // application.yml:
@@ -1619,24 +1628,24 @@ chore/<desc>                      — 설정/인프라
 
 | 한국어      | 영어 (코드 사용)         | ❌ 금지 동의어                   |
 | ----------- | ------------------------ | -------------------------------- |
-| 이체        | Transfer                 | Transaction, Remittance, Payment |
-| 이체 세션   | TransferSession          | TransferTransaction, TxSession   |
+| 주문        | Order                    | Transfer, Transaction, Remittance |
+| 주문 세션   | OrderSession             | OrderTransaction, TxSession   |
 | 계좌        | Account                  | BankAccount, BankAcc             |
 | 회원/고객   | Member                   | User, Customer, Client           |
-| 잔액        | Balance                  | Amount (단독), Funds             |
-| 출금 계좌   | FromAccount              | SenderAccount, SourceAccount     |
-| 수취 계좌   | ReceiverAccount          | ToAccount, DestinationAccount    |
+| 포지션        | Position                 | Balance, Amount (단독), Funds    |
+| 매도 주문   | SellOrder (side=SELL)    | Withdrawal, Debit                |
+| 매수 주문   | BuyOrder (side=BUY)      | Deposit, Credit                  |
 | OTP         | Otp (클래스), otp (변수) | OneTimePassword, Pin             |
 | 인증        | Authentication           | Verification (코드 내)           |
 | FEP 연동    | FepRequest/FepResponse   | ExternalRequest, BankRequest     |
-| 이체 한도   | DailyTransferLimit       | MaxTransfer, TransferCap         |
+| 매도 한도   | DailySellLimit           | MaxTransfer, TransferCap         |
 | 회로 차단기 | CircuitBreaker           | Breaker, CB                      |
 
 ### RULE-058: 페이지네이션/정렬 패턴
 
 ```java
-@GetMapping("/transfers")
-public ApiResponse<Page<TransferSummaryResponse>> getTransfers(
+@GetMapping("/orders")
+public ApiResponse<Page<OrderSummaryResponse>> getOrders(
     @PageableDefault(size = 20, sort = "createdAt", direction = DESC) Pageable pageable
 ) { ... }
 
@@ -1672,6 +1681,7 @@ jib {
 # springdoc.api-docs.enabled: false  (필수 비활성화)
 
 # SecurityConfig: /swagger-ui/**, /v3/api-docs/** → local만 permitAll
+# Canonical API docs serving endpoint: GitHub Pages (`https://<org>.github.io/<repo>/`) via docs-publish workflow
 # ✅ @Operation(summary, description) — 모든 public 엔드포인트
 # ❌ 금지: prod 배포 후 /v3/api-docs 외부 노출
 ```
@@ -1726,8 +1736,8 @@ public abstract class WireMockIntegrationTest {
 ```java
 // 한국어 메서드명 허용 (가독성 우선)
 @Test void 잔액_부족_시_InsufficientBalanceException_발생() { }
-@Test void 이체_요청_성공_시_200_응답과_세션ID_반환() { }
-@Test void 잔액_부족_이체_시_422_응답과_CORE002_에러_코드_반환() { }
+@Test void 주문_요청_성공_시_200_응답과_세션ID_반환() { }
+@Test void 보유수량_부족_주문_시_422_응답과_CORE002_에러_코드_반환() { }
 
 // ❌ 금지: testTransfer(), test1(), shouldWork()
 ```
@@ -1739,9 +1749,9 @@ const {
   register,
   handleSubmit,
   formState: { errors, isSubmitting },
-} = useForm<TransferFormData>({ resolver: zodResolver(transferSchema) });
+} = useForm<OrderFormData>({ resolver: zodResolver(orderSchema) });
 
-// Zod 스키마 위치: lib/schemas/transfer.schema.ts
+// Zod 스키마 위치: lib/schemas/order.schema.ts
 // 에러 표시: <span role="alert">{errors.amount?.message}</span>
 // ❌ 금지: onSubmit 수동 유효성 검사
 // ❌ 금지: useState로 각 필드 에러 개별 관리
@@ -1750,7 +1760,7 @@ const {
 ### RULE-066: Tailwind 반응형 breakpoint
 
 ```
-// FIX: 데스크톱 우선 (은행 시뮬레이터)
+// FIX: 데스크톱 우선 (증권사 시뮬레이터)
 // 최소 지원: 768px | 컨테이너 최대: max-w-2xl mx-auto
 // md: (768px~) | lg: (1024px~) | sm: (640px~)
 // ❌ 금지: px 직접 사용 (style={{ width: '500px' }})
@@ -1767,7 +1777,7 @@ const {
 // 4. 로딩 상태: aria-busy="true"
 // 5. 모달: role="dialog" + aria-modal="true"
 
-// <input aria-label="이체 금액 (원)" inputMode="numeric" />
+// <input aria-label="주문 수량 (주)" inputMode="numeric" />
 // ❌ 금지: <div onClick={}> — button 사용
 // ❌ 금지: 색상만으로 정보 전달
 ```
@@ -1805,8 +1815,8 @@ spring:
 # docker-compose.yml:
 # stop_grace_period: 35s
 
-# 이유: 이체 처리 중 강제 종료 → EXECUTING 상태 고착 방지
-# TransferSessionRecoveryService @PostConstruct: 재시작 후 EXECUTING 세션 → FAILED 전환
+# 이유: 주문 체결 중 강제 종료 → EXECUTING 상태 고착 방지
+# OrderSessionRecoveryService @PostConstruct: 재시작 후 EXECUTING 세션 → FAILED 전환
 ```
 
 ### RULE-070: HikariCP 커넥션 풀 (EC2 t3.small)
@@ -1823,23 +1833,23 @@ spring:
 
 # Redis:
 # spring.data.redis.lettuce.pool.max-active: 8
-# 3서비스 × 10 = 30 connections < MySQL max_connections 151 (안전)
+# 4서비스 × 10 = 40 connections < MySQL max_connections 151 (안전)
 # ❌ 금지: maximum-pool-size > 20
 ```
 
-### RULE-071: 이체 요청 Idempotency
+### RULE-071: 주문 요청 Idempotency (ClOrdID)
 
 ```java
-// 헤더: X-Idempotency-Key: <client UUID>
-// Redis: SET ch:idempotency:{key} {sessionId} NX EX 600
+// 헤더: X-ClOrdID: <client UUID v4>  (FIX Tag 11 새셸)
+// Redis: SET ch:idempotency:{clOrdID} {orderSessionId} NX EX 600
 // NX 성공 → 신규 처리
-// NX 실패 → 기존 sessionId 반환 (200, 재처리 없음)
+// NX 실패 → 기존 orderSessionId 반환 (200, 재처리 없음)
 
-// ✅ 적용 대상: POST /api/v1/transfer/initiate만
+// ✅ 적용 대상: POST /api/v1/orders/sessions만
 // ❌ 금지: 모든 POST에 적용 (Over-engineering)
 ```
 
-### RULE-072: TransferSession 만료 처리
+### RULE-072: OrderSession 만료 처리
 
 ```java
 // Redis TTL 만료 = 세션 자연 소멸 → CHANNEL-001 반환
@@ -1849,17 +1859,17 @@ spring:
 
 // @Scheduled(fixedDelay = 60s) — 런타임 주기 감시 (이상 상태 감지)
 //   → EXECUTING + created_at > 10분 → FAILED 강제 전환
-//   → OTP_PENDING + created_at > 30분 → EXPIRED 전환
+//   → PENDING_NEW + created_at > 10분 → EXPIRED 전환
 //   → AUTHED   + created_at > 10분 → EXPIRED 전환
 //   멱등성 보장: 해당 상태인 경우만 전환, DB 업데이트 실패 시 에러 로그 후 skip
 // DB 정합성 유지 — Redis TTL 자연 소멸만으로는 DB에 상태가 영구 잔존할 수 있음
 ```
 
-### RULE-073: 잔액 동시성 3중 보호
+### RULE-073: 포지션 동시성 3중 보호
 
 ```
-1. Redis SETNX execute lock (RULE-026)
-2. JPA @Lock(PESSIMISTIC_WRITE) (ADR-001)
+1. Redis SETNX order execute lock: SET ch:txn-lock:{sessionId} NX EX 30 (RULE-026)
+2. JPA @Lock(PESSIMISTIC_WRITE) on PositionRepository.findBySymbolWithLock (ADR-001)
 3. @Transactional(isolation = REPEATABLE_READ)
 
 // 락 획득 실패 시 재시도 없음 → 즉시 CORE-003 반환
@@ -1871,13 +1881,15 @@ spring:
 ```bash
 # 배포 순서:
 # 1. corebank-service (Flyway 실행)
-# 2. fep-service
-# 3. channel-service
+# 2. fep-gateway
+# 3. fep-simulator
+# 4. channel-service
 
 docker compose pull
 docker compose up -d corebank-service
 # healthcheck 확인 후:
-docker compose up -d fep-service
+docker compose up -d fep-gateway
+docker compose up -d fep-simulator
 docker compose up -d channel-service
 
 # 롤백: docker compose up -d --no-deps {service}:{이전_태그}
@@ -1990,8 +2002,8 @@ public class XxxService {
 {
   "@timestamp": "2026-02-23T10:30:00.000Z",
   "level": "INFO",
-  "logger": "com.fix.channel.service.TransferService",
-  "message": "Transfer session state transition: AUTHED → EXECUTING",
+  "logger": "com.fix.channel.service.OrderService",
+  "message": "Order session state transition: AUTHED → EXECUTING",
   "traceId": "abc123",
   "spanId": "def456",
   "userId": "user-uuid",
@@ -2089,7 +2101,7 @@ RULE 위반이 정당화되는 경우 (성능 최적화, 외부 라이브러리 
 6. RULE-038: 예외 → FixException 계층 내에서만
 7. RULE-056: 도메인 용어 Glossary 준수
 8. RULE-035: ApiResponse<T> 타입 사용
-9. RULE-046: TransferStep union type + useReducer
+9. RULE-046: OrderStep union type + useReducer
 10. RULE-047: lib/axios.ts 단일 인스턴스
 11. RULE-028: 금액 → formatKRW()만
 12. RULE-065: 폼 → React Hook Form + Zod
@@ -2120,13 +2132,13 @@ RULE 위반이 정당화되는 경우 (성능 최적화, 외부 라이브러리 
 | 항목              | 변경 전                    | 변경 후                  | 이유                                     |
 | ----------------- | -------------------------- | ------------------------ | ---------------------------------------- |
 | D-017 패키지      | `io.github.yeongjae.fix.*` | `com.fix.*`              | 포트폴리오 프로젝트에 OSS 배포 관례 과분 |
-| fep-domain 모듈   | 별도 Gradle 모듈           | fep-service 내부 패키지  | corebank가 공유 불필요                   |
+| fep-domain 모듈   | 별도 Gradle 모듈           | fep-simulator 내부 패키지  | corebank가 공유 불필요                 |
 | Flyway channel_db | corebank-service 아래      | channel-service 아래     | 스키마 소유권 정정                       |
-| FepClient 위치    | fep-service/client/        | corebank-service/client/ | 호출자가 소유                            |
+| FepClient 위치    | fep-gateway/client/        | corebank-service/client/ | 호출자가 소유                            |
 
 ---
 
-### 최종 확정 Gradle 모듈 구조 (7개)
+### 최종 확정 Gradle 모듈 구조 (8개)
 
 | 모듈               | 역할                | Spring Boot | 포트 | Flyway        | QueryDSL APT |
 | ------------------ | ------------------- | ----------- | ---- | ------------- | ------------ |
@@ -2136,7 +2148,8 @@ RULE 위반이 정당화되는 경우 (성능 최적화, 외부 라이브러리 
 | `channel-service`  | 채널 서비스 진입점  | ✅          | 8080 | ✅ channel_db | ❌           |
 | `corebank-domain`  | 코어뱅킹 Entity     | ❌          | —    | ❌            | ✅           |
 | `corebank-service` | 코어뱅킹 진입점     | ✅          | 8081 | ✅ core_db    | ❌           |
-| `fep-service`      | FEP 시뮬레이터      | ✅          | 8082 | ❌            | ❌           |
+| `fep-gateway`      | FEP 게이트웨이      | ✅          | 8083 | ❌            | ❌           |
+| `fep-simulator`    | FEP 시뮬레이터      | ✅          | 8082 | ❌            | ❌           |
 
 ---
 
@@ -2148,12 +2161,13 @@ fix/                                          # 모노레포 루트
 │   └── workflows/
 │       ├── ci-channel.yml                    # matrix job 1
 │       ├── ci-corebank.yml                   # matrix job 2
-│       ├── ci-fep.yml                        # matrix job 3
+│       ├── ci-fep-gateway.yml                # matrix job 3
+│       ├── ci-fep-simulator.yml              # matrix job 4
 │       └── ci-frontend.yml                   # Vite + Vitest (R2)
 ├── .gitignore                                # *.env, build/, .gradle/, node_modules/
 ├── README.md                                 # Quick Start, 아키텍처 개요
 ├── CONTRIBUTING.md                           # 브랜치/커밋/PR 컨벤션 (R6)
-├── docker-compose.yml                        # mysql, redis, 3서비스 + 네트워크
+├── docker-compose.yml                        # mysql, redis, 4서비스 + 네트워크
 ├── docker-compose.override.yml               # 로컬 포트 바인딩 (gitignore)
 ├── .env.example                              # 모든 환경변수 키 (값 빈칸)
 ├── build.gradle                              # 루트 공통 설정 (subprojects)
@@ -2176,7 +2190,7 @@ fix/                                          # 모노레포 루트
 │   ├── build.gradle                          # java-library (Spring 의존성 없음)
 │   └── src/main/java/com/fix/common/
 │       ├── constants/
-│       │   ├── BusinessConstants.java         # RULE-030 (이체한도, OTP TTL 등)
+│       │   ├── BusinessConstants.java         # RULE-030 (주문한도, OTP TTL 등)
 │       │   └── HttpConstants.java             # X-Internal-Secret 등 헤더 상수 (R1)
 │       ├── entity/
 │       │   └── BaseTimeEntity.java            # @MappedSuperclass (R8)
@@ -2187,7 +2201,7 @@ fix/                                          # 모노레포 루트
 │       │   ├── InvalidSessionStateException.java   → 409
 │       │   ├── InsufficientBalanceException.java   → 422
 │       │   ├── OtpVerificationException.java       → 422
-│       │   ├── DailyTransferLimitExceededException → 422
+│       │   ├── DailySellLimitExceededException     → 422
 │       │   ├── AccountNotFoundException.java       → 404
 │       │   ├── FepCommunicationException.java      → 503
 │       │   └── DataIntegrityException.java         → 500
@@ -2204,8 +2218,8 @@ fix/                                          # 모노레포 루트
 │       │   └── TestAsyncConfig.java           # SyncTaskExecutor RULE-042
 │       ├── fixture/
 │       │   ├── MemberFixture.java
-│       │   ├── AccountFixture.java
-│       │   └── TransferSessionFixture.java
+│       │   ├── PositionFixture.java
+│       │   └── OrderSessionFixture.java
 │       ├── wiremock/
 │       │   └── WireMockIntegrationTest.java   # RULE-063
 │       └── assertion/
@@ -2217,12 +2231,12 @@ fix/                                          # 모노레포 루트
 │       ├── main/java/com/fix/channel/domain/
 │       │   ├── entity/
 │       │   │   ├── Member.java
-│       │   │   └── TransferSession.java        # R8: 핵심 필드 명시
+│       │   │   └── OrderSession.java           # R8: 핵심 필드 명시
 │       │   ├── vo/
-│       │   │   └── TransferStatus.java         # OTP_PENDING/AUTHED/EXECUTING/COMPLETED/FAILED/EXPIRED
+│       │   │   └── OrderSessionStatus.java     # PENDING_NEW/AUTHED/EXECUTING/COMPLETED/FAILED/EXPIRED
 │       │   └── repository/
 │       │       ├── MemberRepository.java
-│       │       └── TransferSessionRepository.java
+│       │       └── OrderSessionRepository.java
 │       └── test/java/com/fix/channel/domain/
 │
 ├── channel-service/
@@ -2232,7 +2246,7 @@ fix/                                          # 모노레포 루트
 │       │   ├── java/com/fix/channel/
 │       │   │   ├── ChannelApplication.java
 │       │   │   ├── config/
-│       │   │   │   ├── SecurityConfig.java     # Spring Session + CORS + HttpSessionCsrfTokenRepository + permitAll
+│       │   │   │   ├── SecurityConfig.java     # Spring Session + CORS + CookieCsrfTokenRepository + permitAll
 │       │   │   │   ├── CorsConfig.java         # profile별 allowedOrigins (R5)
 │       │   │   │   ├── SessionConfig.java      # @EnableRedisHttpSession + SpringSessionBackedSessionRegistry (R5)
 │       │   │   │   ├── JpaConfig.java          # @EnableJpaAuditing (R5)
@@ -2243,34 +2257,35 @@ fix/                                          # 모노레포 루트
 │       │   │   │   └── RateLimitConfig.java    # Bucket4j (R4)
 │       │   │   ├── controller/
 │       │   │   │   ├── AuthController.java     # /api/v1/auth/** (POST /login, POST /logout, POST /register, GET /csrf, GET /session)
-│       │   │   │   ├── TransferController.java # /api/v1/transfer/**
+│       │   │   │   ├── OrderController.java # /api/v1/orders/**
 │       │   │   │   ├── NotificationController.java   # /api/v1/notifications/stream
 │       │   │   │   └── AdminController.java    # GET /api/v1/admin/audit-logs, DELETE /api/v1/admin/members/{memberId}/sessions (ROLE_ADMIN R4)
 │       │   │   ├── service/
 │       │   │   │   ├── AuthService.java
 │       │   │   │   ├── OtpService.java
-│       │   │   │   ├── TransferSessionService.java   # transition() RULE-026
+│       │   │   │   ├── OrderSessionService.java     # transition() RULE-026
+│       │   │   │   ├── OrderExecutionService.java   # Saga orchestrator (Channel ⇔ CoreBanking)
 │       │   │   │   ├── SseNotificationService.java   # @Async
 │       │   │   │   ├── AuditLogService.java    # R4
-│       │   │   │   └── TransferSessionRecoveryService.java  # @Scheduled RULE-072
+│       │   │   │   └── OrderSessionRecoveryService.java  # @Scheduled RULE-072
 │       │   │   ├── dto/
 │       │   │   │   ├── request/
 │       │   │   │   │   ├── LoginRequest.java         # record
 │       │   │   │   │   ├── OtpVerifyRequest.java     # record
-│       │   │   │   │   └── InitiateTransferRequest.java
+│       │   │   │   │   └── PrepareOrderRequest.java  # record (ClOrdID, symbol, side, qty)
 │       │   │   │   ├── response/
 │       │   │   │   │   ├── LoginResponse.java        # record
-│       │   │   │   │   ├── TransferSessionResponse.java
+│       │   │   │   │   ├── OrderSessionResponse.java # orderSessionId, status, clOrdID
 │       │   │   │   │   ├── SessionStatusResponse.java
 │       │   │   │   │   └── AuditLogResponse.java     # record (R4)
 │       │   │   │   └── command/
-│       │   │   │       └── InitiateTransferCommand.java  # record (RULE-039)
+│       │   │   │       └── PrepareOrderCommand.java  # record (RULE-039)
 │       │   │   ├── security/
 │       │   │   │   ├── JwtProvider.java
 │       │   │   │   ├── JwtAuthenticationFilter.java  # OncePerRequestFilter + MDC
 │       │   │   │   └── CustomUserDetailsService.java
 │       │   │   ├── filter/
-│       │   │   │   └── RateLimitFilter.java    # login/OTP/transfer (R4)
+│       │   │   │   └── RateLimitFilter.java    # login/OTP/order-prepare (R4)
 │       │   │   ├── client/
 │       │   │   │   └── CoreBankClient.java     # RestClient 래퍼 → corebank-service
 │       │   │   └── exception/
@@ -2284,7 +2299,7 @@ fix/                                          # 모노레포 루트
 │       │       └── db/
 │       │           ├── migration/
 │       │           │   ├── V0__create_member_table.sql
-│       │           │   ├── V1__create_transfer_session_table.sql
+│       │           │   ├── V1__create_order_session_table.sql
 │       │           │   ├── V2__create_audit_log_table.sql    # R4
 │       │           │   └── V3__create_notification_table.sql # R9
 │       │           └── seed/
@@ -2294,14 +2309,14 @@ fix/                                          # 모노레포 루트
 │           │   ├── service/
 │           │   │   ├── AuthServiceTest.java
 │           │   │   ├── OtpServiceTest.java
-│           │   │   └── TransferSessionServiceTest.java  # Scenario #3
+│           │   │   └── OrderSessionServiceTest.java  # Scenario #3
 │           │   └── security/
 │           │       └── JwtProviderTest.java
 │           └── integration/com/fix/channel/
 │               ├── ChannelIntegrationTestBase.java      # R1
 │               └── controller/
 │                   ├── AuthControllerIntegrationTest.java        # Scenario #6
-│                   ├── TransferControllerIntegrationTest.java    # Scenario #1
+│                   ├── OrderControllerIntegrationTest.java       # Scenario #1
 │                   ├── NotificationControllerIntegrationTest.java
 │                   └── IdempotencyIntegrationTest.java           # Scenario #4 (R4)
 │
@@ -2311,7 +2326,7 @@ fix/                                          # 모노레포 루트
 │       ├── main/java/com/fix/corebank/domain/
 │       │   ├── entity/
 │       │   │   ├── Account.java               # @ToString.Exclude (RULE-033)
-│       │   │   └── TransferHistory.java
+│       │   │   └── OrderHistory.java
 │       │   ├── repository/
 │       │   │   ├── AccountRepository.java     # @Lock(PESSIMISTIC_WRITE)
 │       │   │   ├── AccountRepositoryCustom.java
@@ -2332,16 +2347,16 @@ fix/                                          # 모노레포 루트
 │       │   │   │   └── RedisConfig.java
 │       │   │   ├── controller/
 │       │   │   │   ├── AccountController.java
-│       │   │   │   └── TransferController.java
+│       │   │   │   └── OrderController.java
 │       │   │   ├── service/
 │       │   │   │   ├── AccountService.java    # @Transactional(readOnly=true)
-│       │   │   │   └── TransferService.java   # @Lock PESSIMISTIC_WRITE ADR-001
+│       │   │   │   └── OrderService.java      # @Lock PESSIMISTIC_WRITE ADR-001
 │       │   │   ├── dto/
 │       │   │   │   ├── request/
-│       │   │   │   │   └── TransferExecuteRequest.java
+│       │   │   │   │   └── OrderExecuteRequest.java
 │       │   │   │   └── response/
 │       │   │   │       ├── AccountResponse.java
-│       │   │   │       └── TransferExecuteResponse.java
+│       │   │   │       └── OrderExecuteResponse.java
 │       │   │   ├── client/
 │       │   │   │   └── FepClient.java         # @CircuitBreaker RULE-032 (R1 이동)
 │       │   │   ├── security/
@@ -2358,38 +2373,38 @@ fix/                                          # 모노레포 루트
 │       │           ├── migration/
 │       │           │   ├── V1__create_member_table.sql
 │       │           │   ├── V2__create_account_table.sql
-│       │           │   └── V3__create_transfer_history_table.sql
+│       │           │   └── V3__create_order_history_table.sql
 │       │           └── seed/
 │       │               └── R__seed_data.sql   # Repeatable (R2/R4)
 │       └── test/
 │           ├── unit/com/fix/corebank/service/
 │           │   ├── AccountServiceTest.java
-│           │   └── TransferServiceTest.java
+│           │   └── OrderServiceTest.java
 │           └── integration/com/fix/corebank/
 │               ├── CoreBankIntegrationTestBase.java          # R5
 │               └── controller/
 │                   ├── AccountControllerIntegrationTest.java
-│                   ├── TransferControllerIntegrationTest.java
-│                   ├── ConcurrentTransferIntegrationTest.java # Scenario #2 (R4)
+│                   ├── OrderControllerIntegrationTest.java
+│                   ├── ConcurrentOrderIntegrationTest.java    # Scenario #2 (R4)
 │                   ├── FepCircuitBreakerIntegrationTest.java  # Scenario #5 (R4)
 │                   └── LedgerIntegrityIntegrationTest.java    # Scenario #7 (R4)
 │
-├── fep-service/                               # fep-domain 흡수 (R6)
+├── fep-simulator/                             # fep-domain 흡수 (R6)
 │   ├── build.gradle
 │   └── src/
 │       ├── main/
 │       │   ├── java/com/fix/fep/
 │       │   │   ├── FepApplication.java
 │       │   │   ├── domain/                    # fep-domain 내부 통합 (R6)
-│       │   │   │   ├── vo/FepTransferStatus.java
-│       │   │   │   ├── dto/FepTransferRequest.java
-│       │   │   │   └── dto/FepTransferResponse.java
+│       │   │   │   ├── vo/FepOrderStatus.java
+│       │   │   │   ├── dto/FepOrderRequest.java
+│       │   │   │   └── dto/FepOrderResponse.java
 │       │   │   ├── config/
 │       │   │   │   ├── SecurityConfig.java
 │       │   │   │   └── FepChaosConfig.java    # latency, failureRate, mode (R4)
 │       │   │   ├── controller/
-│       │   │   │   ├── FepController.java     # /api/v1/fep/transfer
-│       │   │   │   └── FepChaosController.java # PUT /fep-internal/config (R4)
+│       │   │   │   ├── FepController.java     # /api/v1/fep/order
+│       │   │   │   └── FepChaosController.java # PUT /fep-internal/rules (R4)
 │       │   │   ├── service/
 │       │   │   │   └── FepSimulatorService.java # [SIMULATION] RULE-034
 │       │   │   └── security/
@@ -2425,20 +2440,20 @@ fix/                                          # 모노레포 루트
         ├── App.tsx                            # BrowserRouter + NotificationProvider; useEffect → GET /api/v1/auth/me로 Zustand 초기화 (새로고침 시 쿠키 유효 판별)
         ├── pages/
         │   ├── LoginPage.tsx                  # useAuthStore.login(), Zod 검증
-        │   ├── DashboardPage.tsx              # useAccount(), useNotification()
-        │   ├── TransferPage.tsx               # useTransfer() useReducer
+        │   ├── PortfolioPage.tsx              # usePortfolio(), useNotification()
+        │   ├── OrderPage.tsx                  # useOrder() useReducer
         │   └── AdminPage.tsx                  # 감사 로그 조회, 강제 로그아웃 (ROLE_ADMIN 전용, P-C4)
         ├── components/
-        │   ├── transfer/
-        │   │   ├── TransferInputForm.tsx       # React Hook Form + Zod (RULE-065)
-        │   │   ├── TransferConfirm.tsx
+        │   ├── order/
+        │   │   ├── OrderInputForm.tsx         # React Hook Form + Zod (RULE-065)
+        │   │   ├── OrderConfirm.tsx
         │   │   ├── OtpInput.tsx               # RULE-029
-        │   │   ├── TransferProcessing.tsx
-        │   │   ├── TransferResult.tsx
+        │   │   ├── OrderProcessing.tsx
+        │   │   ├── OrderResult.tsx
         │   │   └── __tests__/
-        │   │       ├── TransferInputForm.test.tsx
+        │   │       ├── OrderInputForm.test.tsx
         │   │       ├── OtpInput.test.tsx       # userEvent.type
-        │   │       └── TransferResult.test.tsx
+        │   │       └── OrderResult.test.tsx
         │   └── common/
         │       ├── AsyncStateWrapper.tsx       # RULE-027
         │       ├── LoadingSpinner.tsx
@@ -2458,29 +2473,29 @@ fix/                                          # 모노레포 루트
         │   └── __tests__/
         │       └── useAuthStore.test.ts        # login/logout 상태 전환 단위 테스트 (P-C6)
         ├── hooks/
-        │   ├── useTransfer.ts                  # useReducer RULE-046
+        │   ├── useOrder.ts                    # useReducer RULE-046
         │   ├── useAuth.ts                      # useAuthStore wrapper: const useAuth = () => useAuthStore()
-        │   ├── useAccount.ts
+        │   ├── usePortfolio.ts
         │   ├── useNotification.ts              # NotificationContext 소비 (R2)
         │   └── __tests__/
-        │       └── useTransfer.test.ts
+        │       └── useOrder.test.ts
         ├── lib/
         │   ├── axios.ts                        # 단일 인스턴스 RULE-047
         │   └── schemas/
-        │       ├── transfer.schema.ts
+        │       ├── order.schema.ts
         │       └── auth.schema.ts
         ├── types/
         │   ├── api.ts                          # ApiResponse<T> RULE-035
-        │   ├── transfer.ts                     # TransferStep union RULE-046
-        │   ├── account.ts
+        │   ├── order.ts                        # OrderStep union RULE-046
+        │   ├── portfolio.ts
         │   └── auth.ts                         # LoginRequest, Member (R9)
         ├── utils/
         │   └── formatters.ts                   # formatKRW RULE-028
         └── test/
             ├── setup.ts                        # jsdom + EventSource mock
             ├── fixtures/
-            │   ├── transferFixtures.ts
-            │   └── accountFixtures.ts
+            │   ├── orderFixtures.ts
+            │   └── portfolioFixtures.ts
             └── __mocks__/
                 └── axios.ts
 ```
@@ -2493,9 +2508,10 @@ fix/                                          # 모노레포 루트
 
 | 경계                               | 통신 방식       | 인증               | 네트워크     |
 | ---------------------------------- | --------------- | ------------------ | ------------ |
-| Vercel → channel-service           | HTTPS REST      | JWT Session Cookie | external-net |
+| Vercel → channel-service           | HTTPS REST      | Spring Session Cookie | external-net |
 | channel-service → corebank-service | HTTP REST       | X-Internal-Secret  | core-net     |
-| corebank-service → fep-service     | HTTP REST       | X-Internal-Secret  | fep-net      |
+| corebank-service → fep-gateway     | HTTP REST       | X-Internal-Secret  | gateway-net  |
+| fep-gateway → fep-simulator        | HTTP REST       | X-Internal-Secret  | fep-net      |
 | channel-service → SSE Client       | HTTP long-lived | Session Cookie     | external-net |
 | CI → EC2                           | SSH             | SSH Key            | 인터넷       |
 
@@ -2505,16 +2521,20 @@ fix/                                          # 모노레포 루트
 networks:
   external-net: # channel-service ↔ 외부
   core-net: # channel-service ↔ corebank-service
-  fep-net: # corebank-service ↔ fep-service
+  gateway-net: # corebank-service ↔ fep-gateway
+  fep-net: # fep-gateway ↔ fep-simulator
 
 services:
   channel-service:
     networks: [external-net, core-net]
     ports: ["8080:8080"]
   corebank-service:
-    networks: [core-net, fep-net]
+    networks: [core-net, gateway-net]
     # ports 없음
-  fep-service:
+  fep-gateway:
+    networks: [gateway-net, fep-net]
+    # ports 없음
+  fep-simulator:
     networks: [fep-net]
     # ports 없음
 
@@ -2562,33 +2582,33 @@ public class Member extends BaseTimeEntity {
 
 ---
 
-### TransferSession 핵심 필드 (R8)
+### OrderSession 핵심 필드 (R8)
 
 ```java
-@Entity @Table(name = "transfer_sessions")
-public class TransferSession extends BaseTimeEntity {
+@Entity @Table(name = "order_sessions")
+public class OrderSession extends BaseTimeEntity {
     @Id @GeneratedValue(strategy = IDENTITY)
     private Long id;
     @Column(nullable = false, unique = true, length = 36)
-    private String sessionId;             // UUID
+    private String orderSessionId;        // UUID (ch:order-session key suffix)
+    @Column(nullable = false, unique = true, length = 36)
+    private String clOrdID;               // FIX Tag 11 — Idempotency RULE-071 (UUID v4)
     @Column(nullable = false)
     private Long memberId;
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private TransferStatus status;        // OTP_PENDING/AUTHED/EXECUTING/COMPLETED/FAILED/EXPIRED
-    private Long fromAccountId;           // P-14: 출금 계좌 ID (senderAccountId → fromAccountId)
-    private Long receiverAccountId;       // P-9: NULLABLE — 이체 대상 계좌 ID (조회 후 세팅)
-    private String receiverAccountNumber;
-    private Long amount;                  // 원화 Long (MVP — BigDecimal post-MVP)
-    @Column(unique = true)
-    private String clientRequestId;       // Idempotency RULE-071
+    private OrderSessionStatus status;    // PENDING_NEW/AUTHED/EXECUTING/COMPLETED/FAILED/EXPIRED
+    private Long accountId;               // 포지션 보유 계좌 ID
+    private String symbol;                // 종목코드 (005930)
+    @Enumerated(EnumType.STRING)
+    private OrderSide side;               // BUY / SELL
+    private Integer qty;                  // 주문 수량
+    private Long price;                   // 주문 단가 (원)
     @Column(length = 36)
     private String correlationId;         // X-Correlation-Id
-    private String toBankCode;            // P-19: NULLABLE — 외부 은행 코드 (타행 이체)
-    private String transactionId;         // P-18: NULLABLE — 코어뱅킹 원장 거래 ID
     private String fepReferenceId;        // P-9: NULLABLE — FEP 참조 ID
     private String failReason;            // P-9: NULLABLE — 실패 사유
-    private LocalDateTime completedAt;    // P-9: NULLABLE — 이체 완료 시각
+    private LocalDateTime completedAt;    // P-9: NULLABLE — 체결 완료 시각
 }
 ```
 
@@ -2605,7 +2625,8 @@ include(
     'channel-service',
     'corebank-domain',
     'corebank-service',
-    'fep-service'       // fep-domain 폐기됨 (R6)
+    'fep-gateway',
+    'fep-simulator'     // fep-domain 폐기됨 (R6)
 )
 ```
 
@@ -2657,15 +2678,15 @@ VITE_API_BASE_URL=http://localhost:8080
 
 ### 7대 Acceptance Scenario → 테스트 파일 매핑 (R4)
 
-| Scenario                       | 테스트 파일                         | 서비스         |
-| ------------------------------ | ----------------------------------- | -------------- |
-| #1 Same-bank E2E               | `TransferControllerIntegrationTest` | channel        |
-| #2 Concurrent debit 10 threads | `ConcurrentTransferIntegrationTest` | corebank       |
-| #3 OTP failure blocks          | `TransferSessionServiceTest`        | channel (unit) |
-| #4 Duplicate clientRequestId   | `IdempotencyIntegrationTest`        | channel        |
-| #5 FEP timeout → CB OPEN       | `FepCircuitBreakerIntegrationTest`  | corebank       |
-| #6 Session invalidated         | `AuthControllerIntegrationTest`     | channel        |
-| #7 SUM(DEBIT)==SUM(CREDIT)     | `LedgerIntegrityIntegrationTest`    | corebank       |
+| Scenario                          | 테스트 파일                         | 서비스         |
+| ---------------------------------- | ------------------------------------ | -------------- |
+| #1 Order E2E (매수 happy path)     | `OrderControllerIntegrationTest`     | channel        |
+| #2 Concurrent SELL 10 threads      | `OrderConcurrencyIntegrationTest`    | corebank       |
+| #3 OTP failure blocks              | `OrderSessionServiceTest`            | channel (unit) |
+| #4 Duplicate ClOrdID               | `IdempotencyIntegrationTest`         | channel        |
+| #5 FEP timeout → CB OPEN           | `FepCircuitBreakerIntegrationTest`   | corebank       |
+| #6 Session invalidated             | `AuthControllerIntegrationTest`      | channel        |
+| #7 SUM(BUY executed_qty)-SUM(SELL executed_qty)==pos.quantity | `PositionIntegrityIntegrationTest`   | corebank       |
 
 ---
 
@@ -2696,14 +2717,16 @@ Phase 1 — 인프라 기반:
   4. docker-compose.yml (mysql, redis만)
 
 Phase 2 — 도메인 레이어:
-  5. channel-domain/ (Member, TransferSession)
-  6. corebank-domain/ (Account, TransferHistory + QueryDSL APT)
-  7. fep-service/domain/ (FepTransferRequest/Response)
+  5. channel-domain/ (Member, OrderSession)
+  6. corebank-domain/ (Position, Order + QueryDSL APT)
+  7. fep-gateway/domain/ (GatewayRequest/Response, FIX 4.2 라우팅)
+  8. fep-simulator/domain/ (FepOrderRequest/Response, FIX 4.2 시뮬레이션)
 
 Phase 3 — 서비스 레이어 (동시 작업 가능):
   8. channel-service/ (Application + SecurityConfig + Flyway)
   9. corebank-service/ (Application + SecurityConfig + Flyway)
-  10. fep-service/ (Application + FepChaosController)
+  10. fep-gateway/ (Application + FepGatewayController)
+  11. fep-simulator/ (Application + FepChaosController)
 
 Phase 4 — 프론트엔드:
   11. fix-frontend/ (Vite + lib/axios.ts + types/api.ts + vercel.json)
@@ -2716,8 +2739,8 @@ Phase 4 — 프론트엔드:
 | 기능 도메인               | 주요 파일                                                              | 상태 |
 | ------------------------- | ---------------------------------------------------------------------- | ---- |
 | Auth (로그인/세션)        | AuthController, AuthService, JwtProvider, SecurityConfig               | ✅   |
-| Account (계좌 조회)       | AccountController, AccountService, AccountRepositoryImpl               | ✅   |
-| Transfer (이체 3단계)     | TransferController, TransferSessionService, TransferService, FepClient | ✅   |
+| Portfolio (포지션 조회)  | PortfolioController, PositionService, PositionRepositoryImpl           | ✅   |
+| Orders (주문 3단계)       | OrderController, OrderSessionService, OrderExecutionService, FepClient | ✅   |
 | Notification (SSE)        | NotificationController, SseNotificationService, NotificationContext    | ✅   |
 | Admin (감사/강제로그아웃) | AdminController, AuditLogService                                       | ✅   |
 | Observability             | logback-spring.xml, application.yml (Actuator), JaCoCo                 | ✅   |
@@ -2737,7 +2760,7 @@ Phase 4 — 프론트엔드:
   - R5: CorsConfig, SessionConfig, vercel.json, IntegrationTestBase 전 서비스
   - R6: fep-domain 폐기, libs.versions.toml, 데모 시나리오 Cross-Check
   - R7: application-test.yml 패턴, Flyway 전체 목록, Day 0 체크리스트
-  - R8: 패키지명 com.fix.\* 통일, docker 볼륨, BaseTimeEntity, TransferSession 필드
+  - R8: 패키지명 com.fix.\* 통일, docker 볼륨, BaseTimeEntity, OrderSession 필드
   - R9: AuthContext 명세, 페이지 책임 범위, AdminController 엔드포인트
 
 ---
@@ -2759,16 +2782,16 @@ Phase 4 — 프론트엔드:
 | Q-7-5   | R\_\_seed_data.sql에 `admin@fix.com` ROLE_ADMIN 시드 계정 1건                                                     | Important    | R2     |
 | Q-7-6   | Sprint DoD 정의 → Implementation Handoff 추가                                                                     | Important    | R2     |
 | Q-7-7   | SSE 실패 fallback: 재연결 3회 → 에러 표시 + 수동 새로고침                                                         | Important    | R2     |
-| Q-7-8   | GET /api/v1/accounts/{id}/transfers = SSE 폴백 API 명시                                                           | Recommended  | R2     |
+| Q-7-8   | GET /api/v1/orders = SSE 폴백 API 명시                                                                            | Recommended  | R2     |
 | Q-7-9   | corebank-domain build.gradle: QueryDSL 5.x `:jakarta` 분류자 4행 명시                                             | **Critical** | R3     |
 | Q-7-10  | ADR 빠른 참조 테이블 (위치 인덱스)                                                                                | Recommended  | R3     |
 | Q-7-11  | X-Correlation-Id 전파 체인: 생성(CorrelationIdFilter/Spring Session 필터) → 전파(CoreBankClient/FepClient) → 수신(InternalSecretFilter MDC) | **Critical** | R4     |
 | Q-7-12  | DESIGN-DECISION-018: CoreBankClient no-CB/no-Retry (근거: FSM + RecoveryScheduler)                                | Important    | R4     |
 | Q-7-13  | Actuator 보안: `health,info,metrics` expose, `/actuator/health` permitAll, 나머지 ROLE_ADMIN                      | Important    | R5     |
-| Q-7-14  | docker-compose.override.yml 최소 내용: mysql:3306, redis:6379, 8081, 8082 호스트 노출                             | Important    | R5     |
-| Q-7-15  | TransferService.execute() 트랜잭션 경계: FEP 호출 트랜잭션 외부, DB 기록 트랜잭션 내부                            | **Critical** | R6     |
-| Q-7-16  | 이체 한도 검증 위치: channel-service TransferSessionService.initiate() (세션 생성 전)                             | Important    | R6     |
-| Q-7-17  | GET /api/v1/transfer/sessions/{sessionId}/status — 세션 복구 엔드포인트 (SessionStatusResponse)                   | Important    | R7     |
+| Q-7-14  | docker-compose.override.yml 최소 내용: mysql:3306, redis:6379, 8081, 8082, 8083 호스트 노출                       | Important    | R5     |
+| Q-7-15  | OrderService.execute() 트랜잭션 경계: FEP 호출 트랜잭션 외부, DB 기록 트랜잭션 내부                              | **Critical** | R6     |
+| Q-7-16  | 매도 한도 검증 위치: channel-service OrderSessionService.initiate() (세션 생성 전)                               | Important    | R6     |
+| Q-7-17  | GET /api/v1/orders/{sessionId} — 세션 상태 조회 엔드포인트 (SessionStatusResponse)                               | Important    | R7     |
 | Q-7-18  | Integration Test 격리: @Transactional 금지, @Sql cleanup 또는 deleteAll()                                         | **Critical** | R7     |
 | Q-7-19B | ~~JWT Refresh Token (Option B)~~ **폐기** — Spring Session Redis로 대체 (login-flow.md 참조)                              | 구조 변경  | R8/R9  |
 | Q-7-20  | ~~Silent Refresh~~ **폐기** — SSE 세션 만료 알림 + 401 핸들러로 대체 (login-flow.md 참조)                             | 구조 변경  | R9     |
@@ -2787,7 +2810,7 @@ Java 21 + Spring Boot 3.4.x + MySQL 8.0 + Redis 7 + Resilience4j 2.x + React 19 
 - `ApiResponse<T>` 래퍼: 전 서비스 동일 ✅
 - `@DynamicPropertySource`: 3개 IntegrationTestBase 동일 ✅
 - `X-Internal-Secret` + `X-Correlation-Id`: HttpConstants.java 상수화 ✅
-- Redis 키 prefix: `otp:`, `session:`, `rt:` 네임스페이스 충돌 없음 ✅
+- Redis 키 prefix: `spring:session:*` (Spring Session), `ch:*` (channel-service 도메인 키) — 네임스페이스 충돌 없음 ✅
 
 **Structure Alignment:**
 Gradle 모듈 경계 = Docker network 경계 = 보안 경계 3중 일치. Flyway 위치 교차 오염 없음. fep-domain 흡수 — 단일 소비자 설계 타당.
@@ -2817,10 +2840,10 @@ Gradle 모듈 경계 = Docker network 경계 = 보안 경계 3중 일치. Flyway
 ```
 결정: channel-service의 CoreBankClient에 Resilience4j CB/Retry 없음
 근거:
-  - channel-service는 TransferSession FSM으로 상태를 관리
-  - corebank-service 실패 시 세션을 FAILURE로 전환
-  - TransferSessionRecoveryService(@Scheduled)가 EXECUTING 장기 잔류 세션 재시도
-  - FEP CB와의 차이: FEP는 외부 시스템 시뮬레이션(불안정), corebank는 내부 신뢰 서비스
+  - channel-service는 OrderSession FSM으로 상태를 관리
+  - corebank-service 실패 시 세션을 FAILED로 전환
+  - OrderSessionRecoveryService(@Scheduled)가 EXECUTING 장기 잔류 세션 재시도
+  - FEP CB와의 차이: FEP는 외부 거래소 시뮬레이션(불안정), corebank는 내부 신뢰 서비스
 면접 답변: "CoreBankClient에 CB가 없는 이유는 세션 FSM + Recovery Scheduler가
             재시도 역할을 담당하기 때문입니다."
 ```
@@ -2834,7 +2857,7 @@ Gradle 모듈 경계 = Docker network 경계 = 보안 경계 3중 일치. Flyway
       - MDC.put("correlationId", correlationId)
       (참고: JwtAuthenticationFilter 제거 — Spring Session이 모든 세션 검증 처리)
 전파: CoreBankClient, FepClient → HTTP 요청 헤더에 MDC 값 삽입
-수신: InternalSecretFilter (corebank-service, fep-service)
+수신: InternalSecretFilter (corebank-service, fep-gateway, fep-simulator)
       - request.getHeader("X-Correlation-Id") → MDC.put("correlationId", ...)
 logback-spring.xml 패턴: [%X{correlationId}] 포함
 ```
@@ -2851,29 +2874,29 @@ logback-spring.xml 패턴: [%X{correlationId}] 포함
 > 대체: SSE `session-expiry` 이벤트로 5분 전 알림 → 사용자 "5분 후 자동 로그아웃" 토스트 표시.  
 > **현행 401 핸들러**: login-flow.md 참조 — `authStore.clearMember()` + `/login` redirect (제거 코드 10줄 미만).
 
-#### TransferService 트랜잭션 경계 (Q-7-15)
+#### OrderService 트랜잭션 경계 (Q-7-15)
 
 ```
 올바른 순서:
   1. @Transactional 시작
-  2. Account 잔액 검증 (@Lock PESSIMISTIC_WRITE)
-  3. 잔액 차감 + TransferHistory DEBIT 기록
+  2. Position 보유수량 검증 (@Lock PESSIMISTIC_WRITE)
+  3. 수량 차감 + OrderHistory PENDING 기록
   4. @Transactional 커밋 (DB Lock 해제)
   5. @Transactional 외부에서 FepClient.call() 호출
-  6. FEP 응답에 따라 새 @Transactional로 TransferHistory CREDIT 기록
-     또는 보상 트랜잭션(DEBIT 롤백 처리)
+  6. FEP 응답에 따라 새 @Transactional로 주문 상태 업데이트 — FEP 성공: orders.status=FILLED, OrderSession=COMPLETED;
+     FEP 실패: 보상 트랜잭션(orders.status=FAILED, sub_status=COMPENSATED), OrderSession=FAILED
 
 금지: FepClient.call()을 @Transactional 내부에서 호출
 근거: HTTP 대기 시간 동안 DB Lock 점유 → 동시성 저하
 ```
 
-#### 이체 한도 검증 위치 (Q-7-16)
+#### 매도 한도 검증 위치 (Q-7-16)
 
 ```
-검증 위치: channel-service TransferSessionService.initiate()
-검증 시점: TransferSession 생성 전
-상수: BusinessConstants.DAILY_TRANSFER_LIMIT
-예외: DailyTransferLimitExceededException → 422
+검증 위치: channel-service OrderSessionService.initiate()
+검증 시점: OrderSession 생성 전
+상수: BusinessConstants.DAILY_SELL_LIMIT
+예외: DailySellLimitExceededException → 422
 근거: channel-service = 비즈니스 게이트키퍼
       corebank-service = 기술 실행자 (한도 재검증 불필요)
 ```
@@ -2917,8 +2940,8 @@ management:
 | `spring:session:sessions:{id}`      | Spring Session 저장소  | 30분 |
 | `spring:session:index:...:{mbr}`    | principal 인덱스      | 30분 |
 | `ch:totp-used:{memberId}:{w}:{c}`   | TOTP Replay Guard       | 60s  |
-| `ch:otp-attempts:{tSessionId}`      | OTP 시도 횟수 카운터 | 180s |
-| `ch:txn-session:{tSessionId}`       | 이체 세션 상태         | 600s |
+| `ch:otp-attempts:{tSessionId}`      | OTP 시도 횟수 카운터 | 600s (order session TTL과 동일) |
+| `ch:order-session:{tSessionId}`     | 주문 세션 상태         | 600s |
 | `ch:ratelimit:{endpoint}:{id}`      | Bucket4j Rate Limit     | Bucket4j 관리 |
 | `fds:ip-fail:{ip}`                  | FDS IP 실패 카운터   | 10분 |
 
@@ -2960,7 +2983,7 @@ dependencies {
 class SecurityBoundaryTest {
     @Test
     void directCallWithoutInternalSecret_returns403() {
-        mockMvc.perform(post("/internal/transfer")
+        mockMvc.perform(post("/internal/order")
             // X-Internal-Secret 헤더 없음
         ).andExpect(status().isForbidden());
     }
@@ -2978,7 +3001,9 @@ services:
     ports: ["6379:6379"]
   corebank-service:
     ports: ["8081:8081"]
-  fep-service:
+  fep-gateway:
+    ports: ["8083:8083"]
+  fep-simulator:
     ports: ["8082:8082"]
 ```
 
@@ -2991,7 +3016,8 @@ channel-service: InternalSecretFilter 없음 — 의도적 설계
       미적용이 버그가 아님을 명시
 
 corebank-service: InternalSecretFilter 있음 (channel → corebank)
-fep-service: InternalSecretFilter 있음 (corebank → fep)
+fep-gateway: InternalSecretFilter 있음 (corebank → fep-gateway)
+fep-simulator: InternalSecretFilter 있음 (fep-gateway → fep-simulator)
 ```
 
 #### Sprint DoD (Q-7-6)
@@ -3024,15 +3050,15 @@ eventsource.onerror = () => {
     eventsource.close();
   }
 };
-// SSE 폴백: GET /api/v1/accounts/{id}/transfers (Q-7-8)
-// 페이지 새로고침 시 DashboardPage에서 자동 호출됨
+// SSE 폴백: GET /api/v1/orders (Q-7-8)
+// 페이지 새로고침 시 OrderHistoryPage에서 자동 호출됨
 ```
 
 #### ADR 빠른 참조 테이블 (Q-7-10)
 
 | ADR   | 결정 요약                          | 위치          |
 | ----- | ---------------------------------- | ------------- |
-| D-001 | Pessimistic Lock for 잔액 동시성   | Step 4        |
+| D-001 | Pessimistic Lock for 포지션 동시성   | Step 4        |
 | D-002 | Spring Boot 3.4.x + Java 21        | Step 3        |
 | D-003 | Gradle 멀티 모듈 (7개)             | Step 3/6      |
 | D-004 | MySQL InnoDB (단일 DB)             | Step 3        |
@@ -3047,7 +3073,7 @@ eventsource.onerror = () => {
 | D-013 | Zod + React Hook Form              | Step 5        |
 | D-014 | pnpm + Vercel 배포                 | Step 3        |
 | D-015 | Docker Compose (단일 EC2)          | Step 3        |
-| D-016 | fep-domain 폐기 (fep-service 내부) | Step 6 R6     |
+| D-016 | fep-domain 폐기 (fep-simulator 내부) | Step 6 R6     |
 | D-017 | 패키지명 com.fix.\*                | Step 6 R8     |
 | D-018 | CoreBankClient no-CB/no-Retry      | Step 7 Q-7-12 |
 
@@ -3099,7 +3125,7 @@ eventsource.onerror = () => {
 **Key Strengths:**
 
 1. 7개 Gradle 모듈 = Docker 네트워크 = 보안 경계 3중 일치
-2. TransferSession FSM 7+1대 Scenario 전수 커버
+2. OrderSession FSM 7+1대 Scenario 전수 커버
 3. X-Correlation-Id 전파 체인 — 3개 서비스 로그 추적 완전
 4. Spring Session Redis — `JSESSIONID` HttpOnly 쿠키, 30분 슬라이딩 TTL, 즉각 세션 무효화, log-flow.md 완전 명세
 5. 트랜잭션 경계 명시 — DB Lock과 HTTP 호출 분리
@@ -3107,7 +3133,7 @@ eventsource.onerror = () => {
 **Areas for Future Enhancement (post-MVP):**
 
 1. Kafka 기반 비동기 알림 파이프라인 (SSE 대체)
-2. inter-bank 이체 (현재 설계 범위 밖, 의도적 제외)
+2. 타사 증권사 라우팅 (현재 설계 범위 밖, 의도적 제외)
 3. Grafana + Prometheus 관찰가능성 스택
 
 ---
@@ -3117,7 +3143,7 @@ eventsource.onerror = () => {
 **AI Agent Guidelines:**
 
 - 신규 파일은 `com.fix.{service}.{layer}` 패키지 규칙 준수
-- `InternalSecretFilter`는 corebank-service + fep-service에만 배치 (channel-service 제외 의도적)
+- `InternalSecretFilter`는 corebank-service + fep-gateway + fep-simulator에만 배치 (channel-service 제외 의도적)
 - `BaseTimeEntity`는 core-common에서 상속
 - `@DynamicPropertySource` 방식만 허용 — TC shorthand URL(`jdbc:tc:`) 금지
 - `ApiResponse<T>` 래퍼 모든 컨트롤러 응답에 적용

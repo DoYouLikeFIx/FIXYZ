@@ -8,7 +8,7 @@ Status: ready-for-dev
 
 As a product quality owner,
 I want FE and MOB FSM behavior parity,
-So that one client does not diverge from core transfer rules.
+So that one client does not diverge from core order rules.
 
 ## Acceptance Criteria
 
@@ -30,7 +30,7 @@ So that one client does not diverge from core transfer rules.
 ### Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 4.
-- Supplemental artifact `_bmad-output/implementation-artifacts/epic-4-transfer-execution-and-ledger-integrity.md` has different scope/numbering; use it only as technical reference, not story ID authority.
+- Supplemental artifact `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` has different scope/numbering; use it only as technical reference, not story ID authority.
 - Depends on: Story 4.5, Story 4.7.
 
 ### Technical Requirements
@@ -59,7 +59,8 @@ So that one client does not diverge from core transfer rules.
 - `_bmad-output/planning-artifacts/epics.md` (Epic 4, Story 4.8)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
-- `_bmad-output/implementation-artifacts/epic-4-transfer-execution-and-ledger-integrity.md` (supplemental only)
+- `_bmad-output/planning-artifacts/channels/api-spec.md` (채널계 API 명세)
+- `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` (supplemental only)
 
 ## Dev Agent Record
 

@@ -12,7 +12,7 @@ So that channel-to-FEP integration is deterministic.
 
 ## Acceptance Criteria
 
-1. Given outbound transfer payload When mapped to FEP DTO Then required fields are validated before send.
+1. Given outbound order payload When mapped to FEP DTO Then required fields are validated before send.
 2. Given response payload from FEP When parsed Then internal contract is mapped with explicit status values.
 3. Given contract-breaking change When build/test runs Then failing contract test blocks merge.
 4. Given contract versioning policy When schema evolves Then backward compatibility rule is enforced.
@@ -62,6 +62,7 @@ So that channel-to-FEP integration is deterministic.
 - `_bmad-output/planning-artifacts/epics.md` (Epic 3, Story 3.1)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
+- `_bmad-output/planning-artifacts/fep-gateway/api-spec.md` (대외계 API 명세)
 - `_bmad-output/implementation-artifacts/epic-3-fault-tolerance-and-fep-resilience.md` (supplemental only)
 
 ## Dev Agent Record

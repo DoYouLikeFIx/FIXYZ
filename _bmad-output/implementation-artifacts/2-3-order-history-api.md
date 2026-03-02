@@ -1,4 +1,4 @@
-# Story 2.3: BE Transfer History API
+# Story 2.3: BE Order History API
 
 Status: ready-for-dev
 
@@ -7,19 +7,19 @@ Status: ready-for-dev
 ## Story
 
 As an authenticated user,
-I want paginated transfer history,
+I want paginated order history,
 so that I can inspect recent financial activity.
 
 ## Acceptance Criteria
 
-1. Given owned account with transaction records, when history API is called, then results are paginated and ordered by created time desc.
+1. Given owned account with order records, when history API is called, then results are paginated and ordered by created time desc.
 2. Given empty history, when query executes, then empty content contract is returned consistently.
 3. Given unauthorized account id, when access check fails, then API returns forbidden error.
 4. Given malformed pagination params, when validation runs, then 400 validation error is returned.
 
 ## Tasks / Subtasks
 
-- [ ] Implement paginated transfer history endpoint for owned accounts (AC: 1)
+- [ ] Implement paginated order history endpoint for owned accounts (AC: 1)
   - [ ] Enforce sort by created time descending
   - [ ] Return stable page metadata and content shape
 - [ ] Implement empty-result consistency handling (AC: 2)
@@ -35,7 +35,7 @@ so that I can inspect recent financial activity.
 ### Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 2 (`2.1`~`2.6`).
-- Supplemental artifact `_bmad-output/implementation-artifacts/epic-2-transfer-initiation-and-otp.md` has different scope/numbering; use it only as technical reference, not story ID authority.
+- Supplemental artifact `_bmad-output/implementation-artifacts/epic-2-order-session-and-otp.md` has different scope/numbering; use it only as technical reference, not story ID authority.
 - Depends on Story 2.1 and Story 1.2.
 - This story provides backend contract required by web/mobile history UI stories.
 
@@ -53,13 +53,13 @@ so that I can inspect recent financial activity.
 
 - Keep query ownership in channel/corebank service boundaries as defined by architecture.
 - Preserve standardized error envelope for forbidden/validation failures.
-- Avoid leaking non-owned transfer metadata in any failure path.
+- Avoid leaking non-owned order metadata in any failure path.
 
 ### File Structure Requirements
 
 - Expected touched areas:
-  - `BE/channel-service/src/main/**/transfer/**`
-  - `BE/corebank-service/src/main/**/transfer/**` (if delegated query path exists)
+  - `BE/channel-service/src/main/**/order/**`
+  - `BE/corebank-service/src/main/**/order/**` (if delegated query path exists)
   - `BE/*/src/test/**`
 
 ### Testing Requirements
@@ -84,14 +84,14 @@ so that I can inspect recent financial activity.
 ### Story Completion Status
 
 - Status set to `ready-for-dev`.
-- Completion note: Epic 2 transfer-history API guardrails prepared.
+- Completion note: Epic 2 order-history API guardrails prepared.
 
 ### References
 
 - `_bmad-output/planning-artifacts/epics.md` (Epic 2, Story 2.3)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
-- `_bmad-output/implementation-artifacts/epic-2-transfer-initiation-and-otp.md` (supplemental only)
+- `_bmad-output/implementation-artifacts/epic-2-order-session-and-otp.md` (supplemental only)
 
 ## Dev Agent Record
 
@@ -109,4 +109,4 @@ GPT-5 Codex (Codex desktop)
 
 ### File List
 
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/2-3-transfer-history-api.md
+- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/2-3-order-history-api.md

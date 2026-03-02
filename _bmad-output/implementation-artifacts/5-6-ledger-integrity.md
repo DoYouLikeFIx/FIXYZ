@@ -12,7 +12,7 @@ So that accounting integrity can be continuously verified.
 
 ## Acceptance Criteria
 
-1. Given completed transfer set When integrity query runs Then debit/credit(+compensate) invariants hold.
+1. Given completed order set When integrity query runs Then debit/credit(+compensate) invariants hold.
 2. Given detected mismatch When integrity check fails Then anomaly is reported with traceable identifiers.
 3. Given scheduled integrity job When executed Then summary metrics are stored for operations.
 4. Given release gate When ledger integrity test fails Then build is blocked.
@@ -62,6 +62,8 @@ So that accounting integrity can be continuously verified.
 - `_bmad-output/planning-artifacts/epics.md` (Epic 5, Story 5.6)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
+- `_bmad-output/planning-artifacts/channels/api-spec.md` (채널계 API 명세)
+- `_bmad-output/planning-artifacts/fep-gateway/api-spec.md` (대외계 API 명세)
 - `_bmad-output/implementation-artifacts/epic-5-real-time-notifications.md` (supplemental only)
 
 ## Dev Agent Record

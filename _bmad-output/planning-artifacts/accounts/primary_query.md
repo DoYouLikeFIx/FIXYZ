@@ -17,7 +17,7 @@
 **용도**: 계좌 상세/검증(상태, 한도, 잔액 등)
 
 ```sql
-SELECT id, public_id, member_id, account_number, bank_code, status, closed_at,
+SELECT id, public_id, member_id, account_number, exchange_code, status, closed_at,
        balance, daily_limit, currency_code, balance_update_mode, last_synced_ledger_ref, 
        created_at, updated_at
 FROM accounts
@@ -28,10 +28,10 @@ WHERE public_id = ?;
 ---
 
 ## 1.2 계좌 단건 조회(업무 키: account_number)
-**용도**: 이체 입력값 검증(수취/출금 계좌 확인)
+**용도**: 주문 입력값 검증(계좌 상태 확인)
 
 ```sql
-SELECT id, public_id, member_id, bank_code, status, closed_at, balance, daily_limit, currency_code, balance_update_mode
+SELECT id, public_id, member_id, exchange_code, status, closed_at, balance, daily_limit, currency_code, balance_update_mode
 FROM accounts
 WHERE account_number = ?;
 ```
@@ -43,7 +43,7 @@ WHERE account_number = ?;
 **용도**: “내 계좌 목록” 화면
 
 ```sql
-SELECT public_id, account_number, bank_code, status, balance, daily_limit, currency_code, updated_at
+SELECT public_id, account_number, exchange_code, status, balance, daily_limit, currency_code, updated_at
 FROM accounts
 WHERE member_id = ?
 AND status IN ('ACTIVE','FROZEN')
@@ -53,8 +53,8 @@ ORDER BY updated_at DESC;
 
 ---
 
-## 1.4 출금 계좌 락(SELECT … FOR UPDATE)
-**용도**: 이체 실행에서 **비관적 락 확정(ADR-001)**
+## 1.4 주문 계좌 락(SELECT … FOR UPDATE)
+**용도**: 주문 실행에서 **비관적 낙 확정(ADR-001)**
 
 ```sql
 SELECT id, balance, status, daily_limit, balance_update_mode, last_synced_ledger_ref
@@ -81,14 +81,14 @@ WHERE id = ?;
 
 ---
 
-# 2) transfer_records
+# 2) order_records
 
 ## 2.1 멱등 가드: client_request_id로 기존 업무 조회
 **용도**: execute 재호출/중복 요청 처리. JSON Blob 대신 컬럼화된 필드 조회.
 
 ```sql
 SELECT id, public_id, status, result_code, result_message, post_execution_balance, completed_at
-FROM transfer_records
+FROM order_records
 WHERE client_request_id = ?;
 ```
 - 인덱스: `UK(client_request_id)`
@@ -99,13 +99,13 @@ WHERE client_request_id = ?;
 **용도**: 최초 요청을 DB에 “업무 레코드”로 고정.
 
 ```sql
-INSERT INTO transfer_records (
-  public_id, client_request_id, transaction_id, transfer_type, status,
-  amount, currency_code, from_account_id, to_account_id, to_account_number, to_bank_code,
+INSERT INTO order_records (
+  public_id, client_request_id, trade_ref_id, order_side, status,
+  amount, currency_code, from_account_id, order_id,
   executing_started_at, created_at, updated_at
 ) VALUES (
   ?, ?, ?, ?, 'REQUESTED',
-  ?, ?, ?, ?, ?, ?,
+  ?, ?, ?, ?,
   NULL, NOW(6), NOW(6)
 );
 ```
@@ -117,7 +117,7 @@ INSERT INTO transfer_records (
 **용도**: 실행 시작 시간 기록 (Recovery 기준점).
 
 ```sql
-UPDATE transfer_records
+UPDATE order_records
 SET status = 'EXECUTING',
     executing_started_at = NOW(6),
     updated_at = NOW(6)
@@ -131,7 +131,7 @@ AND status = 'REQUESTED';
 **용도**: 최종 결과(성공) 고정. 응답 재구성을 위한 핵심 필드 저장.
 
 ```sql
-UPDATE transfer_records
+UPDATE order_records
 SET status = 'COMPLETED',
     post_execution_balance = ?,
     result_code = 'SUCCESS',
@@ -148,7 +148,7 @@ AND status IN ('REQUESTED','EXECUTING');
 **용도**: 명확한 실패 처리.
 **Step 1. Main Table Update**
 ```sql
-UPDATE transfer_records
+UPDATE order_records
 SET status = 'FAILED',
     failure_reason = ?, -- 짧은 사유 (VARCHAR 255)
     result_code = ?,
@@ -159,7 +159,7 @@ WHERE client_request_id = ?;
 ```
 **Step 2. (Optional) Diagnostic Detail Insert**
 ```sql
-INSERT INTO transfer_record_diagnostics (transfer_record_id, detail, created_at)
+INSERT INTO order_record_diagnostics (order_record_id, detail, created_at)
 VALUES (?, ?, NOW(6));
 ```
 
@@ -170,7 +170,7 @@ VALUES (?, ?, NOW(6));
 
 ```sql
 SELECT *
-FROM transfer_records
+FROM order_records
 WHERE status = 'EXECUTING'
 AND executing_started_at < (NOW(6) - INTERVAL 30 SECOND)
 ORDER BY executing_started_at ASC
@@ -180,37 +180,37 @@ LIMIT 100;
 
 ---
 
-## 2.7 거래 조회
-**용도**: transaction_id로 업무 추적.
+## 2.7 주문 조회
+**용도**: trade_ref_id로 업무 추적.
 
 ```sql
 SELECT *
-FROM transfer_records
-WHERE transaction_id = ?;
+FROM order_records
+WHERE trade_ref_id = ?;
 ```
-- 인덱스: `IDX(transaction_id)`
+- 인덱스: `IDX(trade_ref_id)`
 
 ---
 
 # 3) journal_entries & ledger_entries (Partitioned)
 
-## 3.1 거래 단위 원장 라인 조회
-**용도**: transaction_id로 분개 라인 확인. 파티션 프루닝을 위해 **대략적인 기간**을 알면 좋지만, `transaction_id` 인덱스가 있다면 파티션 전체 스캔도 허용 가능 (보통 거래 시점이 최근이므로).
+## 3.1 주문 단위 원장 라인 조회
+**용도**: trade_ref_id로 분개 라인 확인. 파티션 프루닝을 위해 **대략적인 기간**을 알면 좋지만, `trade_ref_id` 인덱스가 있다면 파티션 전체 스캔도 허용 가능 (보통 주문 시점이 최근이므로).
 하지만 최적화를 위해선 `created_at` 범위를 유추해서 넣는 것이 좋다.
 
 ```sql
 SELECT account_id, direction, amount, created_at
 FROM ledger_entries
-WHERE transaction_id = ?
+WHERE trade_ref_id = ?
 -- AND created_at BETWEEN ? AND ? (권장)
 ORDER BY id ASC;
 ```
-- 인덱스: `IDX(transaction_id, direction)`
+- 인덱스: `IDX(trade_ref_id, direction)`
 
 ---
 
 ## 3.2 일일 한도 검증: 당일 DEBIT SUM (Pruning 필수)
-**용도**: 당일 출금 총액 계산.
+**용도**: 당일 매매 총액 계산.
 
 ```sql
 SELECT COALESCE(SUM(amount), 0) AS today_debit_sum
@@ -225,8 +225,8 @@ AND created_at <  ?; -- 내일 00:00:00
 
 ---
 
-## 3.3 Hot Account 출금 시 Read-Repair 합산 (DEFERRED Mode 및 Single Writer 전제)
-**용도**: 마지막 정산 시점(`last_synced_ledger_ref`) 이후에 발생한 입금(CREDIT) 내역 합산.
+## 3.3 Hot Account 주문 체결 시 Read-Repair 합산 (DEFERRED Mode 및 Single Writer 전제)
+**용도**: 마지막 정산 시점(`last_synced_ledger_ref`) 이후에 발생한 CREDIT 주문 내역 합산.
 
 ```sql
 SELECT COALESCE(SUM(
@@ -246,14 +246,14 @@ FOR UPDATE; -- (Optional) 확실한 격리를 위해
 
 # 4) 트랜잭션 흐름 (요약)
 
-1. `transfer_records` 멱등 조회
-2. `transfer_records` INSERT (REQUESTED)
-3. `accounts` 출금계좌 Lock (`SELECT FOR UPDATE`)
+1. `order_records` 멱등 조회
+2. `order_records` INSERT (REQUESTED)
+3. `accounts` 주문계좌 Lock (`SELECT FOR UPDATE`)
     - IF `balance_update_mode == 'DEFERRED'`:
         - `ledger_entries` Read-Repair 쿼리 수행
         - `accounts.balance` += delta, `last_synced_ledger_ref` 갱신
 4. `ledger_entries` 당일 DEBIT SUM 한도 검증
 5. `journal_entries` + `ledger_entries` INSERT
     - `ledger_entry_refs` INSERT (if public_id lookup needed)
-6. `accounts` 잔액 차감 & 갱신
-7. `transfer_records` COMPLETED Update
+6. `accounts` 잔액 업데이트 & 갱신
+7. `order_records` COMPLETED Update

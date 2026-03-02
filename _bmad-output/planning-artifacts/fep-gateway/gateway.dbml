@@ -1,0 +1,286 @@
+Project fep_gateway_db {
+  database_type: 'MySQL'
+  Note: '''FEP Gateway Internal Database Schema (v2.0)
+  2026-02-27
+
+  Stores external institution configuration, routing rules, protocol specs,
+  HSM key management, transaction audit trail, and circuit breaker state.
+
+  Cross-system contract:
+    fep_institutions.org_code MUST match mock_bank_topology.code in the FEP Simulator.
+    fep_transaction_journal.stan MUST match virtual_transactions.trace_id in the Simulator
+      — always query with (org_code, stan, DATE) triple to avoid STAN daily reuse collision.
+  '''
+}
+
+// ─────────────────────────────────────────────
+// 1. Network & Routing Configuration
+// ─────────────────────────────────────────────
+
+Table fep_institutions {
+  org_code   varchar(10)  [pk, note: 'Institution code (e.g., 004, 088, VISA)']
+  org_name   varchar(100) [not null]
+  status     varchar(20)  [not null, note: 'ENUM: ACTIVE | SUSPENDED. DDL: ENUM(''ACTIVE'',''SUSPENDED'') — VARCHAR(20) here is ERD tool compatibility only (DBML does not support MySQL ENUM natively).']
+  protocol_type varchar(30) [not null, note: 'Protocol Family hint for loading fep_protocol_specs (ISO8583_KB, JSON_REST_SHINHAN, KFTC_COMMON). Actual DE field specs are in fep_protocol_specs — that table takes precedence on conflict.']
+  created_at    datetime     [not null, default: `now()`, note: 'DATETIME preferred over TIMESTAMP — avoids 2038 overflow. fep_institutions rows persist indefinitely; institution records active past 2038-01-19 would overflow TIMESTAMP. Corrected R22 (last remaining TIMESTAMP table after R13–R20 migration sweep).']
+  updated_at    datetime     [not null, default: `now()`, note: 'ON UPDATE CURRENT_TIMESTAMP recommended in DDL — auto-updates on every row change without app-layer NOW() injection. DDL: updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP. Supported on DATETIME columns in MySQL 5.6.5+ / MariaDB 5.3+. DATETIME preferred over TIMESTAMP — avoids 2038 overflow. (R14/R16/R22)']
+}
+
+Table fep_connections {
+  id                         bigint       [pk, increment, note: 'Surrogate PK — BIGINT UNSIGNED AUTO_INCREMENT. B-tree 순차 삽입으로 단편화 제어, FK JOIN 비용 최소화. 외부 노출 금지 — Admin/모니터링 API는 conn_id(CHAR36) 사용.']
+  conn_id                    char(36)     [unique, not null, note: 'Business UUID — 연결 식별자. DDL: CHAR(36) UNIQUE NOT NULL. 외부 노출 전용(Admin API, 모니터링 대시보드). 내부 JOIN은 id(BIGINT) 사용.']
+  org_code                   varchar(10)  [not null, ref: > fep_institutions.org_code, note: 'ON DELETE RESTRICT — prevents physical deletion of institution while connections exist. Use status=SUSPENDED for soft-deactivation.']
+  host_ip                    varchar(45)  [not null]
+  port                       int          [not null]
+  is_primary                 boolean      [not null, default: true, note: 'TRUE = primary circuit. FALSE = failover only (typically connection_weight=0). DDL: TINYINT(1) DEFAULT 1 — MySQL BOOLEAN = TINYINT(1). (R31)']
+  connection_weight          int          [not null, default: 1, note: 'Active-Active Weighted Round-Robin weight. 0 = excluded from normal traffic (failover only). Higher weight = proportionally more traffic. e.g., weight=2 routes 2/3 of traffic vs weight=1 routing 1/3. Failover trigger (Connection Manager responsibility): when all weight>0 SIGNED_ON connections are unavailable, auto-route to weight=0 SIGNED_ON connections. If none available → RC=9001 NO_AVAILABLE_CONNECTION. No separate is_failover_active column needed — runtime_status + connection_weight combination is the sole routing signal.']
+  max_connections            int          [not null, note: 'Connection pool size']
+  keep_alive_interval        int          [not null, note: 'Echo send interval (seconds). Align with Simulator echo_interval_seconds at deploy time.']
+  snapshot_active_count      int          [not null, default: 0, note: 'Monitoring dashboard snapshot only. Real-time count managed by Redis INCR/DECR or in-memory AtomicInteger on Redis failure. NOT a high-frequency write target.']
+  last_snapshot_at           datetime     [note: 'Last time snapshot_active_count was flushed from in-memory/Redis to DB. DATETIME preferred over TIMESTAMP — avoids 2038 overflow. (R18)']
+  last_echo_sent_at          datetime     [note: 'Last 0800 sent. Compare with last_echo_received_at to detect one-way link failure. DATETIME preferred over TIMESTAMP — avoids 2038 overflow. (R18)']
+  last_echo_received_at      datetime     [note: 'Last 0810 received. Basis for Idle/Timeout judgment. DATETIME preferred over TIMESTAMP — avoids 2038 overflow. (R18)']
+  consecutive_echo_fail_count int         [not null, default: 0, note: 'Echo-specific miss counter. Triggers TIMEOUT when >= echo_fail_threshold. Reset to 0 on success. Distinct from consecutive_error_count.']
+  echo_fail_threshold        int          [not null, default: 3, note: 'Echo TIMEOUT trigger threshold. Align with Simulator echo_timeout_threshold at deploy time.']
+  consecutive_error_count    int          [not null, default: 0, note: 'General error counter for Circuit Breaker trigger. Covers MAC errors, Timeouts, etc.']
+  runtime_status             varchar(20)  [not null, default: 'DISCONNECTED', note: 'ENUM: DISCONNECTED | CONNECTED | SIGNED_ON | DEGRADED. DDL: ENUM(''DISCONNECTED'',''CONNECTED'',''SIGNED_ON'',''DEGRADED'') — VARCHAR(20) here is ERD tool compatibility only (DBML does not support MySQL ENUM natively). In-memory (Connection Manager) is Single Source of Truth. DB is monitoring snapshot only. Reset ALL rows to DISCONNECTED on Gateway startup.']
+
+  // ⚠️ CB Independence Policy:
+  // runtime_status=SIGNED_ON + fep_circuit_breaker_state.state=OPEN is a VALID combination.
+  // Socket TCP connection is maintained while business messages (0200) are fast-failed.
+  // Echo (0800) and Sign-on (0600) management messages are still sent normally.
+  // Do NOT force-disconnect the socket when CB is OPEN.
+
+  // ⚠️ Write-Contention:
+  // consecutive_error_count, consecutive_echo_fail_count → Redis INCR/DECR in production.
+  // On Redis failure → in-memory AtomicInteger fallback. DB columns are snapshot targets only.
+  // Redis failure must NOT affect Connection Pool availability (non-fatal dependency).
+
+  indexes {
+    conn_id [unique, name: 'uk_conn_id', note: 'Business UUID UK — Admin API single-row lookup entry point. Separate from uk_conn_endpoint composite index.']
+    (org_code, is_primary) [name: 'idx_conn_primary', note: 'Primary connection lookup per institution.']
+    (org_code, runtime_status, connection_weight) [name: 'idx_conn_routing', note: 'Column order optimized for query pattern: WHERE org_code=? AND runtime_status=SIGNED_ON AND connection_weight>0. Equal condition (runtime_status) placed before range condition (connection_weight>0) for efficient B-Tree range scan. Reversing order makes runtime_status a post-filter after range scan — less efficient.']
+    (org_code, host_ip, port) [unique, name: 'uk_conn_endpoint', note: 'Prevents duplicate connections to the same endpoint within the same institution. Avoids double-connect to the same socket (e.g., accidental Primary + Backup on identical IP:Port). org_code in key allows shared VIP across institutions.']
+  }
+}
+
+Table fep_routing_rules {
+  id               bigint       [pk, increment, note: 'Surrogate PK — BIGINT UNSIGNED AUTO_INCREMENT. 외부 노출 금지 — Admin/라우팅 캐시 API는 rule_id(CHAR36) 사용.']
+  rule_id          char(36)     [unique, not null, note: 'Business UUID — 규칙 식별자. DDL: CHAR(36) UNIQUE NOT NULL. 외부 노출 전용(Admin API, BIN 중첩 검사 기준). 내부 JOIN은 id(BIGINT) 사용.']
+  routing_type     varchar(20)  [not null, note: 'ENUM: BIN | BANK_CODE. DDL: ENUM(''BIN'',''BANK_CODE'') — VARCHAR(20) here is ERD tool compatibility only (DBML does not support MySQL ENUM natively).']
+  bank_code        varchar(10)  [note: 'Used when routing_type=BANK_CODE. NULL otherwise.']
+  bin_range_start  varchar(10)  [note: 'Used when routing_type=BIN. NULL otherwise. ⚠️ VARCHAR lexicographic comparison trap: mixed 6-digit and 8-digit Extended BIN (ISO 7812-1 2022) causes wrong results e.g. "40000000" < "499999" lexicographically but 40,000,000 > 499,999 numerically. Recommend BIGINT UNSIGNED migration if Extended BIN adoption planned. (R18/R19)']
+  bin_range_end    varchar(10)  [note: 'Used when routing_type=BIN. NULL otherwise. Must be >= bin_range_start (numeric). ⚠️ VARCHAR CHECK constraint bin_range_start <= bin_range_end is also lexicographic — same trap applies. (R18/R19)']
+  target_org_code  varchar(10)  [not null, ref: > fep_institutions.org_code, note: 'ON DELETE RESTRICT — safety guard preventing accidental institution deletion when routing rules still reference it. Use status=SUSPENDED for soft-deactivation.']
+  priority         int          [not null, default: 0, note: 'Higher = applied first. Tie-break: created_at ASC (earlier registration wins). Do NOT use rule_id ASC — UUID v4 is random and non-deterministic by insertion order. Do NOT use UNIQUE(routing_type, priority) — allows multiple targets at same priority.']
+  is_active        boolean      [not null, default: true, note: 'DDL: TINYINT(1) DEFAULT 1 — MySQL BOOLEAN = TINYINT(1). 0=disabled (soft delete without physical DELETE). (R31)']
+  created_at       datetime(6)  [not null, default: `now(6)`, note: 'DATETIME(6) microsecond precision REQUIRED for tie-break. TIMESTAMP or DATETIME (second precision) causes collision when rules inserted in same second (e.g., batch seed scripts). MariaDB 5.3+ / MySQL 5.6.4+ support.']
+  updated_at       datetime(6)  [not null, default: `now(6)`, note: 'ON UPDATE CURRENT_TIMESTAMP REQUIRED in DDL — polling-based routing cache invalidation queries WHERE updated_at > {last_loaded_at}. Without auto-update, routing rule changes are silently missed by polling scheduler. DDL: updated_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6). (See fep_protocol_specs R18 same pattern.) (R20)']
+
+  // CHECK constraint (enforce in DDL):
+  // (routing_type='BIN' AND bin_range_start IS NOT NULL AND bin_range_end IS NOT NULL
+  //   AND bank_code IS NULL AND bin_range_start <= bin_range_end)
+  // OR
+  // (routing_type='BANK_CODE' AND bank_code IS NOT NULL
+  //   AND bin_range_start IS NULL AND bin_range_end IS NULL)
+
+  // BIN Overlap detection (R14 — app-layer INSERT/UPDATE check):
+  // SELECT rule_id, bin_range_start, bin_range_end, target_org_code
+  // FROM fep_routing_rules
+  // WHERE routing_type='BIN' AND is_active=TRUE
+  //   AND bin_range_start <= :new_end AND bin_range_end >= :new_start
+  //   AND rule_id != :rule_id;
+  // → 1+ results = overlap detected → require ops team approval before insert
+
+  indexes {
+    rule_id [unique, name: 'uk_rule_id', note: 'Business UUID UK — Admin API single-row lookup. BIN overlap detection self-exclusion (AND rule_id != :rule_id) references this UK.']
+    (routing_type, is_active, bin_range_start) [name: 'idx_routing_bin', note: 'BIN routing lookup: WHERE routing_type=BIN AND is_active=TRUE AND bin_range_start<=:bin AND bin_range_end>=:bin. Without this index, every transaction causes fullscan. Also supports BIN overlap detection query (R14). Equal(routing_type + is_active) narrows candidates, then range scan on bin_range_start.']
+    (routing_type, is_active, bank_code) [name: 'idx_routing_bank', note: 'BANK_CODE routing lookup: WHERE routing_type=BANK_CODE AND is_active=TRUE AND bank_code=:code. Covering index candidate for account-transfer routing.']
+  }
+}
+
+Table fep_protocol_specs {
+  id           bigint       [pk, increment, note: 'Surrogate PK — BIGINT UNSIGNED AUTO_INCREMENT. 외부 노출 금지 — Admin API는 spec_id(CHAR36) 사용.']
+  spec_id      char(36)     [unique, not null, note: 'Business UUID — 스펙 식별자. DDL: CHAR(36) UNIQUE NOT NULL. 외부 노출 전용(Admin API). NULL msg_type 중복 방지 Trigger에서 spec_id 기준 자기 자신 제외. 내부 JOIN은 id(BIGINT) 사용.']
+  org_code     varchar(10)  [not null, ref: > fep_institutions.org_code, note: 'ON DELETE RESTRICT — prevents physical institution deletion while protocol specs exist.']
+  msg_type     varchar(4)   [note: 'NULL = applies to ALL message types for this org. Non-NULL = specific message type only. ISO-8583 MTI values: 0200, 0400, 0600, 0800 — all 4 digits fixed. VARCHAR(4) aligned with fep_protocol_log.msg_type (R20) and fep_transaction_journal.message_type (R21). (R22)']
+  field_no     int          [not null, note: 'ISO-8583 Data Element number (1–128)']
+  field_name   varchar(50)  [not null, note: 'e.g., PAN, STAN, AMOUNT, PIN_DATA']
+  data_type    varchar(10)  [not null, note: 'ENUM: N | AN | ANS | B | Z. DDL: ENUM(''N'',''AN'',''ANS'',''B'',''Z'') — VARCHAR(10) here is ERD tool compatibility only (DBML does not support MySQL ENUM natively). N=Numeric, AN=Alphanumeric, ANS=Alphanumeric Special, B=Binary, Z=Track Data']
+  max_length   int          [not null, note: 'Max length in bytes']
+  length_type  varchar(10)  [not null, note: 'ENUM: FIXED | LLVAR | LLLVAR. DDL: ENUM(''FIXED'',''LLVAR'',''LLLVAR'') — VARCHAR(10) here is ERD tool compatibility only (DBML does not support MySQL ENUM natively). FIXED: fixed length, LLVAR: 2-digit var header, LLLVAR: 3-digit var header']
+  is_mandatory boolean      [not null, default: true, note: 'DDL: TINYINT(1) DEFAULT 1 — MySQL BOOLEAN = TINYINT(1). FALSE(0) = DE can be absent from message without protocol violation. (R31)']
+  is_active    boolean      [not null, default: true, note: 'FALSE(0) = excluded from Pack/Unpack. Requires cache reload (admin API or polling) to take effect without restart. DDL: TINYINT(1) DEFAULT 1 — MySQL BOOLEAN = TINYINT(1). (R31)']
+  created_at   datetime     [not null, default: `now()`, note: 'DATETIME preferred over TIMESTAMP — avoids 2038 overflow. Corrected R20 (R18 missed this table).']
+  updated_at   datetime     [not null, default: `now()`, note: 'ON UPDATE CURRENT_TIMESTAMP REQUIRED in DDL — polling-based cache invalidation queries WHERE updated_at > {last_loaded_at}. Without auto-update, spec changes are silently missed by polling scheduler, permanently breaking cache refresh. DDL: updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP. DATETIME preferred over TIMESTAMP — avoids 2038 overflow. (R18/R20)']
+
+  // Cache strategy:
+  //   Protocol Translator loads specs into in-memory Map keyed by (org_code, msg_type) on startup.
+  //   To apply changes without restart:
+  //     [Recommended] POST /admin/fep/protocol-specs/reload  (per org_code)
+  //     [Alternative] Scheduler polls WHERE updated_at > {last_loaded_at} every 30s
+  //
+  // ⚠️ MySQL NULL Unique Trap:
+  //   UNIQUE KEY on (org_code, field_no, msg_type) does NOT prevent duplicate rows
+  //   when msg_type IS NULL — MySQL treats NULL != NULL in unique index comparisons.
+  //   MANDATORY: Add BEFORE INSERT + BEFORE UPDATE trigger to detect
+  //   duplicate (org_code, field_no) combinations where msg_type IS NULL.
+  //   (MariaDB 5.5+ / MySQL 5.5+ required for SIGNAL SQLSTATE '45000')
+  //   Recommended min version: MariaDB 10.3+ / MySQL 5.7+
+  //   ⚠️ is_active=FALSE without Reload call has no effect until restart.
+
+  indexes {
+    spec_id [unique, name: 'uk_spec_id', note: 'Business UUID UK — Admin API single-row lookup. NULL msg_type dup-prevention Trigger self-exclusion (AND spec_id != NEW.spec_id) references this UK.']
+    (org_code, field_no, msg_type) [unique, name: 'uk_spec', note: 'NULL msg_type (common) and non-NULL msg_type (specific) rows can coexist for same field_no.']
+    (org_code, msg_type) [name: 'idx_spec_load', note: 'Cache load index — Protocol Translator startup load (WHERE org_code=?) and polling invalidation (WHERE updated_at > ?). uk_spec(org_code, field_no, msg_type) cannot efficiently serve WHERE org_code=? AND msg_type=? because field_no sits in the middle, forcing full index scan after org_code match. idx_spec_load uses 2 Equal conditions → leaf-node access only. (R19)']
+  }
+}
+
+// ─────────────────────────────────────────────
+// 2. Security & Key Management (HSM)
+// ─────────────────────────────────────────────
+
+Table fep_security_keys {
+  id                  bigint       [pk, increment, note: 'Surrogate PK — BIGINT UNSIGNED AUTO_INCREMENT. 외부 노출 금지 — Admin/HSM API는 key_id(CHAR36) 사용.']
+  key_id              char(36)     [unique, not null, note: 'Business UUID — 키 식별자. DDL: CHAR(36) UNIQUE NOT NULL. 외부 노출 전용(Admin API, HSM 연동). rotated_from_key_id Self-FK 참조 대상. ACTIVE Trigger에서 key_id 기준 자기 자신 제외. 내부 JOIN은 id(BIGINT) 사용.']
+  org_code            varchar(10)  [not null, ref: > fep_institutions.org_code, note: 'ON DELETE RESTRICT — prevents physical institution deletion while HSM keys exist.']
+  key_type            varchar(10)  [not null, note: 'ENUM: ZMK | ZPK | ZAK | PVK. DDL: ENUM(''ZMK'',''ZPK'',''ZAK'',''PVK'') — VARCHAR(10) here is ERD tool compatibility only (DBML does not support MySQL ENUM natively).']
+  key_value_encrypted varchar(512) [not null, note: 'LMK-encrypted key. VARCHAR(512) to accommodate ANSI TR-31 block + future AES-256 expansion.']
+  kcv                 varchar(20)  [note: 'Key Check Value for integrity verification']
+  expiry_date         date         [not null]
+  rotation_status     varchar(20)  [not null, note: 'ENUM: ACTIVE | ROTATED | EXPIRED. DDL: ENUM(''ACTIVE'',''ROTATED'',''EXPIRED'') — VARCHAR(20) here is ERD tool compatibility only (DBML does not support MySQL ENUM natively). Only ONE ACTIVE per (org_code, key_type). Enforce via DB trigger (BEFORE INSERT/UPDATE SIGNAL SQLSTATE 45000) or app-level transaction.']
+  rotated_from_key_id char(36)     [ref: > fep_security_keys.key_id, note: 'DDL: CHAR(36). Self-FK → fep_security_keys.key_id (UNIQUE KEY). MySQL/MariaDB FK는 PK 또는 UNIQUE KEY 참조 가능. 키 교체 이력 체인 추적용. 최초 키는 NULL.']
+  alert_sent_at       datetime     [note: 'NULL = D-7 expiry alert not yet sent. Set to NOW() after alert dispatch to prevent duplicate sends. Condition: alert_sent_at IS NULL AND expiry_date < NOW() + INTERVAL 7 DAY AND rotation_status=ACTIVE. Reset to NULL on key rotation (ROTATED) so new key can trigger re-alert. NOT reset on ACTIVE→EXPIRED transition (prevents re-trigger of D-7 alert). DATETIME preferred over TIMESTAMP — avoids 2038 overflow. (R18)']
+  alert_escalated_at  datetime     [note: 'NULL = post-expiry Escalation alert not yet sent. Set to NOW() after Escalation dispatch. Trigger condition: rotation_status=EXPIRED AND alert_sent_at IS NOT NULL AND alert_escalated_at IS NULL. Separates D-7 pre-alert (alert_sent_at) from post-expiry escalation. Reset to NULL on ROTATED so new key can re-escalate if needed. ⛔ EXPIRED→ACTIVE reverse transition is PROHIBITED — reinstate only via new key INSERT. DATETIME preferred over TIMESTAMP — avoids 2038 overflow. (R18)']
+  created_at          datetime     [not null, default: `now()`, note: 'Key creation timestamp for audit trail and rotation cycle calculation. DATETIME preferred over TIMESTAMP — avoids 2038 overflow. (R18)']
+
+  // Key lifecycle:
+  //   ACTIVE → ROTATED: intentional replacement (rotated_from_key_id links to this key)
+  //   ACTIVE → EXPIRED: scheduler auto-transition when expiry_date < NOW()
+  //   EXPIRED state: MAC computation refused → RC=9005 KEY_EXPIRED returned to Core Banking
+  //   Priority rule: ROTATED > EXPIRED when both conditions apply simultaneously
+  //   Auto-renewal: NOT supported. Key exchange requires manual HSM operation.
+
+  indexes {
+    key_id [unique, name: 'uk_key_id', note: 'Business UUID UK — Admin API single-row lookup + rotated_from_key_id Self-FK reference target. MySQL/MariaDB FK can reference UNIQUE KEY (not only PK). ACTIVE dup-prevention Trigger self-exclusion (AND key_id != NEW.key_id) references this UK. (R33)']
+    (org_code, key_type, rotation_status) [name: 'idx_key_active', note: 'ACTIVE key lookup — MAC computation, D-7 expiry alert, Trigger ACTIVE dup check. Column order: org_code(high cardinality) → key_type(4 values) → rotation_status(3 values). Acts as virtual partial index since ACTIVE row count ≤ 1 per (org_code, key_type). (R17)']
+  }
+}
+
+// ─────────────────────────────────────────────
+// 3. Transaction Logging (Audit Trail)
+// ─────────────────────────────────────────────
+
+Table fep_transaction_journal {
+  id                    bigint        [pk, increment, note: 'Surrogate PK — BIGINT UNSIGNED AUTO_INCREMENT. B-tree 순차 삽입으로 단편화 제어, FK JOIN 비용 최소화. 엔드포인트 외부 노출 금지 — Core Banking 연동은 tx_id(CHAR36) 사용.']
+  tx_id                 char(36)      [unique, not null, note: 'Business UUID — FEP Internal Trace ID. 외부 노출 식별자(Core Banking 연동, 감사 로그, 장애 조사). DDL: CHAR(36) UNIQUE NOT NULL. 엔드포인트 API는 항상 이 값 사용. id(BIGINT)는 DB 내부 JOIN 전용.']
+  core_ref_id           varchar(64)   [unique, not null, note: 'Idempotency key from Core Banking. On re-request with same key: return stored response without re-sending to external.']
+  stan                  varchar(6)    [note: 'ISO-8583 Field 11 (STAN). NULL for CIRCUIT_REJECTED (no message sent to external). ⚠️ 6-digit circular (000001–999999) — always query with (org_code, stan, DATE(req_timestamp)) triple. Matches Simulator virtual_transactions.trace_id.']
+  org_code              varchar(10)   [not null, ref: > fep_institutions.org_code, note: 'ON DELETE RESTRICT — prevents physical institution deletion while journal entries exist. 5-year retention required by Electronic Financial Transactions Act Art. 22.']
+  message_type          varchar(4)    [not null, note: 'ISO-8583 MTI — always 4 digits (0200=Purchase, 0400=Reversal, 0800=Network Mgmt). VARCHAR(4) aligned with fep_protocol_log.msg_type. (R20/R21)']
+  tx_status             varchar(20)   [not null, note: 'ENUM: PENDING | COMPLETED | TIMEOUT | REVERSED | MALFORMED | CIRCUIT_REJECTED. DDL: ENUM(''PENDING'',''COMPLETED'',''TIMEOUT'',''REVERSED'',''MALFORMED'',''CIRCUIT_REJECTED'') — VARCHAR(20) here is ERD tool compatibility only (DBML does not support MySQL ENUM natively).']
+  pan_masked            varchar(25)   [note: 'Masked card/account number (e.g., 4111-****-****-1234)']
+  amount                decimal(19,4) [note: 'CHECK (amount >= 0) recommended — MySQL 8.0.16+ / MariaDB 10.2.1+ enforces CHECK constraints. Older versions parse but do not enforce — validate non-negative at application layer. CIRCUIT_REJECTED amount stores Core Banking requested value (no actual transfer). (R17/R18)']
+  currency              varchar(3)    [note: 'ISO 4217 (KRW, USD, JPY). ⚠️ Always filter SUM(amount) with WHERE currency=? — cross-currency sums produce meaningless financial totals.']
+  response_code         varchar(10)   [note: 'NULL for PENDING, TIMEOUT, MALFORMED, CIRCUIT_REJECTED. Non-NULL for COMPLETED, REVERSED.']
+  req_timestamp         datetime(3)   [not null, note: 'DATETIME(3) recommended over TIMESTAMP — MySQL TIMESTAMP is second-precision only; sub-second granularity is lost. duration_ms is hardcoded by application layer (System.currentTimeMillis()), NOT derived from timestamp diff. (R14/R15)']
+  res_timestamp         datetime(3)   [note: 'NULL for PENDING. Set to req_timestamp for CIRCUIT_REJECTED (instant reject, no external send). DATETIME(3) aligns precision with duration_ms millisecond tracking. (R14/R15)']
+  duration_ms           int          [note: 'Application-layer calculated value — hardcoded by app on INSERT via System.currentTimeMillis() or System.nanoTime(). NOT derived from (res_timestamp - req_timestamp) diff — avoids TIMESTAMP second-precision loss and reduces DB-side computation. CIRCUIT_REJECTED duration = 0 or near-zero (instant reject, no external send).']
+  needs_reconciliation  boolean       [not null, default: false, note: '1(TRUE) when PENDING→TIMEOUT on startup. Nightly batch queries external institution to verify actual processing status and corrects record. DDL: TINYINT(1) DEFAULT 0 — MySQL BOOLEAN = TINYINT(1); schema.md uses TINYINT(1) for consistency with is_primary/is_mandatory/is_active columns. (R31)']
+  failure_reason        varchar(100)  [note: 'Required when tx_status IN (TIMEOUT, MALFORMED, CIRCUIT_REJECTED). Values: TIMEOUT, MAC_MISMATCH, MALFORMED_RESP, CIRCUIT_OPEN, POOL_EXHAUSTED, NOT_SIGNED_ON.']
+  reversal_ref_tx_id    char(36)      [ref: > fep_transaction_journal.tx_id, note: 'DDL: CHAR(36). Self-FK. Only populated for 0400 reversal transactions pointing to original 0200. App-layer rules: (1) Only message_type=0400 may populate this field. (2) Referenced tx must have message_type=0200. (3) Duplicate reversal_ref_tx_id = double reversal → reject.']
+
+  // tx_status valid state matrix:
+  //   PENDING          → response_code IS NULL, stan IS NOT NULL
+  //   COMPLETED        → response_code IS NOT NULL, stan IS NOT NULL
+  //   TIMEOUT          → response_code IS NULL, failure_reason IS NOT NULL, stan IS NOT NULL
+  //   MALFORMED        → response_code IS NULL, failure_reason IS NOT NULL, stan IS NOT NULL
+  //   REVERSED         → response_code IS NOT NULL, stan IS NOT NULL
+  //   CIRCUIT_REJECTED → response_code IS NULL, failure_reason='CIRCUIT_OPEN', stan IS NULL
+  //
+  // CIRCUIT_REJECTED insert throttle policy:
+  //   If INSERT rate for same org_code exceeds threshold (default 100 TPS),
+  //   skip INSERT and increment fep_circuit_breaker_events.throttled_count instead.
+  //   Total rejections = CIRCUIT_REJECTED row count + throttled_count.
+  //
+  // ⚠️ CIRCUIT_REJECTED idempotency — SELECT-before-INSERT REQUIRED:
+  //   uk_core_ref UNIQUE constraint will throw Duplicate Key Error if Core Banking
+  //   retries with same core_ref_id during CB OPEN period.
+  //   App-layer flow:
+  //     1. SELECT ... WHERE core_ref_id = :id  FOR UPDATE
+  //     2. Row exists → return stored result (no INSERT)
+  //     3. Row absent → proceed with INSERT
+  //   This SELECT step runs BEFORE throttle check — even throttled flows must check first.
+
+  indexes {
+    tx_id [unique, name: 'uk_tx_id', note: 'Business UUID UK — external API entry point (Core Banking, audit, incident trace). reversal_ref_tx_id Self-FK references this UK. All external endpoints must use tx_id; never expose id(BIGINT). (R32)']
+    core_ref_id [unique, name: 'uk_core_ref', note: 'Idempotency lookup — executed on every request']
+    (org_code, req_timestamp, tx_status) [name: 'idx_audit', note: 'Covering index for audit/report GROUP BY queries']
+    (org_code, stan, req_timestamp) [name: 'idx_stan_lookup', note: 'Cross-system trace with Simulator. Use DATE(req_timestamp) for STAN daily reuse boundary.']
+    reversal_ref_tx_id [name: 'idx_reversal', note: 'Reverse lookup for double-reversal detection and audit chain']
+    (tx_status, req_timestamp) [name: 'idx_startup_recovery', note: 'Startup recovery: UPDATE WHERE tx_status=PENDING AND req_timestamp < NOW() - INTERVAL ? SECOND']
+  }
+}
+
+Table fep_protocol_log {
+  id           bigint       [increment, not null, note: 'Surrogate PK 첫번째 요소. DDL: PRIMARY KEY (id, created_at) — 파티션 키 created_at을 PK에 포함해야 MySQL ERROR 1503 방지. BIGINT UNSIGNED AUTO_INCREMENT. 완전한 PK DDL: PRIMARY KEY (id, created_at).']
+  log_id       char(36)     [unique, not null, note: 'Business UUID — 로그 식별자. DDL: CHAR(36) UNIQUE NOT NULL. 엔드포인트/시스템 연동 시에 이 값 사용. id는 DB 내부 저장 전용.']
+  tx_id        char(36)     [note: 'DDL: CHAR(36) NULLABLE. 역할: fep_transaction_journal.tx_id(CHAR36)와 연결하는 Business FK. 파티션 테이블 FK 선언 불가(ERROR 1506)이므로 앱 레이어 참조. 네트워크 관리 전문(0800 Echo, 0600 Sign-on)은 NULL 허용. ON DELETE SET NULL은 설계 의도이며 앱 레이어로 구현.']
+  msg_type     varchar(4)   [not null, note: 'ISO-8583 MTI is always 4 digits (0200, 0400, 0600, 0800). Required to identify management message logs where tx_id IS NULL. VARCHAR(4) aligned with schema.md DDL definition. (R20)']
+  direction    varchar(3)   [not null, note: 'Received (IN) or sent (OUT). DDL: ENUM(''IN'',''OUT'') — matches schema.md DDL definition which explicitly uses ENUM for type safety. VARCHAR(3) here is ERD tool compatibility only (DBML does not support MySQL ENUM natively). Corrected from VARCHAR(5) in R19. (R19/R21)']
+  raw_header   text         [note: 'Message header (Hex)']
+  raw_body     text         [note: 'Message body (Hex)']
+  error_detail text         [note: 'Parsing error detail. NULL on success.']
+  created_at   datetime(6)  [not null, default: `now(6)`, note: 'Partition key — NOT NULL required: MySQL/MariaDB partition key must not allow NULL values. RANGE COLUMNS(created_at) recommended (avoids RANGE BY MONTH year-boundary bug where Jan 2025 and Jan 2026 map to same partition). Maintain 4 partitions (current + 3 prior months ≈ 90 days). See gateway_schema.md for full DDL example with RANGE COLUMNS. Mandatory per Electronic Financial Transactions Act Art. 22.']
+
+  indexes {
+    (id, created_at) [pk, note: 'Composite PK — MySQL/MariaDB 파티션 테이블은 파티션 키(created_at)를 PK에 포함해야 함(ERROR 1503 방지). id 단독으로는 PK 불가 — DBML 표현 제한으로 indexes 블록에 복합 PK 선언. DDL: PRIMARY KEY (id, created_at). (R32)']
+    log_id [unique, name: 'uk_log_id', note: 'Business UUID UK — external query entry point (Admin API, audit lookups). Partition key (created_at) NOT required in UK — log_id alone is sufficient for single-row lookup across all partitions. DDL: UNIQUE KEY uk_log_id (log_id). (R32/R35)']
+  }
+}
+
+// ─────────────────────────────────────────────
+// 4. Reliability State (Circuit Breaker)
+// ─────────────────────────────────────────────
+
+Table fep_circuit_breaker_state {
+  org_code             varchar(10) [pk, ref: - fep_institutions.org_code, note: 'ON DELETE RESTRICT — prevents physical institution deletion while CB state row exists.']
+  state                varchar(20) [not null, default: 'CLOSED', note: 'ENUM: CLOSED | OPEN | HALF_OPEN. DDL: ENUM(''CLOSED'',''OPEN'',''HALF_OPEN'') — VARCHAR(20) here is ERD tool compatibility only (DBML does not support MySQL ENUM natively).']
+  failure_count        int         [not null, default: 0, note: 'Threshold: failure_count >= failure_threshold (default 5) → CLOSED→OPEN. Per-institution configurable via failure_threshold column. (R16)']
+  last_failure_at      datetime    [note: 'DATETIME preferred over TIMESTAMP — avoids MySQL TIMESTAMP 2038-01-19 overflow. NULL until first failure.']
+  open_until           datetime    [note: 'OPEN expiry time. NULL on initial insert. ⚠️ MySQL NULL>NULL = NULL(false) — always check IS NOT NULL before NOW() > open_until comparison. DATETIME preferred over TIMESTAMP to avoid 2038 overflow.']
+  success_count        int         [not null, default: 0, note: 'HALF_OPEN consecutive successes. Use atomic UPDATE (no Read-Modify-Write) to avoid race condition on multi-instance deployment.']
+  half_open_threshold  int         [not null, default: 3, note: 'Per-institution configurable. HALF_OPEN→CLOSED when success_count >= this value.']
+  open_duration_seconds int        [not null, default: 60, note: 'Per-institution configurable. open_until = NOW() + INTERVAL open_duration_seconds SECOND on CLOSED→OPEN.']
+  failure_threshold    int         [not null, default: 5, note: 'Per-institution configurable. CLOSED→OPEN when failure_count >= this value. Pair with half_open_threshold and open_duration_seconds for fine-grained CB tuning. (R16)']
+  updated_at           datetime    [not null, default: `now()`, note: 'DATETIME preferred over TIMESTAMP — avoids MySQL TIMESTAMP 2038-01-19 overflow. Updated on every CB state change. Trigger INSERT always provides NOW(), so NOT NULL is valid. (R17)']
+
+  // ⚠️ Independence from fep_connections.runtime_status:
+  //   state=OPEN + fep_connections.runtime_status=SIGNED_ON is a VALID combination.
+  //   CB OPEN fast-fails 0200 business messages; socket connection is NOT severed.
+  //   Echo (0800) and Sign-on (0600) continue normally even when CB is OPEN.
+  //   Monitor dashboard MUST display these as separate indicators.
+}
+
+Table fep_circuit_breaker_events {
+  id                    bigint      [pk, increment, note: 'Surrogate PK — BIGINT UNSIGNED AUTO_INCREMENT. INSERT ONLY 테이블이므로 순차 삽입 보장. 엔드포인트 외부 노출 금지.']
+  event_id              char(36)    [unique, not null, note: 'Business UUID — 이벤트 식별자. DDL: CHAR(36) UNIQUE NOT NULL — MySQL/MariaDB에 uuid 네이티브 타입 없음; CHAR(36)은 하이픈 포함 UUID 문자열(8-4-4-4-12) 저장에 최적. 외부 조회 및 연동에 사용. id는 DB 내부 정렬/조인 전용.']
+  org_code              varchar(10) [not null, ref: > fep_institutions.org_code, note: 'ON DELETE RESTRICT — prevents physical institution deletion while CB event history exists.']
+  from_state            varchar(20) [not null, note: 'ENUM: CLOSED | OPEN | HALF_OPEN | INITIAL (first registration — no prior state). DDL: ENUM(''CLOSED'',''OPEN'',''HALF_OPEN'',''INITIAL'') — VARCHAR(20) here is ERD tool compatibility only (DBML does not support MySQL ENUM natively).']
+  to_state              varchar(20) [not null, note: 'ENUM: CLOSED | OPEN | HALF_OPEN. DDL: ENUM(''CLOSED'',''OPEN'',''HALF_OPEN'') — VARCHAR(20) here is ERD tool compatibility only (DBML does not support MySQL ENUM natively).']
+  trigger_type          varchar(30) [not null, note: 'ENUM: FAILURE_THRESHOLD | OPEN_EXPIRED | SUCCESS_THRESHOLD | HALF_OPEN_FAILURE | MANUAL_RESET. DDL: ENUM(''FAILURE_THRESHOLD'',''OPEN_EXPIRED'',''SUCCESS_THRESHOLD'',''HALF_OPEN_FAILURE'',''MANUAL_RESET'') — VARCHAR(30) here is ERD tool compatibility only (DBML does not support MySQL ENUM natively). ⚠️ Column renamed from "trigger" — TRIGGER is a MySQL/MariaDB reserved word (ERROR 1064 without backticks in DDL). Use trigger_type to avoid quoting everywhere. (R19)']
+  failure_count_snapshot int        [note: 'Snapshot of failure_count at transition time. Answers: "which failure number triggered OPEN?"']
+  throttled_count       int         [not null, default: 0, note: 'CIRCUIT_REJECTED inserts skipped by Throttle policy during the OPEN period leading to this event. Total actual rejections = CIRCUIT_REJECTED rows in journal + throttled_count across OPEN-period events.']
+  created_at            datetime(6)  [not null, default: `now(6)`, note: 'Timeline sort key. NOT NULL — every CB event must have a timestamp for forensic reconstruction. datetime(6) microsecond precision — prevents ambiguous ordering when multiple instances emit events within the same second on multi-instance deployment. (R15)']
+
+  // Design principles:
+  //   INSERT ONLY — never UPDATE or DELETE existing rows.
+  //   INSERT into this table within the SAME TRANSACTION as fep_circuit_breaker_state UPDATE.
+  //   On transaction rollback: both state change and event record are rolled back atomically.
+  //   Retention: 90 days. Low event frequency — partitioning not required.
+
+  indexes {
+    event_id [unique, name: 'uk_event_id', note: 'Business UUID UK — external audit query entry point. INSERT ONLY table: every event has a stable, immutable UUID for external reference. (R32/R35)']
+    (org_code, created_at) [name: 'idx_cb_events', note: 'Latest events per institution. DDL: INDEX idx_cb_events (org_code, created_at DESC) — descending index on created_at for efficient latest-event lookup without sort. Descending index supported in MySQL 8.0+ and MariaDB 10.6+. On earlier versions, MySQL silently ignores DESC and creates ASC index — queries still work but ORDER BY created_at DESC will require sort. DBML does not support DESC index direction natively; apply DESC in actual DDL.']
+  }
+}

@@ -38,7 +38,7 @@ so that every registered member has a usable account baseline.
 ### Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 2 (`2.1`~`2.6`).
-- Supplemental artifact `_bmad-output/implementation-artifacts/epic-2-transfer-initiation-and-otp.md` has different scope/numbering; use it only as technical reference, not story ID authority.
+- Supplemental artifact `_bmad-output/implementation-artifacts/epic-2-order-session-and-otp.md` has different scope/numbering; use it only as technical reference, not story ID authority.
 - Depends on Story 0.1 and Story 1.1.
 - This story establishes account-domain baseline for all Epic 2 inquiry APIs.
 
@@ -96,7 +96,7 @@ so that every registered member has a usable account baseline.
 - `_bmad-output/planning-artifacts/epics.md` (Epic 2, Story 2.1)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
-- `_bmad-output/implementation-artifacts/epic-2-transfer-initiation-and-otp.md` (supplemental only)
+- `_bmad-output/implementation-artifacts/epic-2-order-session-and-otp.md` (supplemental only)
 
 ## Dev Agent Record
 

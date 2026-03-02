@@ -9,9 +9,9 @@ inputDocuments:
   - "_bmad-output/planning-artifacts/ux-design-specification.md"
   - "_bmad-output/implementation-artifacts/epic-0-project-foundation.md"
   - "_bmad-output/implementation-artifacts/epic-1-user-authentication-and-account-access.md"
-  - "_bmad-output/implementation-artifacts/epic-2-transfer-initiation-and-otp.md"
+  - "_bmad-output/implementation-artifacts/epic-2-order-session-and-otp.md"
   - "_bmad-output/implementation-artifacts/epic-3-fault-tolerance-and-fep-resilience.md"
-  - "_bmad-output/implementation-artifacts/epic-4-transfer-execution-and-ledger-integrity.md"
+  - "_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md"
   - "_bmad-output/implementation-artifacts/epic-5-real-time-notifications.md"
   - "_bmad-output/implementation-artifacts/epic-6-security-audit-and-administration.md"
   - "_bmad-output/implementation-artifacts/epic-7-observability-api-docs-and-readme.md"
@@ -60,7 +60,7 @@ Core Objectives:
 | 1 | Channel Auth & Session Platform | Channel | CH | Channel Engineer |
 | 2 | Account Domain & Inquiry APIs | Account | AC | Account Engineer |
 | 3 | External Gateway Contract (FEP) | External | FEP | FEP Owner (acting Account Engineer) |
-| 4 | Channel Transfer Session & OTP FSM | Channel | CH | Channel Engineer |
+| 4 | Channel Order Session & OTP FSM    | Channel | CH | Channel Engineer |
 | 5 | Account Ledger, Limits, Idempotency, Concurrency | Account | AC | Account Engineer |
 | 6 | External Resilience, Chaos, Replay/Recovery Ops | External | FEP | FEP Owner (acting Account Engineer) |
 | 7 | Channel Notifications, Admin, Channel Security | Channel | CH | Channel Engineer |
@@ -101,10 +101,10 @@ Completes the account schema/inquiry API and delivers the FE/MOB account/history
 
 **Story Hints:**
 - Story 2.1: BE Schema & Auto Account Provisioning
-- Story 2.2: BE Balance & Available Balance API
-- Story 2.3: BE Transfer History API
-- Story 2.4: FE Account Dashboard & History
-- Story 2.5: MOB Account Dashboard & History
+- Story 2.2: BE Position & Available-Quantity API
+- Story 2.3: BE Order History API
+- Story 2.4: FE Portfolio Dashboard & History
+- Story 2.5: MOB Portfolio Dashboard & History
 - Story 2.6: BE Account Status Contract
 
 ### Epic 3: External Gateway Contract (FEP)
@@ -119,28 +119,28 @@ Finalizes the external FEP contract, mapping, tracing, status inquiry, and contr
 - Story 3.5: BE Contract Test Suite
 - Story 3.6: FE/MOB Visible External Error UX
 
-### Epic 4: Channel Transfer Session & OTP FSM
+### Epic 4: Channel Order Session & OTP FSM
 
-Implements the channel transfer session/OTP state machine and the FE/MOB multi-step transfer UX.
+Implements the channel order session/OTP state machine and the FE/MOB multi-step order UX.
 
 **Story Hints:**
-- Story 4.1: BE Transfer Session Create/Status + Ownership
+- Story 4.1: BE Order Session Create/Status + Ownership
 - Story 4.2: BE OTP Verify Policy
 - Story 4.3: BE FSM Transition Governance
-- Story 4.4: FE Transfer Step A/B
+- Story 4.4: FE Order Step A/B
 - Story 4.5: FE OTP + Step C
-- Story 4.6: MOB Transfer Step A/B
+- Story 4.6: MOB Order Step A/B
 - Story 4.7: MOB OTP + Step C
 - Story 4.8: Cross-Client FSM Parity Validation
 
-### Epic 5: Account Ledger, Limits, Idempotency, Concurrency
+### Epic 5: Position Ledger, Limits, Idempotency, Concurrency
 
-Ensures account ledger processing, limits, idempotency, and concurrency stability. (BE-centric)
+Ensures position ledger processing, sell limits, idempotency, and concurrency stability. (BE-centric)
 
 **Story Hints:**
 - Story 5.1: BE Limit Engine
-- Story 5.2: BE Same-bank Ledger Posting
-- Story 5.3: BE Interbank Ledger Semantics
+- Story 5.2: BE Order Execution & Position Update
+- Story 5.3: BE FEP Order Execution Semantics
 - Story 5.4: BE Idempotent Posting
 - Story 5.5: BE Concurrency Control
 - Story 5.6: BE Ledger Integrity
@@ -227,13 +227,28 @@ So that all system lanes can build on a consistent runtime and coding contract.
   **Then** all backend modules compile without error.
 - **Given** docker compose setup files  
   **When** `docker compose up` is executed  
-  **Then** channel/corebank/fep services become healthy.
-- **Given** common error contract requirement  
-  **When** API exception occurs  
-  **Then** standardized error schema is returned.
+  **Then** channel/corebank/fep-gateway/fep-simulator services become healthy.
+- **Given** Flyway configuration for channel/corebank schemas  
+  **When** services start  
+  **Then** baseline migrations and local/test seed data run without error.
 - **Given** internal service boundaries  
   **When** internal endpoint is called without secret header  
   **Then** request is blocked by scaffold filter.
+- **Given** common error contract requirement  
+  **When** API exception occurs  
+  **Then** standardized error schema is returned.
+- **Given** local developer visibility requirements  
+  **When** `docker-compose.override.yml` is applied  
+  **Then** MySQL/Redis/internal service ports are reachable for local tools only.
+- **Given** SpringDoc build-time generation is configured for channel/corebank/fep-gateway/fep-simulator services  
+  **When** `generateOpenApiDocs` tasks run  
+  **Then** each service outputs a valid OpenAPI 3.0 JSON artifact.
+- **Given** a merge to `main` with backend CI passing  
+  **When** `docs-publish.yml` completes  
+  **Then** GitHub Pages (`https://<org>.github.io/<repo>/`) is the canonical API docs endpoint and renders Channel/CoreBank/FEP Gateway/FEP Simulator selectors from latest generated specs.
+- **Given** first deployment on a repository without Pages source configuration  
+  **When** initial docs publish run completes  
+  **Then** one-time Pages source setup (`gh-pages` / root) is completed and recorded in ops runbook.
 
 ### Story 0.2: [BE][CH] Test & CI Foundation
 
@@ -258,7 +273,7 @@ So that feature teams can ship with deterministic validation.
   **When** pipeline runs  
   **Then** merge is blocked by status check.
 
-### Story 0.3: [FE][FE] Frontend Foundation Scaffold
+### Story 0.3: [FE] Frontend Foundation Scaffold
 
 As a **frontend engineer**,  
 I want a standardized web scaffold and API client,  
@@ -281,7 +296,7 @@ So that product UI features can be implemented consistently.
   **When** backend returns standard error schema  
   **Then** web layer parses and displays normalized message.
 
-### Story 0.4: [MOB][MOB] Mobile Foundation Scaffold
+### Story 0.4: [MOB] Mobile Foundation Scaffold
 
 As a **mobile engineer**,  
 I want a standardized mobile scaffold and API layer,  
@@ -296,13 +311,19 @@ So that mobile features follow the same contract and architecture.
   **Then** baseline app runs on target simulator/device.
 - **Given** env-based API config  
   **When** mobile calls backend health endpoint  
-  **Then** request succeeds against expected host.
+  **Then** request succeeds against host matrix (`Android emulator=http://10.0.2.2:8080`, `iOS simulator=http://localhost:8080`, `physical device=http://<LAN_IP>:8080`) with `GET /actuator/health` HTTP 200 within 5s.
 - **Given** common network module  
   **When** API errors occur  
   **Then** mobile receives parsed standardized error payload.
-- **Given** auth/cookie storage policy  
+- **Given** server-side cookie session policy  
   **When** session is issued  
-  **Then** client persists credentials in approved secure storage.
+  **Then** mobile persists no raw credentials/password/OTP in app storage and uses OS-approved secure storage controls for any sensitive client-side secret material.
+- **Given** cookie-session + CSRF contract for state-changing API calls  
+  **When** mobile sends non-GET request  
+  **Then** client includes credentials and `X-XSRF-TOKEN` header derived from `XSRF-TOKEN` cookie after explicit CSRF bootstrap/refresh (`GET /api/v1/auth/csrf`) on app start/login/resume.
+- **Given** foundation CI runs bundle-only checks  
+  **When** PR is prepared for merge  
+  **Then** AC1 is satisfied only after manual simulator/device smoke evidence (boot log/screenshot + health-call capture) is attached in PR checklist.
 
 ### Story 0.5: [BE][CH] Collaboration Webhook Notifications (MatterMost + Jira + GitHub)
 
@@ -311,7 +332,7 @@ I want Jira and GitHub webhook events delivered to MatterMost,
 So that release/quality state is visible in real time without manual polling.
 
 **Depends On:** Story 0.2
-**Implementation Decision:** 1안 (Direct integration: `GitHub Actions + Jira Automation -> MatterMost webhook`, no central relay)
+**Implementation Decision:** Option 1 (Direct integration: `GitHub Actions + Jira Automation -> MatterMost webhook`, no central relay)
 
 **Acceptance Criteria:**
 
@@ -325,11 +346,17 @@ So that release/quality state is visible in real time without manual polling.
   **When** runtime configuration is applied  
   **Then** credentials are managed only via GitHub Secrets and Jira secured webhook settings (no hardcoding).
 - **Given** duplicate delivery or retry from source systems  
-  **When** identical event context is detected by workflow/automation guard conditions  
-  **Then** duplicated user-visible spam is suppressed.
+  **When** normalized dedupe key `source + source_project + target_channel + event_type + entity_id + normalized_target_status + normalized_actor` (`null`/missing -> `_`) or source event id (`delivery_id`/equivalent) repeats within source suppression window (`GitHub=10m`, `Jira=10m`)  
+  **Then** duplicated user-visible posts are suppressed.
+- **Given** direct integration architecture (no central relay)  
+  **When** dedupe state is persisted  
+  **Then** source-specific dedupe contract is explicit and auditable (`GitHub`: Actions cache key `mm-dedupe-{dedupe_hash}-{window_bucket_10m}` where `window_bucket_10m=floor(event_epoch/600)`; `Jira`: entity/property `mm_last_hash` + `mm_last_ts` with 10-minute timestamp comparison).
 - **Given** outbound posting failure to MatterMost  
-  **When** network or API error occurs during source-side delivery  
-  **Then** source workflow/automation retry policy is applied and failure is observable in run/audit logs.
+  **When** network timeout or non-2xx response occurs  
+  **Then** source retry policy executes with bounded retries (`max_attempts=3`) using source-specific backoff contract (`GitHub`: `2s`,`5s` + jitter `±20%`; `Jira`: fixed `2s`,`5s` without jitter due platform limits), per-source+per-entity ordering guard, and final failure visibility in run/audit logs.
+- **Given** reliability validation runbook execution  
+  **When** duplicate and failure scenarios are replayed  
+  **Then** evidence artifacts are indexed under `docs/ops/webhook-validation/<YYYYMMDD>/` with reproducible naming and enforced retention configuration (`>=90 days`).
 
 ---
 
@@ -381,7 +408,7 @@ So that account access remains under my control.
   **When** inactivity exceeds threshold  
   **Then** session is treated as expired.
 
-### Story 1.3: [FE][FE] Web Auth Flow
+### Story 1.3: [FE] Web Auth Flow
 
 As a **web user**,  
 I want intuitive login/register/private navigation,  
@@ -404,7 +431,7 @@ So that authenticated routes behave predictably.
   **When** web receives it  
   **Then** user sees re-auth guidance.
 
-### Story 1.4: [MOB][MOB] Mobile Auth Flow
+### Story 1.4: [MOB] Mobile Auth Flow
 
 As a **mobile user**,  
 I want native auth flow parity with web,  
@@ -497,19 +524,21 @@ So that every registered member has a usable account baseline.
   **When** transaction is rolled back  
   **Then** failure reason is returned with normalized code.
 
-### Story 2.2: [BE][AC] Balance & Available-Balance API
+> **Seed Data (R__seed_data.sql):** `demo` account — 포지션 005930 삼성전자 500주, 000660 SK하이닉스 300주, 현금 ₩5,000,000 / `admin` account — ROLE_ADMIN.
+
+### Story 2.2: [BE][AC] Position & Available-Quantity API
 
 As an **authenticated user**,  
-I want real-time balance information,  
-So that transfer decisions can be made safely.
+I want real-time position and cash balance information,  
+So that order decisions can be made safely.
 
 **Depends On:** Story 2.1, Story 1.2
 
 **Acceptance Criteria:**
 
 - **Given** valid owned account  
-  **When** balance API is called  
-  **Then** current balance and available balance are returned.
+  **When** position/balance API is called  
+  **Then** current position quantity, available quantity, and cash balance are returned.
 - **Given** non-owned account request  
   **When** authorization is checked  
   **Then** access is denied.
@@ -520,19 +549,22 @@ So that transfer decisions can be made safely.
   **When** query fails  
   **Then** normalized retriable/non-retriable code is returned.
 
-### Story 2.3: [BE][AC] Transfer History API
+### Story 2.3: [BE][AC] Order History API
 
 As an **authenticated user**,  
-I want paginated transfer history,  
-So that I can inspect recent financial activity.
+I want paginated order history,  
+So that I can inspect recent order activity.
 
 **Depends On:** Story 2.1, Story 1.2
 
 **Acceptance Criteria:**
 
-- **Given** owned account with transaction records  
-  **When** history API is called  
-  **Then** results are paginated and ordered by created time desc.
+- **Given** owned account with order records  
+  **When** order history API is called  
+  **Then** results are paginated, include symbol/qty/status/clOrdID, and ordered by created time desc.
+- **Given** order history table columns  
+  **When** rendered  
+  **Then** columns are: 종목명(symbolName), 구분(side: BUY/SELL), 수량(qty), 체결단가(unitPrice), 체결금액(totalAmount), 상태(status), ClOrdID.
 - **Given** empty history  
   **When** query executes  
   **Then** empty content contract is returned consistently.
@@ -543,11 +575,11 @@ So that I can inspect recent financial activity.
   **When** validation runs  
   **Then** 400 validation error is returned.
 
-### Story 2.4: [FE][FE] Web Account Dashboard & History
+### Story 2.4: [FE] Web Portfolio Dashboard & History
 
 As a **web user**,  
-I want to view my accounts and transfer history,  
-So that account insights are available in one place.
+I want to view my portfolio positions and order history,  
+So that portfolio insights are available in one place.
 
 **Depends On:** Story 2.2, Story 2.3, Story 1.3
 
@@ -555,10 +587,10 @@ So that account insights are available in one place.
 
 - **Given** authenticated session  
   **When** dashboard loads  
-  **Then** account summary and balances are displayed.
-- **Given** history tab interaction  
+  **Then** portfolio summary and position quantities are displayed.
+- **Given** order history tab interaction  
   **When** page/filter is changed  
-  **Then** server-driven history list updates correctly.
+  **Then** server-driven order history list updates correctly.
 - **Given** API failure  
   **When** error occurs  
   **Then** user sees standardized retry guidance.
@@ -566,10 +598,10 @@ So that account insights are available in one place.
   **When** UI renders values  
   **Then** masking format is applied consistently.
 
-### Story 2.5: [MOB][MOB] Mobile Account Dashboard & History
+### Story 2.5: [MOB] Mobile Portfolio Dashboard & History
 
 As a **mobile user**,  
-I want account dashboard and history on mobile,  
+I want portfolio dashboard and order history on mobile,  
 So that parity with web is maintained.
 
 **Depends On:** Story 2.2, Story 2.3, Story 1.4
@@ -578,10 +610,10 @@ So that parity with web is maintained.
 
 - **Given** authenticated mobile session  
   **When** dashboard screen opens  
-  **Then** balances and account summaries render correctly.
-- **Given** pull-to-refresh on history  
+  **Then** positions and portfolio summaries render correctly.
+- **Given** pull-to-refresh on order history  
   **When** user requests refresh  
-  **Then** latest records load without duplications.
+  **Then** latest order records load without duplications.
 - **Given** empty or error response  
   **When** screen state resolves  
   **Then** empty/error states follow UI standard.
@@ -593,7 +625,7 @@ So that parity with web is maintained.
 
 As an **account admin system**,  
 I want explicit account status contract,  
-So that lock/unlock and transfer eligibility can be governed consistently.
+So that lock/unlock and order eligibility can be governed consistently.
 
 **Depends On:** Story 2.1
 
@@ -603,7 +635,7 @@ So that lock/unlock and transfer eligibility can be governed consistently.
   **When** status endpoint is queried  
   **Then** `ACTIVE/LOCKED` and related metadata are returned.
 - **Given** locked account  
-  **When** transfer flow requests eligibility  
+  **When** order flow requests eligibility  
   **Then** denial reason code is deterministic.
 - **Given** status transition event  
   **When** status changes  
@@ -623,9 +655,9 @@ So that channel-to-FEP integration is deterministic.
 
 **Acceptance Criteria:**
 
-- **Given** outbound transfer payload  
+- **Given** outbound order payload  
   **When** mapped to FEP DTO  
-  **Then** required fields are validated before send.
+  **Then** required fields (clOrdID, symbol, qty, side) are validated before send.
 - **Given** response payload from FEP  
   **When** parsed  
   **Then** internal contract is mapped with explicit status values.
@@ -685,7 +717,7 @@ So that duplicate transmission never causes double execution.
 ### Story 3.4: [BE][FEP] FEP Status Query API
 
 As a **recovery scheduler**,  
-I want status requery for external transactions,  
+I want status requery for external orders,  
 So that UNKNOWN/EXECUTING outcomes can be reconciled.
 
 **Depends On:** Story 3.1
@@ -730,7 +762,7 @@ So that integration drift is detected before release.
 
 ### Story 3.6: [FE/MOB] Visible External Error UX
 
-As a **transfer user**,  
+As an **order user**,  
 I want understandable external-failure messages,  
 So that I know whether to retry, wait, or contact support.
 
@@ -750,21 +782,21 @@ So that I know whether to retry, wait, or contact support.
 
 ---
 
-## Epic 4: Channel Transfer Session & OTP FSM
+## Epic 4: Channel Order Session & OTP FSM
 
-### Story 4.1: [BE][CH] Transfer Session Create/Status + Ownership
+### Story 4.1: [BE][CH] Order Session Create/Status + Ownership
 
 As a **channel API owner**,  
-I want transfer session creation and status queries with ownership checks,  
+I want order session creation and status queries with ownership checks,  
 So that unauthorized access and invalid session usage are blocked.
 
 **Depends On:** Story 1.2, Story 2.2
 
 **Acceptance Criteria:**
 
-- **Given** valid transfer initiation request  
+- **Given** valid order initiation request  
   **When** session API is called  
-  **Then** session is created with OTP_PENDING status and TTL.
+  **Then** order session is created with PENDING_NEW status and TTL.
 - **Given** status query for owned session  
   **When** endpoint is called  
   **Then** current session state is returned.
@@ -777,7 +809,7 @@ So that unauthorized access and invalid session usage are blocked.
 
 ### Story 4.2: [BE][CH] OTP Verification Policy
 
-As an **authenticated transfer initiator**,  
+As an **authenticated order initiator**,  
 I want robust OTP verification controls,  
 So that step-up authentication is secure and abuse-resistant.
 
@@ -801,14 +833,17 @@ So that step-up authentication is secure and abuse-resistant.
 ### Story 4.3: [BE][CH] FSM Transition Governance
 
 As a **domain owner**,  
-I want explicit transfer session transition rules,  
+I want explicit order session transition rules,  
 So that invalid state progression cannot occur.
+
+> **Reference:** OrderSession FSM transition table is defined in `architecture.md §OrderSession FSM`.  
+> Valid transitions: `PENDING_NEW → AUTHED → EXECUTING → COMPLETED | FAILED | EXPIRED`.
 
 **Depends On:** Story 4.2
 
 **Acceptance Criteria:**
 
-- **Given** transfer FSM definition  
+- **Given** order session FSM definition (see `architecture.md §OrderSession FSM`)  
   **When** state transition command is applied  
   **Then** only allowed transitions are accepted.
 - **Given** invalid transition request  
@@ -821,34 +856,34 @@ So that invalid state progression cannot occur.
   **When** serialized  
   **Then** optional fields follow status-specific contract.
 
-### Story 4.4: [FE][FE] Web Transfer Step A/B
+### Story 4.4: [FE] Web Order Step A/B
 
 As a **web user**,  
-I want step-based transfer input and OTP preparation flow,  
-So that transfer setup is clear and reversible.
+I want step-based order input (symbol/qty) and OTP preparation flow,  
+So that order setup is clear and reversible.
 
 **Depends On:** Story 4.1, Story 2.4
 
 **Acceptance Criteria:**
 
-- **Given** step A transfer form  
-  **When** user submits valid input  
-  **Then** session initiation API is called successfully.
+- **Given** step A order form (symbol/qty input)  
+  **When** user submits valid symbol and quantity  
+  **Then** order session initiation API is called successfully.
 - **Given** invalid form data  
   **When** validation runs  
   **Then** client-side and server-side errors are shown.
 - **Given** transition to step B  
-  **When** session enters OTP_PENDING  
+  **When** order session advances to OTP step  
   **Then** OTP input UI becomes active.
 - **Given** API/network error  
   **When** request fails  
   **Then** user receives retry guidance.
 
-### Story 4.5: [FE][FE] Web OTP + Step C
+### Story 4.5: [FE] Web OTP + Step C
 
 As a **web user**,  
-I want OTP verification and final confirmation/result screens,  
-So that I can complete transfer with clear status feedback.
+I want OTP verification and order execution result screens,  
+So that I can complete order execution with clear status feedback.
 
 **Depends On:** Story 4.2, Story 4.3, Story 4.4
 
@@ -861,26 +896,26 @@ So that I can complete transfer with clear status feedback.
   **When** code is invalid/expired/replayed  
   **Then** mapped error message is displayed.
 - **Given** execution in progress  
-  **When** status polling/subscription updates  
-  **Then** result screen reflects final state.
+  **When** status polling/SSE updates  
+  **Then** result screen reflects final order state (FILLED/REJECTED/FAILED).
 - **Given** final state response  
-  **When** completed/failed returned  
-  **Then** reference and reason fields are rendered conditionally.
+  **When** FILLED/REJECTED/FAILED returned  
+  **Then** ClOrdID and failure reason are rendered conditionally.
 
-### Story 4.6: [MOB][MOB] Mobile Transfer Step A/B
+### Story 4.6: [MOB] Mobile Order Step A/B
 
 As a **mobile user**,  
-I want transfer input and OTP preparation on mobile flow,  
-So that I can initiate transfer with same capability as web.
+I want order input (symbol/qty) and OTP preparation on mobile flow,  
+So that I can initiate order with same capability as web.
 
 **Depends On:** Story 4.1, Story 2.5
 
 **Acceptance Criteria:**
 
-- **Given** step A mobile form  
+- **Given** step A mobile order form  
   **When** submission succeeds  
-  **Then** session is created and step B is shown.
-- **Given** invalid amount/account input  
+  **Then** order session is created and step B is shown.
+- **Given** invalid symbol/quantity input  
   **When** validation fails  
   **Then** contextual error indicators are displayed.
 - **Given** OTP pending session  
@@ -890,11 +925,11 @@ So that I can initiate transfer with same capability as web.
   **When** user returns  
   **Then** state restoration logic preserves flow continuity.
 
-### Story 4.7: [MOB][MOB] Mobile OTP + Step C
+### Story 4.7: [MOB] Mobile OTP + Step C
 
 As a **mobile user**,  
-I want OTP verification and final result flow on mobile,  
-So that complete transfer experience is parity with web.
+I want OTP verification and order execution result flow on mobile,  
+So that complete order execution experience is parity with web.
 
 **Depends On:** Story 4.2, Story 4.3, Story 4.6
 
@@ -907,17 +942,17 @@ So that complete transfer experience is parity with web.
   **When** response received  
   **Then** user sees mapped action guidance.
 - **Given** final result response  
-  **When** completed/failed  
-  **Then** transaction reference and failure reasons are rendered.
+  **When** FILLED/REJECTED/FAILED  
+  **Then** ClOrdID and failure reasons are rendered.
 - **Given** app background/foreground cycle  
   **When** session resumes  
-  **Then** current transfer status is recovered.
+  **Then** current order status is recovered.
 
 ### Story 4.8: [FE/MOB] Cross-client FSM Parity Validation
 
 As a **product quality owner**,  
 I want FE and MOB FSM behavior parity,  
-So that one client does not diverge from core transfer rules.
+So that one client does not diverge from core order rules.
 
 **Depends On:** Story 4.5, Story 4.7
 
@@ -940,77 +975,80 @@ So that one client does not diverge from core transfer rules.
 ### Story 5.1: [BE][AC] Limit Engine
 
 As an **account policy engine**,  
-I want daily amount/count validation,  
-So that transfer attempts respect financial policy.
+I want position availability and daily sell limit validation,  
+So that order attempts respect position constraints and policy limits.
 
 **Depends On:** Story 2.2
 
 **Acceptance Criteria:**
 
-- **Given** transfer request with account context  
-  **When** limit check executes  
-  **Then** remaining capacity is computed accurately.
-- **Given** request exceeds limit  
-  **When** validation fails  
-  **Then** rejection includes remaining-limit metadata.
-- **Given** exactly-at-limit request  
+- **Given** order request with position context  
+  **When** position availability and limit check executes  
+  **Then** available quantity and daily sell remaining capacity are computed accurately.
+- **Given** order quantity exceeds available position or daily limit  
+  **When** availability check fails  
+  **Then** rejection includes available quantity and remaining-limit metadata.
+- **Given** exactly-at-limit order request  
   **When** check runs  
   **Then** acceptance/rejection behavior follows documented boundary.
 - **Given** daily window rollover  
   **When** date boundary changes  
   **Then** counters reset according to timezone rule.
 
-### Story 5.2: [BE][AC] Same-bank Ledger Posting
+> **MVP Scope Note:** `InsufficientPositionException` (available_qty < requested qty) is enforced in MVP.  
+> `DailySellLimitExceededException` is declared but **not enforced in MVP** — enforcement deferred to Phase 2.
 
-As a **ledger engine**,  
-I want atomic debit/credit posting for same-bank transfers,  
-So that ledger integrity is preserved.
+### Story 5.2: [BE][AC] Order Execution & Position Update
+
+As a **position management engine**,  
+I want atomic position deduction and order record posting for order execution,  
+So that position integrity is preserved.
 
 **Depends On:** Story 5.1, Story 4.3
 
 **Acceptance Criteria:**
 
-- **Given** authorized transfer execution  
-  **When** posting occurs  
-  **Then** paired debit/credit entries are committed atomically.
-- **Given** posting failure mid-transaction  
+- **Given** authorized order execution  
+  **When** execution occurs  
+  **Then** position deduction and OrderHistory record are committed atomically.
+- **Given** execution failure mid-transaction  
   **When** transaction aborts  
-  **Then** neither partial ledger entry persists.
-- **Given** insufficient balance condition  
-  **When** posting pre-check fails  
-  **Then** no ledger mutation occurs.
-- **Given** successful posting  
+  **Then** neither partial position update nor OrderHistory record persists.
+- **Given** insufficient position quantity condition  
+  **When** availability pre-check fails  
+  **Then** no position mutation occurs.
+- **Given** successful execution  
   **When** response is built  
-  **Then** transaction reference is included.
+  **Then** ClOrdID and order reference are included.
 
-### Story 5.3: [BE][AC] Interbank Ledger Semantics
+### Story 5.3: [BE][AC] FEP Order Execution Semantics
 
-As an **interbank ledger owner**,  
-I want deterministic posting semantics for external transfers,  
-So that local ledger stays consistent with external processing lifecycle.
+As a **FEP execution owner**,  
+I want deterministic execution semantics for FEP-routed orders,  
+So that local position state stays consistent with FEP execution lifecycle.
 
-**Depends On:** Story 5.1, Story 3.2, Story 4.3
+**Depends On:** Story 5.1, Story 3.1, Story 3.2, Story 4.3
 
 **Acceptance Criteria:**
 
-- **Given** interbank transfer execution request  
-  **When** pre-posting/debit occurs  
-  **Then** transaction state records external linkage metadata.
-- **Given** external failure requiring compensation  
-  **When** compensation path runs  
-  **Then** compensating credit is recorded with traceable linkage.
-- **Given** external unknown outcome  
-  **When** settlement deferred  
-  **Then** ledger state remains reconcilable for later recovery.
-- **Given** interbank completion  
+- **Given** FEP-routed order execution request  
+  **When** pre-execution position reservation occurs  
+  **Then** order state records FEP reference and clOrdID metadata.
+- **Given** FEP rejection/failure requiring position restoration  
+  **When** position restoration path runs  
+  **Then** position quantity is restored with traceable order linkage.
+- **Given** FEP unknown/pending outcome  
+  **When** order settlement deferred  
+  **Then** position state remains reconcilable for later recovery.
+- **Given** FEP order FILLED  
   **When** finalized  
-  **Then** final transfer status and references are consistent.
+  **Then** final order status (FILLED) and clOrdID references are consistent.
 
 ### Story 5.4: [BE][AC] Idempotent Posting
 
-As a **transaction safety owner**,  
+As a **order safety owner**,  
 I want duplicate execution suppression,  
-So that repeated client/system calls do not double-post.
+So that repeated client/system calls do not double-execute orders.
 
 **Depends On:** Story 5.2, Story 5.3
 
@@ -1024,7 +1062,7 @@ So that repeated client/system calls do not double-post.
   **Then** unauthorized duplication is rejected.
 - **Given** concurrent duplicate requests  
   **When** race occurs  
-  **Then** only one posting path commits.
+  **Then** only one execution path commits.
 - **Given** dedupe hit  
   **When** response returned  
   **Then** idempotency indicator is included for diagnostics.
@@ -1033,38 +1071,41 @@ So that repeated client/system calls do not double-post.
 
 As a **corebank integrity owner**,  
 I want pessimistic locking and race-safe behavior,  
-So that concurrent transfers cannot produce negative or corrupted balances.
+So that concurrent orders cannot produce negative or corrupted position quantities.
 
 **Depends On:** Story 5.2
 
 **Acceptance Criteria:**
 
-- **Given** concurrent transfer attempts on same account  
-  **When** lock policy is applied  
-  **Then** final balance never becomes negative.
+- **Given** concurrent order attempts on same symbol  
+  **When** symbol-level pessimistic lock policy is applied  
+  **Then** final available_qty never becomes negative.
 - **Given** lock contention  
   **When** threshold exceeded  
   **Then** request fails with deterministic conflict/error contract.
-- **Given** 10-thread concurrency test  
+- **Given** 10-thread concurrency test on single symbol (005930 삼성전자)  
   **When** executed in CI  
-  **Then** expected success/failure counts and final balance assertions pass.
+  **Then** expected success/failure counts and final available_qty assertions pass.
+- **Given** concurrent orders on two different symbols (005930 삼성전자 / 000660 SK하이닉스)  
+  **When** executed in parallel  
+  **Then** symbol-level lock isolation is verified — each symbol's available_qty converges independently.
 - **Given** lock duration observation  
   **When** measured  
   **Then** operational threshold alerting is available.
 
 ### Story 5.6: [BE][AC] Ledger Integrity
 
-As a **finance correctness owner**,  
-I want ledger invariant checks and repair visibility,  
-So that accounting integrity can be continuously verified.
+As a **position correctness owner**,  
+I want position invariant checks and repair visibility,  
+So that position integrity can be continuously verified.
 
 **Depends On:** Story 5.2, Story 5.3
 
 **Acceptance Criteria:**
 
-- **Given** completed transfer set  
+- **Given** completed order set  
   **When** integrity query runs  
-  **Then** debit/credit(+compensate) invariants hold.
+  **Then** position deduction/execution(+restoration) invariants hold.
 - **Given** detected mismatch  
   **When** integrity check fails  
   **Then** anomaly is reported with traceable identifiers.
@@ -1072,28 +1113,28 @@ So that accounting integrity can be continuously verified.
   **When** executed  
   **Then** summary metrics are stored for operations.
 - **Given** release gate  
-  **When** ledger integrity test fails  
+  **When** position integrity test fails  
   **Then** build is blocked.
 
 ### Story 5.7: [FE/MOB] Visible Result/Error UX
 
-As a **transfer user**,  
-I want limit/balance/result failures clearly explained,  
+As an **order user**,  
+I want limit/position/result failures clearly explained,  
 So that I can take the correct next action.
 
 **Depends On:** Story 5.1, Story 4.8
 
 **Acceptance Criteria:**
 
-- **Given** insufficient balance/limit errors  
+- **Given** insufficient position/limit errors  
   **When** FE/MOB receives codes  
   **Then** both clients show aligned actionable guidance.
-- **Given** transfer failure reason code  
+- **Given** order failure reason code  
   **When** rendered  
   **Then** reason category is distinguishable (internal/external/validation).
-- **Given** successful transfer completion  
+- **Given** successful order execution (FILLED)  
   **When** result rendered  
-  **Then** reference and updated balance context are shown where required.
+  **Then** ClOrdID and updated position quantity are shown where required.
 
 ---
 
@@ -1172,21 +1213,21 @@ So that resilience scenarios can be demonstrated and tested reliably.
 
 As a **recovery engine**,  
 I want periodic requery for unknown outcomes,  
-So that ambiguous transactions can converge to terminal states.
+So that ambiguous orders can converge to terminal states.
 
 **Depends On:** Story 3.4, Story 6.2, Story 4.3
 
 **Acceptance Criteria:**
 
-- **Given** transfer in UNKNOWN/EXECUTING timeout state  
+- **Given** order in UNKNOWN/EXECUTING timeout state  
   **When** scheduler runs  
-  **Then** status requery is executed with backoff policy.
+  **Then** clOrdID status requery is executed with backoff policy.
 - **Given** requery returns accepted/completed  
   **When** reconciliation runs  
-  **Then** transfer state converges to terminal success.
+  **Then** order state converges to terminal success (FILLED).
 - **Given** requery repeatedly unknown/failing  
   **When** threshold exceeded  
-  **Then** transfer is escalated to manual recovery queue.
+  **Then** order is escalated to manual recovery queue.
 - **Given** scheduler cycle execution  
   **When** metrics collected  
   **Then** attempt and convergence counters are recorded.
@@ -1195,7 +1236,7 @@ So that ambiguous transactions can converge to terminal states.
 
 As an **operator**,  
 I want controlled replay/recovery commands,  
-So that unresolved transfers can be corrected safely.
+So that unresolved orders can be corrected safely.
 
 **Depends On:** Story 6.4
 
@@ -1239,7 +1280,7 @@ So that resilience behavior is proven before release.
 
 ### Story 6.7: [FE/MOB] Degraded Operation UX
 
-As a **transfer user**,  
+As an **order user**,  
 I want transparent degraded-state guidance,  
 So that I understand delays and recovery behavior.
 
@@ -1265,7 +1306,7 @@ So that I understand delays and recovery behavior.
 
 As a **notification backend owner**,  
 I want SSE stream lifecycle management,  
-So that users receive transfer outcomes in real time.
+So that users receive order execution outcomes in real time.
 
 **Depends On:** Story 1.2, Story 4.3
 
@@ -1294,7 +1335,7 @@ So that missed events can be recovered.
 
 **Acceptance Criteria:**
 
-- **Given** transfer terminal event  
+- **Given** order terminal event (FILLED/REJECTED/FAILED)  
   **When** notification pipeline runs  
   **Then** notification is persisted before/with dispatch.
 - **Given** list API request  
@@ -1307,11 +1348,11 @@ So that missed events can be recovered.
   **When** validation fails  
   **Then** request is denied.
 
-### Story 7.3: [FE][FE] Web Notification Center
+### Story 7.3: [FE] Web Notification Center
 
 As a **web user**,  
 I want real-time notification center with reconnection behavior,  
-So that transfer results are visible even across brief disconnections.
+So that order execution results are visible even across brief disconnections.
 
 **Depends On:** Story 7.1, Story 7.2
 
@@ -1330,11 +1371,11 @@ So that transfer results are visible even across brief disconnections.
   **When** feed renders  
   **Then** empty state message is shown.
 
-### Story 7.4: [MOB][MOB] Mobile Notification Feed
+### Story 7.4: [MOB] Mobile Notification Feed
 
 As a **mobile user**,  
 I want in-app notification feed and reconnection,  
-So that transfer outcomes remain visible on mobile.
+So that order execution outcomes remain visible on mobile.
 
 **Depends On:** Story 7.1, Story 7.2
 
@@ -1376,7 +1417,7 @@ So that security incidents can be handled quickly.
   **When** operation completes  
   **Then** admin identity is recorded.
 
-### Story 7.6: [FE][FE] Web Admin Console Screens
+### Story 7.6: [FE] Web Admin Console Screens
 
 As an **operations admin**,  
 I want web screens for security administration,  
@@ -1459,7 +1500,7 @@ So that credentials/session data/account numbers are never leaked.
 
 **Acceptance Criteria:**
 
-- **Given** logging of transfer/auth contexts  
+- **Given** logging of order/auth contexts  
   **When** sensitive fields included  
   **Then** masking rules are applied.
 - **Given** password/otp/session token values  
@@ -1490,7 +1531,7 @@ So that end-to-end traces are reconstructable.
   **Then** same correlation id is propagated.
 - **Given** log aggregation query  
   **When** searching by correlation id  
-  **Then** all three services show traceable chain.
+  **Then** all four backend services show traceable chain.
 - **Given** propagation regression test  
   **When** CI runs  
   **Then** 3-hop header assertions pass.
@@ -1505,9 +1546,9 @@ So that integration and test automation are reliable.
 
 **Acceptance Criteria:**
 
-- **Given** service startup  
-  **When** `/swagger-ui.html` accessed  
-  **Then** docs are reachable for required services.
+- **Given** `docs-publish.yml` succeeds on `main`  
+  **When** canonical API docs endpoint (`https://<org>.github.io/<repo>/`) is accessed  
+  **Then** docs selector tabs for required services are reachable.
 - **Given** controller endpoints  
   **When** docs generated  
   **Then** operation summaries and response schemas are present.
@@ -1518,7 +1559,7 @@ So that integration and test automation are reliable.
   **When** contract diff check runs  
   **Then** undocumented changes fail review gate.
 
-### Story 8.5: [FE][FE] Web Correlation Propagation Support
+### Story 8.5: [FE] Web Correlation Propagation Support
 
 As a **web diagnostics user**,  
 I want correlation id included in web error/report contexts,  
@@ -1538,7 +1579,7 @@ So that support can trace incidents quickly.
   **When** diagnostics emitted  
   **Then** no sensitive values are included.
 
-### Story 8.6: [MOB][MOB] Mobile Correlation Propagation Support
+### Story 8.6: [MOB] Mobile Correlation Propagation Support
 
 As a **mobile diagnostics user**,  
 I want correlation id included in mobile failure contexts,  
@@ -1565,30 +1606,32 @@ So that incident triage parity with web is maintained.
 ### Story 9.1: [BE][INT/CH] Execution Orchestration
 
 As an **integration owner**,  
-I want unified orchestration for same-bank and interbank execution,  
-So that transfer paths are controlled through a single domain flow.
+I want a single FEP-routed order execution flow via `OrderExecutionService`,  
+So that all sell orders are consistently routed to KRX via FEP Gateway.
+
+> **Architecture Note:** All sell orders are routed to KRX via `fep-gateway:8083` (QuickFIX/J FIX 4.2). There is no corebank-direct execution path in the securities domain.
 
 **Depends On:** Story 4.3, Story 5.2, Story 5.3, Story 3.2
 
 **Acceptance Criteria:**
 
-- **Given** AUTHED transfer session  
+- **Given** AUTHED order session  
   **When** execute command issued  
-  **Then** orchestration selects same-bank or interbank branch correctly.
-- **Given** branch execution completed  
-  **When** results returned  
-  **Then** channel state reflects downstream outcome deterministically.
-- **Given** downstream timeout/failure  
+  **Then** `OrderExecutionService` initiates FEP-routed execution and records clOrdID.
+- **Given** FEP execution completed  
+  **When** FILLED/REJECTED received from FEP simulator  
+  **Then** order session state reflects terminal outcome deterministically.
+- **Given** FEP timeout/failure  
   **When** execution path fails  
-  **Then** recovery-eligible state is assigned.
+  **Then** EXECUTING/UNKNOWN recovery-eligible state is assigned.
 - **Given** orchestration logic update  
   **When** integration tests run  
-  **Then** both branches remain green.
+  **Then** FEP-routed execution path remains green.
 
 ### Story 9.2: [BE][INT/CH] End-state Normalization
 
 As a **platform consumer**,  
-I want normalized transfer terminal states,  
+I want normalized order terminal states,  
 So that clients can render outcomes without service-specific branching.
 
 **Depends On:** Story 9.1
@@ -1598,12 +1641,12 @@ So that clients can render outcomes without service-specific branching.
 - **Given** branch-specific outcomes  
   **When** response is normalized  
   **Then** terminal states follow common contract.
-- **Given** failed transfer  
+- **Given** failed order  
   **When** failure code is set  
   **Then** reason taxonomy matches documented categories.
-- **Given** completed transfer  
+- **Given** completed order (FILLED)  
   **When** response returned  
-  **Then** transaction reference is always present.
+  **Then** ClOrdID is always present.
 - **Given** state contract regression  
   **When** tests run  
   **Then** schema mismatch fails CI.
@@ -1611,19 +1654,19 @@ So that clients can render outcomes without service-specific branching.
 ### Story 9.3: [BE][INT/CH] Recovery Scheduler Integration
 
 As a **reliability owner**,  
-I want orchestrated recovery for EXECUTING/UNKNOWN transfers,  
-So that stuck transactions eventually converge.
+I want orchestrated recovery for EXECUTING/UNKNOWN orders,  
+So that stuck orders eventually converge to FILLED/REJECTED/FAILED.
 
 **Depends On:** Story 9.1, Story 6.4
 
 **Acceptance Criteria:**
 
-- **Given** transfer remains non-terminal beyond threshold  
+- **Given** order session remains non-terminal beyond threshold  
   **When** scheduler runs  
   **Then** recovery sequence is triggered.
 - **Given** external requery returns terminal result  
   **When** reconciliation succeeds  
-  **Then** transfer is closed with normalized state.
+  **Then** order is closed with normalized terminal state.
 - **Given** repeated unresolved attempts  
   **When** max tries exceeded  
   **Then** manual recovery queue entry is created.
@@ -1646,7 +1689,7 @@ So that duplicate operations never diverge across system boundaries.
   **Then** same canonical outcome is returned.
 - **Given** AC/FEP partial records  
   **When** reconciliation runs  
-  **Then** canonical transaction identity is restored.
+  **Then** canonical order identity is restored.
 - **Given** mismatch detection  
   **When** discovered  
   **Then** inconsistency is surfaced to operations.
@@ -1654,7 +1697,7 @@ So that duplicate operations never diverge across system boundaries.
   **When** completed  
   **Then** success/failure counters are emitted.
 
-### Story 9.5: [FE][FE] Integrated Final-state & Retry UX
+### Story 9.5: [FE] Integrated Final-state & Retry UX
 
 As a **web user**,  
 I want integrated final-state and retry guidance,  
@@ -1668,7 +1711,7 @@ So that complex backend outcomes are understandable.
   **When** FE renders result  
   **Then** completed/failed states are displayed consistently.
 - **Given** recovery-in-progress state  
-  **When** user views transfer status  
+  **When** user views order status  
   **Then** proper pending/retry guidance is shown.
 - **Given** retry-eligible failure  
   **When** user triggers retry action  
@@ -1677,11 +1720,11 @@ So that complex backend outcomes are understandable.
   **When** final state arrives  
   **Then** UI auto-updates without stale conflict.
 
-### Story 9.6: [MOB][MOB] Integrated Final-state & Retry UX
+### Story 9.6: [MOB] Integrated Final-state & Retry UX
 
 As a **mobile user**,  
 I want integrated final-state and retry guidance on mobile,  
-So that transfer completion behavior is parity with web.
+So that order completion behavior is parity with web.
 
 **Depends On:** Story 9.2, Story 4.7
 
@@ -1698,7 +1741,7 @@ So that transfer completion behavior is parity with web.
   **Then** guarded action path executes and prevents duplicates.
 - **Given** connectivity interruption  
   **When** app resumes  
-  **Then** latest transfer state is re-synced.
+  **Then** latest order state is re-synced.
 
 ---
 
@@ -1767,7 +1810,7 @@ So that operational recovery confidence is proven.
   **When** downstream recovers  
   **Then** state closes and normal flow resumes.
 - **Given** replay/requery drill  
-  **When** unresolved transaction simulated  
+  **When** unresolved order simulated  
   **Then** recovery workflow converges or escalates as designed.
 - **Given** drill evidence requirement  
   **When** drill completes  
@@ -1796,7 +1839,7 @@ So that deployment readiness is validated before production cut.
   **When** reviewed  
   **Then** go/no-go checklist can be updated.
 
-### Story 10.5: [FE][FE] Web Release Readiness Pack
+### Story 10.5: [FE] Web Release Readiness Pack
 
 As a **web release owner**,  
 I want FE E2E and release evidence packaged,  
@@ -1809,7 +1852,7 @@ So that web deployment quality is auditable.
 - **Given** FE E2E suite  
   **When** release pipeline runs  
   **Then** critical user journeys pass.
-- **Given** regression in core transfer/auth paths  
+- **Given** regression in core order/auth paths  
   **When** detected  
   **Then** release gate fails.
 - **Given** release checklist template  
@@ -1819,7 +1862,7 @@ So that web deployment quality is auditable.
   **When** validated  
   **Then** versioned release notes are generated.
 
-### Story 10.6: [MOB][MOB] Mobile Release Readiness Pack
+### Story 10.6: [MOB] Mobile Release Readiness Pack
 
 As a **mobile release owner**,  
 I want MOB E2E and release evidence packaged,  
@@ -1832,7 +1875,7 @@ So that mobile deployment quality is auditable.
 - **Given** MOB E2E suite  
   **When** release pipeline runs  
   **Then** critical flows pass on target test matrix.
-- **Given** auth/transfer/notification regressions  
+- **Given** auth/order/notification regressions  
   **When** detected  
   **Then** release gate fails.
 - **Given** release checklist template  

@@ -19,7 +19,7 @@
         Secret ──▶ Vault 저장                    [SSE: "5분 후 만료 알림"]
         QR 스캔 ──▶ confirm                               ↙       ↘
                     ↓                             [연장 클릭]   [무응답/만료]
-              이체 기능 해금                      세션 갱신      /login redirect
+              주문 기능 해금                      세션 갱신      /login redirect
 ```
 
 ### JWT AT 방식과의 핵심 차이
@@ -524,7 +524,7 @@ const api = axios.create({
 /login            ← 인증 불필요 (LoginPage)
 /register         ← 인증 불필요 (RegisterPage)
 / (Dashboard)     ← PrivateRoute 보호
-/transfers        ← PrivateRoute 보호
+/orders          ← PrivateRoute 보호
 /settings/totp/*  ← PrivateRoute 보호 (TOTP 등록)
 ```
 
@@ -694,7 +694,7 @@ public ResponseEntity<Void> forceLogout(@PathVariable Long memberId) {
 | `ch:totp-used:{memberId}:{w}:{code}` | 60초 | TOTP Replay Guard |
 | `fds:ip-fail:{ip}` | 10분 | FDS-001: IP별 로그인 실패 누적 |
 | `fds:device:{memberId}` | 30일 | FDS-002: 알려진 디바이스 지문 |
-| `fds:transfer-velocity:{memberId}` | 10분 | FDS-005: 단시간 이체 횟수 |
+| `fds:order-velocity:{memberId}` | 10분 | FDS-005: 단시간 주문 횟수 |
 
 > **삭제된 키**: `rt:{memberId}:{tokenUUID}` (RT), `session:{jti}` (AT Blacklist) — JWT 방식 폐기로 불필요
 
@@ -733,19 +733,19 @@ spring:
 
 ## 13. TOTP 등록 플로우 (Story 1.8)
 
-> **목적**: 이체 기능 사용 전 선제조건. 로그인 직후 `/settings/totp/enroll`로 유도.
+> **목적**: 주문 기능 사용 전 선제조건. 로그인 직후 `/settings/totp/enroll`로 유도.
 
 ### [MA4/S3] TOTP 미등록 시 기능 제한 범위
 
 | 기능 | TOTP 미등록 | TOTP 등록 완료 |
 |------|------------|---------------|
 | 로그인 · 세션 발급 | ✅ 가능 | ✅ 가능 |
-| 잔액 조회 · 거래 내역 | ✅ 가능 | ✅ 가능 |
+| 잔액 조회 · 주문 내역 | ✅ 가능 | ✅ 가능 |
 | 계좌 설정 변경 | ✅ 가능 | ✅ 가능 |
-| **이체 시도** | ❌ `AUTH-009` 403 + `enrollUrl` 반환 | ✅ 가능 (step-up TOTP) |
+| **주문 시도** | ❌ `AUTH-009` 403 + `enrollUrl` 반환 | ✅ 가능 (step-up TOTP) |
 
 > `/settings/totp/enroll` 유도는 **서버 강제 redirect가 아닌 UI 배너 + 403 응답의 `enrollUrl` 필드**로 처리.
-> 신규 가입자는 Dashboard 진입 가능, 이체 시도 시점에 자연스럽게 TOTP 등록 흐름으로 안내.
+> 신규 가입자는 Dashboard 진입 가능, 주문 시도 시점에 자연스럽게 TOTP 등록 흐름으로 안내.
 
 > **[S4] enroll 이탈 처리**: `POST /totp/enroll`은 idempotent — 기존 미확인 Secret을 덮어쓰기 허용 (`totp_enabled=false` 상태에서 재호출 가능). `confirm` 없이 이탈해도 다음 `enroll` 호출로 재시도 가능.
 
@@ -803,7 +803,7 @@ Browser                channel-service                  Vault
    │◀──────── 200 { message: "Google OTP 등록이 완료되었습니다." }
    │                         │                             │
    │ [S7] confirm 성공 후 프론트엔드 navigate 처리:        │
-   │   이체 AUTH-009에서 유도된 경우 → navigate(-1) 이전 페이지(이체 화면)
+   │   주문 AUTH-009에서 유도된 경우 → navigate(-1) 이전 페이지(주문 화면)
    │   직접 등록(/settings/totp/enroll) 진입 경우 → navigate('/') Dashboard
    │   + "Google OTP 등록이 완료되었습니다." 토스트 표시
 ```
@@ -814,7 +814,7 @@ Browser                channel-service                  Vault
 |---------|------|------|
 | 코드 불일치 | 401 | `AUTH-010` |
 | 이미 등록됨 (`totp_enabled=true` 상태에서 enroll 재호출) | 409 | — |
-| TOTP 미등록 상태에서 이체 시도 | 403 | `AUTH-009` + `"enrollUrl": "/settings/totp/enroll"` |
+| TOTP 미등록 상태에서 주문 시도 | 403 | `AUTH-009` + `"enrollUrl": "/settings/totp/enroll"` |
 
 > **[S5] `enrollUrl` 형식**: React Router 상대 경로 (`"/settings/totp/enroll"`) — 프론트엔드는 `navigate(error.response.data.enrollUrl)` 처리
 >
@@ -846,7 +846,7 @@ ALTER TABLE member ADD COLUMN totp_enrolled_at TIMESTAMP NULL;
 | 동작 | Vault API (HTTP) | 발생 시점 |
 |------|------------------|-----------|
 | Secret 저장 | `PUT /v1/secret/fix/member/{memberId}/totp-secret` | `POST /totp/enroll` |
-| Secret 조회 | `GET /v1/secret/fix/member/{memberId}/totp-secret` | `POST /totp/confirm` + `POST /sessions/{id}/verify-otp` |
+| Secret 조회 | `GET /v1/secret/fix/member/{memberId}/totp-secret` | `POST /totp/confirm` + `POST /api/v1/orders/sessions/{sessionId}/otp/verify` |
 | Secret 삭제 | `DELETE /v1/secret/fix/member/{memberId}/totp-secret` | `DELETE /totp` |
 
 ### OtpService 인터페이스
@@ -855,7 +855,7 @@ ALTER TABLE member ADD COLUMN totp_enrolled_at TIMESTAMP NULL;
 public interface OtpService {
     TotpEnrollResult generateSecret(Long memberId);              // enroll: Vault PUT
     boolean confirmEnrollment(Long memberId, String code);       // confirm: Vault GET + 검증
-    OtpVerifyResult verify(String sessionId,                     // 이체 step-up: Vault GET + RFC 6238
+    OtpVerifyResult verify(String sessionId,                     // 주문 step-up: Vault GET + RFC 6238
                            String code, Long memberId);
 }
 ```
@@ -972,8 +972,8 @@ server:
 | FDS-001 | 동일 IP, 10분 내 로그인 실패 10회+ | BLOCK | `fds:ip-fail:{ip}` TTL 10분 |
 | FDS-002 | 알려진 디바이스(OS+브라우저 계열) 변경 | MONITOR | `fds:device:{memberId}` TTL 30일 |
 | FDS-003 | 새벽 1시~5시(KST) 로그인 시도 | MONITOR | — |
-| FDS-004 | 이체 금액 > 최근 90일 최대 이체금액 × 3 | CHALLENGE | audit_logs 조회 |
-| FDS-005 | 동일 계정, 10분 내 이체 시도 3회+ | CHALLENGE | `fds:transfer-velocity:{memberId}` TTL 10분 |
+| FDS-004 | 주문 시세 액 > 최근 90일 최대 주문시세액 × 3 | CHALLENGE | audit_logs 조회 |
+| FDS-005 | 동일 계정, 10분 내 주문 시도 3회+ | CHALLENGE | `fds:order-velocity:{memberId}` TTL 10분 |
 
 ### 판정별 처리
 
@@ -988,7 +988,7 @@ server:
 
 ```
 로그인: AuthService.login() → FdsService.analyze(LOGIN_ATTEMPT)
-이체 시작: TransferSessionService.initiate() → FdsService.analyze(TRANSFER_INITIATE)
+주문 시작: OrderSessionService.initiate() → FdsService.analyze(ORDER_INITIATED)
 ```
 
 ---
@@ -1012,8 +1012,8 @@ server:
 | Security 설정 | `channel-service/.../config/SecurityConfig.java` |
 | **FDS 서비스** | `channel-service/.../security/fds/FdsService.java` (신규) |
 | **FDS 룰** | `channel-service/.../security/fds/rule/` (신규, 5개 룰) |
-| OTP 서비스 인터페이스 | `channel-service/.../transfer/service/OtpService.java` |
-| TOTP 구현체 | `channel-service/.../transfer/service/TotpOtpService.java` |
+| OTP 서비스 인터페이스 | `channel-service/.../order/service/OtpService.java` |
+| TOTP 구현체 | `channel-service/.../order/service/TotpOtpService.java` |
 | TOTP 컨트롤러 | `channel-service/.../auth/controller/TotpController.java` |
 | DevTools 컨트롤러 (`@Profile(local,dev)`) | `channel-service/.../dev/DevToolController.java` |
 | Vault 설정 | `channel-service/.../config/VaultConfig.java` |
@@ -1032,8 +1032,8 @@ server:
 ### 기능 완성
 
 - [ ] 회원가입 · 로그인 · 로그아웃 E2E 플로우 정상 동작
-- [ ] TOTP 등록 → 이체 step-up 인증 플로우 정상 동작
-- [ ] Admin 강제 로그아웃 (`DELETE /members/{memberId}/sessions`) 정상 동작
+- [ ] TOTP 등록 → 주문 step-up 인증 플로우 정상 동작
+- [ ] Admin 강제 로그아웃 (`DELETE /api/v1/admin/members/{memberId}/sessions`) 정상 동작
 
 ### 보안 검증
 

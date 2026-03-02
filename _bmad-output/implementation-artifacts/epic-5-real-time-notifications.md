@@ -1,11 +1,14 @@
 # Epic 5: Real-time Notifications
 
+> **⚠️ Epic Numbering Note**: This supplemental file was numbered from the securities-order domain and corresponds to **Epic 7 in epics.md: Channel Notifications, Admin, Channel Security**. The canonical story authority is always `_bmad-output/planning-artifacts/epics.md`.
+
+
 ## Summary
 
-Transfer execution results are delivered immediately to the user via SSE (Server-Sent Events). If the connection is lost, automatic reconnection is attempted 3 times, and missing notifications can be retrieved via a fallback API after reconnection. Transfer results can be checked even after closing and reopening the browser tab.
+Order execution results are delivered immediately to the user via SSE (Server-Sent Events). If the connection is lost, automatic reconnection is attempted 3 times, and missing notifications can be retrieved via a fallback API after reconnection. Order results can be checked even after closing and reopening the browser tab.
 
 **FRs covered:** FR-30, FR-31, FR-32  
-**Architecture requirements:** SseNotificationService(@Async), NotificationController(/api/v1/notifications/stream), V3 Flyway(notification table), SSE reconnection 3 times fallback, GET /api/v1/accounts/{id}/transfers(fallback API)  
+**Architecture requirements:** SseNotificationService(@Async), NotificationController(/api/v1/notifications/stream), V3 Flyway(notification table), SSE reconnection 3 times fallback, GET /api/v1/portfolio/{id}/orders(fallback API)  
 **Frontend:** NotificationContext.tsx(SSE + 3 retries + error display), useNotification.ts
 
 ---
@@ -13,10 +16,10 @@ Transfer execution results are delivered immediately to the user via SSE (Server
 ## Story 5.1: SSE Notification Backend
 
 As a **system**,  
-I want to push transfer result notifications to connected clients in real time and persist them for fallback retrieval,  
+I want to push order result notifications to connected clients in real time and persist them for fallback retrieval,  
 So that users receive immediate feedback and can recover missed notifications after reconnection.
 
-**Depends On:** Story 4.1 (Transfer completion event), Story 1.2 (Spring Session auth)
+**Depends On:** Story 4.1 (Order completion event), Story 1.2 (Spring Session auth)
 
 ### Acceptance Criteria
 
@@ -34,10 +37,10 @@ So that users receive immediate feedback and can recover missed notifications af
 **When** Frontend `EventSource({ withCredentials: true })` connects  
 **Then** `HttpOnly` cookie passed (session auth)
 
-**Given** Transfer `COMPLETED` or `FAILED` event occurs (Story 4.1)  
+**Given** Order `FILLED` or `FAILED` event occurs (Story 4.1)  
 **When** `NotificationService.send(memberId, notificationPayload)` called  
 **Then** dual-write order: ① `channel_db.notifications` INSERT (persist) ② `SseEmitter.send()` (@Async)  
-**And** SSE event format: `event: notification\ndata: {"notificationId":N,"type":"TRANSFER_COMPLETED","message":"Transfer of ₩X completed.","transferId":"UUID","createdAt":"ISO8601"}\n\n`  
+**And** SSE event format: `event: notification\ndata: {"notificationId":N,"type":"ORDER_FILLED","message":"Order of ₩X filled.","orderId":"UUID","createdAt":"ISO8601"}\n\n`  
 **And** DB save success even if SSE client disconnected (FR-31)
 
 **Given** `GET /api/v1/notifications` (valid JSESSIONID cookie)  
@@ -56,25 +59,25 @@ So that users receive immediate feedback and can recover missed notifications af
 **And** DB record already committed (guaranteed by dual-write order)
 
 **Given** `@Async SSE` integration test (using `@TestConfiguration` `SyncTaskExecutor`)  
-**When** notification send after transfer completion test  
+**When** notification send after order completion test  
 **Then** Verify DB save in async context using `Awaitility.await().atMost(3, SECONDS).until(() -> notificationRepository.count() > 0)`  
 **And** `Thread.sleep()` usage forbidden in SSE tests
 
 **Given** Notification retention policy  
 **When** creating notification  
-**Then** set `expires_at = transferSession.expiresAt + 24h` on save  
+**Then** set `expires_at = orderSession.expiresAt + 24h` on save  
 **And** `@Scheduled` daily cleanup: `DELETE WHERE created_at < now() - INTERVAL 25 HOUR`
 
 **Given** `Flyway V3__create_notification_table.sql` (channel_db)  
 **When** service startup  
-**Then** `notifications` table created: `id, member_id, type, message, transfer_id, is_read, created_at, expires_at`
+**Then** `notifications` table created: `id, member_id, type, message, order_id, is_read, created_at, expires_at`
 
 ---
 
 ## Story 5.2: SSE Frontend — NotificationContext & Reconnection
 
 As a **logged-in user**,  
-I want real-time transfer notifications with automatic SSE reconnection,  
+I want real-time order notifications with automatic SSE reconnection,  
 So that I receive immediate results without polling and never miss a notification after brief disconnection.
 
 **Depends On:** Story 5.1, Story 1.7
@@ -91,11 +94,11 @@ So that I receive immediate results without polling and never miss a notificatio
 **When** error detected  
 **Then** Attempt 1st reconnection (1s delay)  
 **And** if fail, 2nd attempt (2s), 3rd attempt (3s) — exponential backoff  
-**And** Stop reconnection after 3 failures → Call `recoverTransferSession()` in `hooks/useTransferRecovery.ts`  
-**And** Only if `recoverTransferSession()` API fails (404/403) display `data-testid="sse-error-msg"`: "Connection lost. Please refresh the page." (NFR-UX2)  
+**And** Stop reconnection after 3 failures → Call `recoverOrderSession()` in `hooks/useOrderRecovery.ts`  
+**And** Only if `recoverOrderSession()` API fails (404/403) display `data-testid="sse-error-msg"`: "Connection lost. Please refresh the page." (NFR-UX2)  
 **And** On reconnection success, call `GET /api/v1/notifications?since={lastEventTime}` fallback to retrieve missing notifications (FR-31)
 
-**Given** SSE `notification` event received after transfer completion  
+**Given** SSE `notification` event received after order completion  
 **When** `NotificationContext` dispatch  
 **Then** New notification immediately added to `data-testid="notification-item"` list (re-render)
 
@@ -106,19 +109,19 @@ So that I receive immediate results without polling and never miss a notificatio
 
 **Given** Epic 2 Story 2.3 10s polling → SSE switch  
 **When** `NotificationContext` receives SSE `notification` event  
-**Then** `window.dispatchEvent(new CustomEvent('transfer-notification', { detail: notification }))` emitted  
-**And** `useTransfer` hook: replace existing 10s polling `useEffect` with `addEventListener('transfer-notification', handler)` subscription  
-**And** Maintain same `dispatch` interface (no changes needed for `TransferModal`, `DashboardPage`)  
+**Then** `window.dispatchEvent(new CustomEvent('order-notification', { detail: notification }))` emitted
+**And** `useOrder` hook: replace existing 10s polling `useEffect` with `addEventListener('order-notification', handler)` subscription
+**And** Maintain same `dispatch` interface (no changes needed for `OrderModal`, `DashboardPage`)
 **And** Include test verifying removal of Story 2.3 polling code
 
-**Given** `hooks/useTransferRecovery.ts` shared hook (Story 4.4 & Story 5.2)  
+**Given** `hooks/useOrderRecovery.ts` shared hook (Story 4.4 & Story 5.2)  
 **When** SSE 3-fail or dashboard recovery scenario  
-**Then** Reuse same `recoverTransferSession()` function (no duplicate implementation)
+**Then** Reuse same `recoverOrderSession()` function (no duplicate implementation)
 
 **Given** `vitest` unit test with `MockEventSource` stub (`src/test/setup.ts`)  
 **When** test execution  
 **Then** Simulate `onerror` with `EventSource` mock → Verify 3 connection retries  
-**And** Verify `recoverTransferSession()` call after 3 failures
+**And** Verify `recoverOrderSession()` call after 3 failures
 
 **Given** Logout (`<NotificationProvider>` unmount)  
 **When** cleanup runs  

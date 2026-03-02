@@ -8,7 +8,7 @@ Status: ready-for-dev
 
 As a web user,
 I want real-time notification center with reconnection behavior,
-So that transfer results are visible even across brief disconnections.
+So that order results are visible even across brief disconnections.
 
 ## Acceptance Criteria
 

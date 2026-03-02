@@ -8,12 +8,12 @@ Status: ready-for-dev
 
 As an account admin system,
 I want explicit account status contract,
-so that lock/unlock and transfer eligibility can be governed consistently.
+so that lock/unlock and order eligibility can be governed consistently.
 
 ## Acceptance Criteria
 
 1. Given account status model, when status endpoint is queried, then `ACTIVE/LOCKED` and related metadata are returned.
-2. Given locked account, when transfer flow requests eligibility, then denial reason code is deterministic.
+2. Given locked account, when order flow requests eligibility, then denial reason code is deterministic.
 3. Given status transition event, when status changes, then audit/security event is emitted.
 
 ## Tasks / Subtasks
@@ -21,7 +21,7 @@ so that lock/unlock and transfer eligibility can be governed consistently.
 - [ ] Implement account status query contract (AC: 1)
   - [ ] Expose status response with metadata fields required by callers
   - [ ] Keep enum/value semantics stable (`ACTIVE`, `LOCKED`)
-- [ ] Implement transfer-eligibility evaluation contract (AC: 2)
+- [ ] Implement order-eligibility evaluation contract (AC: 2)
   - [ ] Return deterministic denial reason code for locked/non-eligible states
   - [ ] Ensure caller-visible behavior is consistent across repeated checks
 - [ ] Emit audit/security event on status transitions (AC: 3)
@@ -34,9 +34,9 @@ so that lock/unlock and transfer eligibility can be governed consistently.
 ### Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 2 (`2.1`~`2.6`).
-- Supplemental artifact `_bmad-output/implementation-artifacts/epic-2-transfer-initiation-and-otp.md` has different scope/numbering; use it only as technical reference, not story ID authority.
+- Supplemental artifact `_bmad-output/implementation-artifacts/epic-2-order-session-and-otp.md` has different scope/numbering; use it only as technical reference, not story ID authority.
 - Depends on Story 2.1.
-- This story defines status semantics consumed by later transfer-governance flows.
+- This story defines status semantics consumed by later order-governance flows.
 
 ### Technical Requirements
 
@@ -46,7 +46,7 @@ so that lock/unlock and transfer eligibility can be governed consistently.
 - Governance:
   - Status transitions must emit traceable audit/security events.
 - Integration:
-  - Downstream transfer logic must be able to consume eligibility contract without interpretation drift.
+  - Downstream order logic must be able to consume eligibility contract without interpretation drift.
 
 ### Architecture Compliance
 
@@ -90,7 +90,7 @@ so that lock/unlock and transfer eligibility can be governed consistently.
 - `_bmad-output/planning-artifacts/epics.md` (Epic 2, Story 2.6)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
-- `_bmad-output/implementation-artifacts/epic-2-transfer-initiation-and-otp.md` (supplemental only)
+- `_bmad-output/implementation-artifacts/epic-2-order-session-and-otp.md` (supplemental only)
 
 ## Dev Agent Record
 

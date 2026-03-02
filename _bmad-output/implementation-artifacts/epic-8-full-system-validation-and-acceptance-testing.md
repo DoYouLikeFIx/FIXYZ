@@ -1,20 +1,23 @@
 # Epic 8: Full System Validation & Acceptance Testing
 
+> **⚠️ Epic Numbering Note**: This supplemental file was numbered from the securities-order domain and corresponds to **Epic 10 in epics.md: Full Validation & Release Readiness**. The canonical story authority is always `_bmad-output/planning-artifacts/epics.md`.
+
+
 ## Summary
 
-Verify that all features implemented in Epics 0~7 work correctly in an integrated environment. 7+1 Acceptance Scenarios must pass CI, JaCoCo threshold met, Ledger Integrity verified, Concurrency tests passed, and Docker Compose full-stack smoke test passed. Completion of this Epic = MVP Complete = Ready for GitHub release.
+Verify that all features implemented in Epics 0~7 work correctly in an integrated environment. 7+1 Acceptance Scenarios must pass CI, JaCoCo threshold met, Position Integrity verified (SUM(BUY) − SUM(SELL) == positions.quantity), Concurrency tests passed, and Docker Compose full-stack smoke test passed. Completion of this Epic = MVP Complete = Ready for GitHub release.
 
 **FRs covered:** (No new features — Validation of existing Epics)  
-**NFRs covered:** NFR-R1(7 Scenarios CI), NFR-T1~T7(JaCoCo + Timeout), NFR-D1(Ledger Integrity), NFR-P4(Concurrency 5s), NFR-P6(Error Response SLA), NFR-S4(Internal Network Isolation)
+**NFRs covered:** NFR-R1(7 Scenarios CI), NFR-T1~T7(JaCoCo + Timeout), NFR-D1(Position Integrity), NFR-P4(Concurrency 5s), NFR-P6(Error Response SLA), NFR-S4(Internal Network Isolation)
 
 **Validation Scope:**
-- Scenario #1: Same-bank E2E → TransferControllerIntegrationTest
-- Scenario #2: 10-thread Concurrent Transfer → ConcurrentTransferIntegrationTest @Timeout(10)
-- Scenario #3: OTP Failure → TransferSessionServiceTest
-- Scenario #4: duplicate clientRequestId → IdempotencyIntegrationTest
+- Scenario #1: Standard order E2E → OrderControllerIntegrationTest
+- Scenario #2: 10-thread Concurrent Sell (500-share position) → PositionConcurrencyIntegrationTest @Timeout(20)
+- Scenario #3: OTP Failure → OrderSessionServiceTest
+- Scenario #4: duplicate clOrdID → IdempotencyIntegrationTest
 - Scenario #5: FEP timeout → CB OPEN → FepCircuitBreakerIntegrationTest
 - Scenario #6: Session Refusal after Logout → AuthControllerIntegrationTest
-- Scenario #7: SUM(DEBIT)==SUM(CREDIT) → LedgerIntegrityIntegrationTest
+- Scenario #7: SUM(BUY executed_qty) − SUM(SELL executed_qty) == positions.quantity → PositionIntegrityIntegrationTest
 - Scenario #8: Direct Call without X-Internal-Secret → SecurityBoundaryTest
 
 ---
@@ -29,24 +32,24 @@ So that the system's correctness claims are continuously verified.
 
 ### Acceptance Criteria
 
-**Given** Scenario #1 (Same-bank E2E happy path) — `TransferControllerIntegrationTest`  
-**When** `POST /session → POST /otp → POST /otp/verify → POST /execute` full flow  
+**Given** Scenario #1 (Standard order E2E happy path) — `OrderControllerIntegrationTest`  
+**When** `POST /api/v1/orders/sessions` → `POST /api/v1/orders/sessions/{sessionId}/otp/verify` → `POST /api/v1/orders/sessions/{sessionId}/execute` full flow (TOTP 3-phase protocol)  
 **Then** `ChannelIntegrationTestBase @BeforeEach` performs login + obtains JSESSIONID cookie  
-**And** HTTP 200 COMPLETED, returns `transactionId`, verifies DB TransferHistory 2 records (DEBIT+CREDIT) (NFR-R1)
+**And** HTTP 200 COMPLETED, returns `orderId`, verifies DB `order_executions` record (`executed_qty`, `executed_price`) + `positions.quantity` updated (NFR-R1)
 
-**Given** Scenario #3 (OTP failure blocks transfer) — `TransferSessionOtpIntegrationTest`  
+**Given** Scenario #3 (OTP failure blocks order) — `OrderSessionOtpIntegrationTest`  
 **When** Incorrect OTP entered 3 times  
-**Then** Include `@DisplayName("Scenario #3: OTP failure blocks transfer")` annotation  
-**And** Session status `FAILED`, execute call returns HTTP 409 `TRF-010`  
-**And** Verify no actual balance change
+**Then** Include `@DisplayName("Scenario #3: OTP failure blocks order")` annotation  
+**And** Session status `FAILED`, execute call returns HTTP 409 `ORD-006`  
+**And** Verify no position change
 
-**Given** Scenario #4a (Same member + Duplicate clientRequestId) — `IdempotencyIntegrationTest.SameMemberIdempotency`  
-**When** Same member attempts session creation twice with same `clientRequestId`  
+**Given** Scenario #4a (Same member + Duplicate clOrdID) — `IdempotencyIntegrationTest.SameMemberIdempotency`  
+**When** Same member attempts session creation twice with same `clOrdID`  
 **Then** 2nd request HTTP 200 — Returns existing sessionId (Idempotent)  
 **And** Only 1 session record in DB
 
-**Given** Scenario #4b (Different member + Duplicate clientRequestId) — `IdempotencyIntegrationTest.CrossMemberSecurity`  
-**When** Different member attempts session creation using another's `clientRequestId`  
+**Given** Scenario #4b (Different member + Duplicate clOrdID) — `IdempotencyIntegrationTest.CrossMemberSecurity`  
+**When** Different member attempts session creation using another's `clOrdID`  
 **Then** HTTP 403 `{ code: "AUTH-007" }` (Security Boundary)  
 **And** Only 1 session record in DB
 
@@ -58,10 +61,11 @@ So that the system's correctness claims are continuously verified.
 **When** Call protected API with same JSESSIONID after logout  
 **Then** HTTP 401 `UNAUTHORIZED` (Verify Redis Spring Session key deletion)
 
-**Given** Scenario #7 (Ledger Integrity) — `LedgerIntegrityTest` (corebank-service integration test)  
-**When** Aggregate `core_db.transactions` after N completed transfers + M compensating transactions  
-**Then** `SUM(amount WHERE type='DEBIT') == SUM(amount WHERE type='CREDIT') + SUM(amount WHERE type='COMPENSATING_CREDIT')`  
-**And** Verify `transactionId IS NOT NULL` for all `transfer_history` where `status='COMPLETED'`  
+**Given** Scenario #7 (Position Integrity) — `PositionIntegrityIntegrationTest` (corebank-service integration test)  
+**When** N sequential orders executed across multiple symbols + M compensating reversals  
+**Then** `SUM(order_executions.executed_qty WHERE side='BUY') − SUM(order_executions.executed_qty WHERE side='SELL') == positions.quantity` per symbol (NFR-D1)  
+**And** `positions.quantity >= 0` invariant holds for all symbols (no over-sell)  
+**And** Verify all `order_executions.order_id` IS NOT NULL and references an `orders` record with `orders.status = 'FILLED'` (JOIN verification: no execution record is orphaned from a FILLED order)  
 **And** Execute in `ci-corebank.yml`
 
 **Given** Scenario #8 (Security boundary) — `SecurityBoundaryTest (@Nested)`  
@@ -86,30 +90,30 @@ So that the system's correctness claims are continuously verified.
 ```
 **And** Include `@DisplayName("Scenario #N: ...")` annotation in each scenario test class
 
-**Given** `ci-channel.yml`, `ci-corebank.yml`, `ci-fep.yml`, `ci-frontend.yml` (4 workflows)  
+**Given** `ci-channel.yml`, `ci-corebank.yml`, `ci-fep-gateway.yml`, `ci-fep-simulator.yml`, `ci-frontend.yml` (5 workflows)  
 **When** Push changes to each service  
 **Then** Run CI only for that service in parallel  
-**And** JaCoCo Reports: channel ≥ 70% (NFR-T1), corebank ≥ 80% (NFR-T2), fep ≥ 60% (NFR-T3)
+**And** JaCoCo Reports: channel ≥ 70% (NFR-T1), corebank ≥ 80% (NFR-T2), fep-gateway ≥ 60%, fep-simulator ≥ 60%
 
 ---
 
 ## Story 8.2: Performance & Concurrency Validation
 
 As a **system**,  
-I want concurrent transfer attempts to complete without deadlock or data corruption,  
+I want concurrent order attempts to complete without deadlock or data corruption,  
 So that the pessimistic locking strategy is proven under load.
 
 **Depends On:** Story 4.1 (PESSIMISTIC_WRITE), Story 8.1
 
 ### Acceptance Criteria
 
-**Given** `ConcurrentTransferIntegrationTest` (Testcontainers MySQL — Scenario #2)  
-**When** 10 threads concurrently attempt transfer of ₩200,000 × 5 times from same account (`accountId=1`, balance ₩1,000,000) using `ExecutorService` + `CountDownLatch`  
-**Then** Include `@DisplayName("Scenario #2: Concurrent transfer — PESSIMISTIC_WRITE integrity")` annotation  
+**Given** `PositionConcurrencyIntegrationTest` (Testcontainers MySQL — Scenario #2)  
+**When** 10 threads concurrently attempt SELL of 100qty each on symbol 005930 (500-share position) using `ExecutorService` + `CountDownLatch`  
+**Then** Include `@DisplayName("Scenario #2: Concurrent sell — PESSIMISTIC_WRITE position integrity")` annotation  
 **And** Apply `@Tag("concurrency")`  
-**And** Exactly 5 transfers `COMPLETED`, remaining `FAILED` (due to Insufficient Balance or Lock Timeout)  
-**And** Final balance = ₩0 (No negative balance, NFR-D1)  
-**And** Total `TransferHistory` DEBIT sum = ₩1,000,000  
+**And** Exactly 5 orders `FILLED`, remaining 5 OrderSession `FAILED` (HTTP 422 ORD-003 Insufficient position qty — SELL qty check before INSERT; no order record created)  
+**And** `positions.quantity == 0` after all threads complete (NFR-D1: no over-sell)  
+**And** `SUM(order_executions.executed_qty WHERE side='SELL') == 500` — exactly 500 shares sold  
 **And** Total execution time ≤ 20s (Generous for 2-core CI runner) — Apply `@Timeout(20)` annotation
 
 **Given** p95 Response Time Validation  
@@ -122,12 +126,12 @@ So that the pessimistic locking strategy is proven under load.
 **Then** p95 ≤ 500ms (NFR-P6)
 
 **Given** `@Lock PESSIMISTIC_WRITE` lock hold time measurement test  
-**When** Measure execution time of single transfer  
+**When** Measure execution time of single order  
 **Then** Measure using `StopWatch`:
 ```java
 StopWatch sw = new StopWatch();
 sw.start();
-transferService.executeTransfer(sessionId, memberId);
+orderService.executeOrder(sessionId, memberId);
 sw.stop();
 log.info("Lock hold time: {}ms", sw.getTotalTimeMillis());
 assertThat(sw.getTotalTimeMillis()).isLessThan(100);
@@ -150,12 +154,12 @@ So that any interviewer can verify the system within 5 minutes of cloning the re
 **When** Startup within 120s (NFR-P3 — Increased 90s → 120s due to Vault + vault-init addition)  
 **Then** `GET localhost:8080/actuator/health` → `{"status":"UP"}` (channel-service)  
 **And** `GET localhost:8081/actuator/health` → `{"status":"UP"}` (corebank-service)  
-**And** `GET localhost:8082/actuator/health` → `{"status":"UP"}` (fep-service)  
-**And** `GET localhost:8080/swagger-ui.html` → HTTP 200 (NFR-O1)
+**And** `GET localhost:8082/actuator/health` → `{"status":"UP"}` (fep-simulator)  
+**And** `https://<org>.github.io/<repo>/` → HTTP 200 with Channel/CoreBank/FEP Gateway/FEP Simulator selectors (NFR-O1)
 
 **Given** Docker Compose Port Exposure Structure  
 **When** Check `compose.yml` (base)  
-**Then** `corebank-service`, `fep-service`, `vault` services have **NO** `ports:` section — No direct external access  
+**Then** `corebank-service`, `fep-simulator`, `vault` services have **NO** `ports:` section — No direct external access  
 **And** Dev ports (`8081:8081`, `8082:8082`, `8200:8200`) opened only in `docker-compose.override.yml`  
 **And** CI Environment: `docker compose -f compose.yml up` (without override) — No internal service exposure
 
@@ -198,7 +202,7 @@ schedule:
 **And** 5-minute Verification Checklist:
 ```
 □ docker compose up (Complete < 2min)
-□ localhost:8080/swagger-ui.html → HTTP 200
-□ Login → Transfer → SSE Notification Receive (Complete < 2min)
-□ POST /fep-internal/simulate-failures?count=3 → Check CB OPEN (< 1min)
+□ https://<org>.github.io/<repo>/ → HTTP 200 (Channel/CoreBank/FEP Gateway/FEP Simulator selectors visible)
+□ Login → Order → SSE Notification Receive (Complete < 2min)
+□ PUT localhost:8082/fep-internal/rules (body: {"action_type":"TIMEOUT","delay_ms":3000,"failure_rate":0.0}) → trigger order 3회 via localhost:8080 → GET localhost:8081/actuator/circuitbreakers → verify state="OPEN" (< 1min)
 ```

@@ -14,7 +14,7 @@ So that end-to-end traces are reconstructable.
 
 1. Given inbound request without correlation id When channel filter runs Then new id is generated and returned in response header.
 2. Given internal downstream calls When channel calls account and FEP Then same correlation id is propagated.
-3. Given log aggregation query When searching by correlation id Then all three services show traceable chain.
+3. Given log aggregation query When searching by correlation id Then all four backend services show traceable chain.
 4. Given propagation regression test When CI runs Then 3-hop header assertions pass.
 
 ## Tasks / Subtasks

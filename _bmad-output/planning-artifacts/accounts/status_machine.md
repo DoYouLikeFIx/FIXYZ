@@ -2,7 +2,7 @@
 
 FIX 계정계는 **3계층 분리 모델**이다:
 
-1. 업무 상태 (`transfer_records`)
+1. 업무 상태 (`order_records`)
 2. 전표 상태 (`journal_entries`)
 3. 원장 상태 (`ledger_entries` 존재 여부)
 
@@ -20,7 +20,7 @@ Optimistic Lock(version)은 사용하지 않는다.
 
 ---
 
-# 1.1 업무 상태 (`transfer_records.status`)
+# 1.1 업무 상태 (`order_records.status`)
 
 | 상태 | 의미 |
 | --- | --- |
@@ -44,7 +44,7 @@ Optimistic Lock(version)은 사용하지 않는다.
 
 # 2. 정상 시나리오 (락 설계 반영)
 
-## 2.1 SAME_BANK_TRANSFER
+## 2.1 DIRECT_ORDER_SETTLEMENT
 
 ### 실행 흐름
 
@@ -60,33 +60,33 @@ Optimistic Lock(version)은 사용하지 않는다.
     - from → DEBIT
     - to → CREDIT
 7. journal_status = POSTED
-8. transfer.status = COMPLETED
+8. order_record.status = COMPLETED
 9. completed_at 기록
 10. snapshot 저장
 
 ### 최종 상태
 
-| transfer.status | journal.status | ledger |
+| order_record.status | journal.status | ledger |
 | --- | --- | --- |
 | COMPLETED | POSTED | DEBIT + CREDIT |
 
 ---
 
-## 2.2 INTERBANK_TRANSFER (성공)
+## 2.2 FIX_ORDER_EXECUTION (체결 성공)
 
-1. REQUESTED
+1. ORDER_SUBMITTED
 2. EXECUTING
 3. 🔒 from_account FOR UPDATE
-4. FEP 성공 응답
+4. FIX ExecutionReport(ExecType=FILL) 수신
 5. ledger 2줄 생성
 6. journal POSTED
-7. transfer COMPLETED
+7. order_record ORDER_FILLED
 
 최종 상태 동일.
 
 ---
 
-# 3. 타행 Timeout (FEP_UNCERTAIN)
+# 3. FEP Simulator Timeout (FEP_UNCERTAIN)
 
 타임아웃 발생 시 DB 상태는 3가지 가능
 
@@ -96,7 +96,7 @@ Optimistic Lock(version)은 사용하지 않는다.
 
 - ledger 없음
 - journal PENDING
-- transfer EXECUTING
+- order_record EXECUTING
 
 ---
 
@@ -104,7 +104,7 @@ Optimistic Lock(version)은 사용하지 않는다.
 
 - ledger: DEBIT만 존재
 - CREDIT 없음
-- transfer EXECUTING
+- order_record EXECUTING
 
 ---
 
@@ -112,7 +112,7 @@ Optimistic Lock(version)은 사용하지 않는다.
 
 - ledger: DEBIT + CREDIT
 - journal POSTED
-- transfer EXECUTING 상태로 멈춤
+- order_record EXECUTING 상태로 멈춤
 
 ---
 
@@ -122,7 +122,7 @@ Optimistic Lock(version)은 사용하지 않는다.
 
 ```sql
 SELECT *
-FROM transfer_records
+FROM order_records
 WHERE status='EXECUTING'
 AND executing_started_at < NOW() - INTERVAL 30 SECOND
 ORDER BY executing_started_at ASC
@@ -144,7 +144,7 @@ IDX(status, executing_started_at)
 ```sql
 SELECT 1
 FROM ledger_entries
-WHERE transaction_id = ?
+WHERE trade_ref_id = ?
 AND direction='CREDIT'
 LIMIT 1;
 ```
@@ -152,7 +152,7 @@ LIMIT 1;
 사용 인덱스:
 
 ```sql
-IDX(transaction_id, direction)
+IDX(trade_ref_id, direction)
 ```
 
 ---
@@ -174,12 +174,12 @@ IDX(transaction_id, direction)
 1. journal_type = COMPENSATION
 2. reverse CREDIT 생성
 3. journal_status = POSTED
-4. transfer.status = COMPENSATED
+4. order_record.status = COMPENSATED
 5. completed_at 기록
 
 최종 상태:
 
-| transfer.status | journal.status | ledger |
+| order_record.status | journal.status | ledger |
 | --- | --- | --- |
 | COMPENSATED | POSTED | 원래 DEBIT + 보상 CREDIT |
 
@@ -189,13 +189,13 @@ IDX(transaction_id, direction)
 
 ## 6.1 제약
 
-- `transfer_records.client_request_id UNIQUE`
+- `order_records.client_request_id UNIQUE`
 - `journal_entries.client_request_id UNIQUE`
 
 중복 요청 시:
 
 - 새로 생성하지 않음
-- 기존 transfer_records 조회
+- 기존 order_records 조회
 - 기존 snapshot 반환
 
 ---
@@ -225,7 +225,7 @@ IDX(transaction_id, direction)
 
 ## 7.2 앱/테스트 레벨
 
-거래 단위 정합성:
+주문 단위 정합성:
 
 ```sql
 SELECT
@@ -234,7 +234,7 @@ SELECT
     ELSE -amount
   END) AS net_sum
 FROM ledger_entries
-WHERE transaction_id = ?;
+WHERE trade_ref_id = ?;
 ```
 
 결과는 반드시:
@@ -247,7 +247,7 @@ net_sum = 0
 
 # 8. 전체 상태 조합 (최종)
 
-| transfer_status | journal_status | ledger | 의미 |
+| order_record_status | journal_status | ledger | 의미 |
 | --- | --- | --- | --- |
 | REQUESTED | 없음 | 없음 | 요청 수신 |
 | EXECUTING | PENDING | 없음 | 실행 시작 |

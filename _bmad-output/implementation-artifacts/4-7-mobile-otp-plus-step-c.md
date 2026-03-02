@@ -8,14 +8,14 @@ Status: ready-for-dev
 
 As a mobile user,
 I want OTP verification and final result flow on mobile,
-So that complete transfer experience is parity with web.
+So that complete order experience is parity with web.
 
 ## Acceptance Criteria
 
 1. Given OTP verify on mobile When valid code is entered Then app transitions to confirmation/execution.
 2. Given OTP or execution errors When response received Then user sees mapped action guidance.
-3. Given final result response When completed/failed Then transaction reference and failure reasons are rendered.
-4. Given app background/foreground cycle When session resumes Then current transfer status is recovered.
+3. Given final result response When completed/failed Then order reference and failure reasons are rendered.
+4. Given app background/foreground cycle When session resumes Then current order status is recovered.
 
 ## Tasks / Subtasks
 
@@ -33,7 +33,7 @@ So that complete transfer experience is parity with web.
 ### Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 4.
-- Supplemental artifact `_bmad-output/implementation-artifacts/epic-4-transfer-execution-and-ledger-integrity.md` has different scope/numbering; use it only as technical reference, not story ID authority.
+- Supplemental artifact `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` has different scope/numbering; use it only as technical reference, not story ID authority.
 - Depends on: Story 4.2, Story 4.3, Story 4.6.
 
 ### Technical Requirements
@@ -62,7 +62,8 @@ So that complete transfer experience is parity with web.
 - `_bmad-output/planning-artifacts/epics.md` (Epic 4, Story 4.7)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
-- `_bmad-output/implementation-artifacts/epic-4-transfer-execution-and-ledger-integrity.md` (supplemental only)
+- `_bmad-output/planning-artifacts/channels/api-spec.md` (채널계 API 명세)
+- `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` (supplemental only)
 
 ## Dev Agent Record
 

@@ -8,13 +8,13 @@ Status: ready-for-dev
 
 As a recovery engine,
 I want periodic requery for unknown outcomes,
-So that ambiguous transactions can converge to terminal states.
+So that ambiguous orders can converge to terminal states.
 
 ## Acceptance Criteria
 
-1. Given transfer in UNKNOWN/EXECUTING timeout state When scheduler runs Then status requery is executed with backoff policy.
-2. Given requery returns accepted/completed When reconciliation runs Then transfer state converges to terminal success.
-3. Given requery repeatedly unknown/failing When threshold exceeded Then transfer is escalated to manual recovery queue.
+1. Given order in UNKNOWN/EXECUTING timeout state When scheduler runs Then status requery is executed with backoff policy.
+2. Given requery returns accepted/completed When reconciliation runs Then order state converges to terminal success.
+3. Given requery repeatedly unknown/failing When threshold exceeded Then order is escalated to manual recovery queue.
 4. Given scheduler cycle execution When metrics collected Then attempt and convergence counters are recorded.
 
 ## Tasks / Subtasks

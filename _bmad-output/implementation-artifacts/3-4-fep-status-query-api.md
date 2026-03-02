@@ -7,7 +7,7 @@ Status: ready-for-dev
 ## Story
 
 As a recovery scheduler,
-I want status requery for external transactions,
+I want status requery for external orders,
 So that UNKNOWN/EXECUTING outcomes can be reconciled.
 
 ## Acceptance Criteria
@@ -62,6 +62,7 @@ So that UNKNOWN/EXECUTING outcomes can be reconciled.
 - `_bmad-output/planning-artifacts/epics.md` (Epic 3, Story 3.4)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
+- `_bmad-output/planning-artifacts/fep-gateway/api-spec.md` (대외계 API 명세)
 - `_bmad-output/implementation-artifacts/epic-3-fault-tolerance-and-fep-resilience.md` (supplemental only)
 
 ## Dev Agent Record

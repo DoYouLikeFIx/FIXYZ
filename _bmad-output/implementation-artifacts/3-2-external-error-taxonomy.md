@@ -62,6 +62,7 @@ So that upstream systems handle failures consistently.
 - `_bmad-output/planning-artifacts/epics.md` (Epic 3, Story 3.2)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
+- `_bmad-output/planning-artifacts/fep-gateway/api-spec.md` (대외계 API 명세)
 - `_bmad-output/implementation-artifacts/epic-3-fault-tolerance-and-fep-resilience.md` (supplemental only)
 
 ## Dev Agent Record

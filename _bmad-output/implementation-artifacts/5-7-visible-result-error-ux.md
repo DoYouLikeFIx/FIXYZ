@@ -6,15 +6,15 @@ Status: ready-for-dev
 
 ## Story
 
-As a transfer user,
+As an order user,
 I want limit/balance/result failures clearly explained,
 So that I can take the correct next action.
 
 ## Acceptance Criteria
 
 1. Given insufficient balance/limit errors When FE/MOB receives codes Then both clients show aligned actionable guidance.
-2. Given transfer failure reason code When rendered Then reason category is distinguishable (internal/external/validation).
-3. Given successful transfer completion When result rendered Then reference and updated balance context are shown where required.
+2. Given order failure reason code When rendered Then reason category is distinguishable (internal/external/validation).
+3. Given successful order completion When result rendered Then reference and updated balance context are shown where required.
 
 ## Tasks / Subtasks
 
@@ -59,6 +59,8 @@ So that I can take the correct next action.
 - `_bmad-output/planning-artifacts/epics.md` (Epic 5, Story 5.7)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
+- `_bmad-output/planning-artifacts/channels/api-spec.md` (채널계 API 명세)
+- `_bmad-output/planning-artifacts/fep-gateway/api-spec.md` (대외계 API 명세)
 - `_bmad-output/implementation-artifacts/epic-5-real-time-notifications.md` (supplemental only)
 
 ## Dev Agent Record

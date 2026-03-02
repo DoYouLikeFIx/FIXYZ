@@ -3,7 +3,7 @@
 "EPIC-1","Epic 1: Channel Auth & Session Platform","FIX-17"
 "EPIC-2","Epic 2: Account Domain & Inquiry APIs","FIX-18"
 "EPIC-3","Epic 3: External Gateway Contract (FEP)","FIX-19"
-"EPIC-4","Epic 4: Channel Transfer Session & OTP FSM","FIX-20"
+"EPIC-4","Epic 4: Channel Order Session & OTP FSM","FIX-20"
 "EPIC-5","Epic 5: Account Ledger, Limits, Idempotency, Concurrency","FIX-21"
 "EPIC-6","Epic 6: External Resilience, Chaos, Replay/Recovery Ops","FIX-22"
 "EPIC-7","Epic 7: Channel Notifications, Admin, Channel Security","FIX-23"

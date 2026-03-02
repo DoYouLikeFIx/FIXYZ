@@ -1,4 +1,4 @@
-# Story 2.4: FE Web Account Dashboard and History
+# Story 2.4: FE Web Portfolio Dashboard and History
 
 Status: ready-for-dev
 
@@ -7,7 +7,7 @@ Status: ready-for-dev
 ## Story
 
 As a web user,
-I want to view my accounts and transfer history,
+I want to view my accounts and order history,
 so that account insights are available in one place.
 
 ## Acceptance Criteria
@@ -37,7 +37,7 @@ so that account insights are available in one place.
 ### Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 2 (`2.1`~`2.6`).
-- Supplemental artifact `_bmad-output/implementation-artifacts/epic-2-transfer-initiation-and-otp.md` has different scope/numbering; use it only as technical reference, not story ID authority.
+- Supplemental artifact `_bmad-output/implementation-artifacts/epic-2-order-session-and-otp.md` has different scope/numbering; use it only as technical reference, not story ID authority.
 - Depends on Story 2.2, Story 2.3, and Story 1.3.
 - This story consumes Epic 2 inquiry APIs and exposes them in FE dashboard UX.
 
@@ -95,7 +95,7 @@ so that account insights are available in one place.
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/ux-design-specification.md`
 - `_bmad-output/planning-artifacts/prd.md`
-- `_bmad-output/implementation-artifacts/epic-2-transfer-initiation-and-otp.md` (supplemental only)
+- `_bmad-output/implementation-artifacts/epic-2-order-session-and-otp.md` (supplemental only)
 
 ## Dev Agent Record
 

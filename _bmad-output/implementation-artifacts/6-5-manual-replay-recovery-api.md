@@ -8,7 +8,7 @@ Status: ready-for-dev
 
 As an operator,
 I want controlled replay/recovery commands,
-So that unresolved transfers can be corrected safely.
+So that unresolved orders can be corrected safely.
 
 ## Acceptance Criteria
 
