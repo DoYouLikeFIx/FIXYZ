@@ -64,13 +64,13 @@
   - When: contract test stubs are compiled  
   - Then: test module resolves all required classes.
 - BR-0.2-03
-  - Given: CI split workflow design  
+  - Given: CI split workflow design in BE repository workflows (`BE/.github/workflows`)  
   - When: push/PR occurs  
   - Then: service-scoped pipelines execute independently.
 - BR-0.2-04
   - Given: failed quality check  
   - When: pipeline runs  
-  - Then: merge is blocked by status check.
+  - Then: merge is blocked by status check in BE repository branch protection.
 
 ### Story 0.3: [FE] Frontend Foundation Scaffold
 

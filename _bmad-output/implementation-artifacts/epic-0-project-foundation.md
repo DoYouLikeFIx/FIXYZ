@@ -73,12 +73,12 @@ So that feature teams can ship with deterministic validation.
 - **Given** WireMock dependency policy  
   **When** contract test stubs are compiled  
   **Then** test module resolves all required classes.
-- **Given** CI split workflow design  
+- **Given** CI split workflow design in BE repository workflows (`BE/.github/workflows`)  
   **When** push/PR occurs  
   **Then** service-scoped pipelines execute independently.
 - **Given** failed quality check  
   **When** pipeline runs  
-  **Then** merge is blocked by status check.
+  **Then** merge is blocked by status check in BE repository branch protection.
 
 ---
 
