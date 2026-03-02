@@ -1,9 +1,11 @@
 name: Publish API Docs to GitHub Pages
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
+      - 'BE'
       - 'BE/**'
       - '.github/workflows/docs-publish.yml'
 
