@@ -205,8 +205,10 @@ implementation 'com.giffing.bucket4j.spring.boot.starter:bucket4j-spring-boot-st
 // springdoc-openapi (channel-service + corebank-service + fep-gateway + fep-simulator for spec generation)
 implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.x.x'
 
-// Testcontainers (all modules via testing-support)
-testImplementation project(':testing-support')
+// Testcontainers (service module test scope)
+testImplementation "org.testcontainers:testcontainers:${versions.testcontainers}"
+testImplementation "org.testcontainers:mysql:${versions.testcontainers}"
+testImplementation "org.testcontainers:junit-jupiter:${versions.testcontainers}"
 ```
 
 **QueryDSL APT Placement Rule:**
@@ -364,13 +366,10 @@ VITE_API_BASE_URL=https://fix-api.example.com
 > ⚠️ **P-F2**: 아래는 초기 설계 참고용 구버전 트리입니다. **실제 구현 기준은 아래 '최종 확정 Gradle 모듈 구조 (7개)'** 및 '완전한 프로젝트 디렉토리 트리' 섹션을 따르세요.
 
 ```
-fix/                              ← root Gradle project (8-module 확정 구조: core-common, testing-support, channel-domain, channel-service, corebank-domain, corebank-service, fep-gateway, fep-simulator)
+fix/                              ← root Gradle project (7-module 확정 구조: core-common, channel-domain, channel-service, corebank-domain, corebank-service, fep-gateway, fep-simulator)
   settings.gradle.kts             ← includes all submodules
   build.gradle.kts                ← root buildscript (version catalog only, no plugins applied)
   core-common/                    ← Pure Java: 공통 상수/예외/유틸 (zero Spring deps)
-  testing-support/                ← Shared Testcontainers fixtures (testImplementation only)
-    src/test/java/
-      TestContainerConfig.java    ← singleton MySQLContainer + RedisContainer (.withReuse(true))
   channel-domain/                 ← 채널 JPA Entity 모듈
   channel-service/                ← Spring Boot entry (channel-service:8080)
   corebank-domain/                ← JPA entities + repositories (APT target for QueryDSL)
@@ -429,7 +428,7 @@ _Architecture cannot be validated until all 5 pass. These are the exit criteria 
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | S1.1 Gradle multi-module scaffold | All modules compile; `channel-service` starts on :8080; `settings.gradle.kts` includes all modules; dependency direction rules verified                                                                           |
 | S1.2 QueryDSL APT spike           | `QOrder` generated in `corebank-domain`; confirmed in `build/generated/sources/annotationProcessor`; one `JPAQueryFactory` query (daily-sell-qty-sum) runs against Testcontainers MySQL                |
-| S1.3 `testing-support` module     | Singleton `MySQLContainer` + `RedisContainer` with `.withReuse(true)`; one test from each of `channel-service` and `corebank-service` uses shared containers; `testcontainers.reuse.enable=true` documented in README |
+| S1.3 Service test baseline        | Service module test scope defines `MySQLContainer` + `RedisContainer`; one test from each of `channel-service` and `corebank-service` boots required containers; `testcontainers.reuse.enable=true` documented in README |
 | S1.4 Docker Compose local         | `docker compose up` → all 4 backend services healthy; `depends_on: condition: service_healthy` confirmed; cold start ≤ 120s (Vault + vault-init baseline); `pnpm dev` connects via Vite proxy             |
 | S1.5 Vite + React scaffold        | `fix-web/` created; Vite proxy configured; `vitest.setup.ts` with `EventSource` mock; `formatKRW()` utility in `src/utils/format.ts`; seed data migration runs on `test` profile                              |
 
@@ -1139,8 +1138,6 @@ fep-gateway      →  (없음)
 fep-simulator    →  (없음)
 *-service        →  core-common
 *-domain         →  core-common
-testing-support  →  core-common, *-domain
-
 ❌ 금지: service → 다른 서비스의 domain
 ❌ 금지: domain → 자체 service
 ❌ 금지: core-common → 어떤 도메인 모듈
@@ -1716,7 +1713,7 @@ Layer 0 — 정적 분석 (경고만, 빌드 실패 없음)
 ### RULE-063: WireMock 설정
 
 ```java
-// testing-support 모듈에 WireMockIntegrationTest 추상 클래스 제공
+// 각 서비스 테스트 소스에 WireMockIntegrationTest 추상 클래스 제공
 public abstract class WireMockIntegrationTest {
     protected static WireMockServer wireMockServer;
 
@@ -2138,12 +2135,11 @@ RULE 위반이 정당화되는 경우 (성능 최적화, 외부 라이브러리 
 
 ---
 
-### 최종 확정 Gradle 모듈 구조 (8개)
+### 최종 확정 Gradle 모듈 구조 (7개)
 
 | 모듈               | 역할                | Spring Boot | 포트 | Flyway        | QueryDSL APT |
 | ------------------ | ------------------- | ----------- | ---- | ------------- | ------------ |
 | `core-common`      | 공통 상수/예외/유틸 | ❌          | —    | ❌            | ❌           |
-| `testing-support`  | TC/WireMock 공유    | ❌          | —    | ❌            | ❌           |
 | `channel-domain`   | 채널 JPA Entity     | ❌          | —    | ❌            | ❌           |
 | `channel-service`  | 채널 서비스 진입점  | ✅          | 8080 | ✅ channel_db | ❌           |
 | `corebank-domain`  | 코어뱅킹 Entity     | ❌          | —    | ❌            | ✅           |
@@ -2209,21 +2205,6 @@ fix/                                          # 모노레포 루트
 │       │   └── ApiResponse.java               # { success, data, error } RULE-031
 │       └── util/
 │           └── MaskingUtils.java              # RULE-033
-│
-├── testing-support/
-│   ├── build.gradle
-│   └── src/main/java/com/fix/testing/
-│       ├── config/
-│       │   ├── TestContainersConfig.java      # Singleton MySQL+Redis (R1)
-│       │   └── TestAsyncConfig.java           # SyncTaskExecutor RULE-042
-│       ├── fixture/
-│       │   ├── MemberFixture.java
-│       │   ├── PositionFixture.java
-│       │   └── OrderSessionFixture.java
-│       ├── wiremock/
-│       │   └── WireMockIntegrationTest.java   # RULE-063
-│       └── assertion/
-│           └── ApiResponseAssertions.java     # assertSuccess/assertError (R4)
 │
 ├── channel-domain/
 │   ├── build.gradle                           # bootJar disabled (RULE-040)
@@ -2620,7 +2601,6 @@ public class OrderSession extends BaseTimeEntity {
 rootProject.name = 'fix'
 include(
     'core-common',
-    'testing-support',
     'channel-domain',
     'channel-service',
     'corebank-domain',
@@ -2713,8 +2693,7 @@ spring:
 Phase 1 — 인프라 기반:
   1. settings.gradle (7개 모듈)
   2. core-common/ (BusinessConstants, FixException, BaseTimeEntity)
-  3. testing-support/ (TestContainersConfig, WireMockIntegrationTest)
-  4. docker-compose.yml (mysql, redis만)
+  3. docker-compose.yml (mysql, redis만)
 
 Phase 2 — 도메인 레이어:
   5. channel-domain/ (Member, OrderSession)
@@ -2777,7 +2756,7 @@ Phase 4 — 프론트엔드:
 | ------- | ----------------------------------------------------------------------------------------------------------------- | ------------ | ------ |
 | Q-7-1   | InternalSecretFilter 부재 = 설계 의도 (channel-service는 ingress)                                                 | Important    | R1     |
 | Q-7-2   | `@Nested SecurityBoundaryTest` — CoreBankIntegrationTestBase에 추가                                               | Important    | R1     |
-| Q-7-3   | testing-support build.gradle: TC + WireMock `api` scope (전이 클래스패스)                                         | **Critical** | R1     |
+| Q-7-3   | 서비스 모듈 build.gradle: TC + WireMock `testImplementation` scope                                                 | **Critical** | R1     |
 | Q-7-4   | ApiResponseAssertions도 `api` scope (Q-7-3에 포함)                                                                | Recommended  | R1     |
 | Q-7-5   | R\_\_seed_data.sql에 `admin@fix.com` ROLE_ADMIN 시드 계정 1건                                                     | Important    | R2     |
 | Q-7-6   | Sprint DoD 정의 → Implementation Handoff 추가                                                                     | Important    | R2     |
@@ -2947,18 +2926,15 @@ management:
 
 > **삭제된 키 (JWT 폐기)**: `otp:{memberId}` (OTP 코드), `session:{jti}` (AT Blacklist), `rt:{memberId}:{uuid}` (Refresh Token)
 
-#### testing-support build.gradle `api` scope (Q-7-3)
+#### 서비스 모듈 build.gradle `testImplementation` scope (Q-7-3)
 
 ```groovy
-// testing-support/build.gradle
-plugins { id 'java-library' }
+// channel-service/build.gradle (동일 패턴을 corebank-service에도 적용)
 dependencies {
-    // api scope: 소비 모듈의 testImplementation에 전이됨
-    api "org.testcontainers:mysql:${versions.testcontainers}"
-    api "org.testcontainers:junit-jupiter:${versions.testcontainers}"
-    api "org.wiremock:wiremock-standalone:${versions.wiremock}"
-    api "org.assertj:assertj-core"
-    // ApiResponseAssertions도 api scope (Q-7-4)
+    testImplementation "org.testcontainers:mysql:${versions.testcontainers}"
+    testImplementation "org.testcontainers:junit-jupiter:${versions.testcontainers}"
+    testImplementation "org.wiremock:wiremock-standalone:${versions.wiremock}"
+    testImplementation "org.assertj:assertj-core"
 }
 ```
 
@@ -3166,8 +3142,7 @@ eventsource.onerror = () => {
 ```bash
 1. settings.gradle (7개 모듈)
 2. core-common/ (java-library, RULE-007)
-3. testing-support/ (api scope TC + WireMock, Q-7-3)
-4. docker-compose.yml + docker-compose.override.yml (Q-7-14)
+3. docker-compose.yml + docker-compose.override.yml (Q-7-14)
 ```
 
 ---

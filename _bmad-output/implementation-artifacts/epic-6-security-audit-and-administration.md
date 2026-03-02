@@ -213,7 +213,7 @@ So that TOTP secrets are never exposed even in the event of a database breach.
 **When** Vault health check fails  
 **Then** `channel-service` startup failure — TOTP function must not start without Vault
 
-**Given** WireMock Vault stub added to `testing-support`  
+**Given** WireMock Vault stub added to `channel-service/src/test`  
 **When** Extending `ChannelIntegrationTestBase`  
 **Then** `@DynamicPropertySource` injects `spring.cloud.vault.host=localhost`, port = WireMock port  
 **And** `GET /v1/secret/data/fix/member/*/totp-secret` stub automatically registered to return Base32 test secret
