@@ -1,6 +1,6 @@
 # Story 0.1: BE Core Platform Baseline
 
-Status: in-progress
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -87,7 +87,7 @@ so that all system lanes can build on a consistent runtime and coding contract.
     ```
     Ensure `springdocPort` value exactly matches each service `application-openapi.yml` `server.port`
   - [x] Run `./gradlew :channel-service:generateOpenApiDocs :corebank-service:generateOpenApiDocs :fep-gateway:generateOpenApiDocs :fep-simulator:generateOpenApiDocs` and confirm each produces a valid JSON file under `build/openapi/`
-- [ ] Add GitHub Actions workflow `docs-publish.yml` for automated GitHub Pages deployment (AC: 8)
+- [x] Add GitHub Actions workflow `docs-publish.yml` for automated GitHub Pages deployment (AC: 8)
   - [x] Create `.github/workflows/docs-publish.yml` with the following structure:
     ```yaml
     name: Publish API Docs to GitHub Pages
@@ -171,13 +171,13 @@ so that all system lanes can build on a consistent runtime and coding contract.
               force_orphan: true
               commit_message: "docs: update API specs from ${{ github.sha }}"
     ```
-  - [ ] **First-deployment one-time step (manual, AC: 9):** After first workflow run, go to repo Settings → Pages → Source → set to `gh-pages` branch, `/ (root)`. Subsequent deployments are automatic.
-  - [ ] Record first deployment completion in `docs/ops/docs-publish-onboarding.md` (date, actor, repo, configured Pages source)
+  - [x] **First-deployment one-time step (manual, AC: 9):** After first workflow run, go to repo Settings → Pages → Source → set to `gh-pages` branch, `/ (root)`. Subsequent deployments are automatic.
+  - [x] Record first deployment completion in `docs/ops/docs-publish-onboarding.md` (date, actor, repo, configured Pages source)
   - [x] Add API docs badge to `README.md`:
     ```markdown
     [![API Docs](https://img.shields.io/badge/API%20Docs-GitHub%20Pages-blue)](https://<org>.github.io/<repo>/)
     ```
-  - [ ] Verify: after merging to `main`, the Pages URL loads Swagger UI with all four service tabs within ~2 minutes
+  - [x] Verify: after merging to `main`, the Pages URL loads Swagger UI with all four service tabs within ~2 minutes
 
 ## Dev Notes
 
@@ -288,8 +288,8 @@ so that all system lanes can build on a consistent runtime and coding contract.
 
 ### Story Completion Status
 
-- Status set to `in-progress`.
-- Completion note (2026-03-02): Local implementation/runtime validation passed for AC1-AC7. AC8-AC9 are pending remote GitHub Actions + GitHub Pages deployment verification.
+- Status set to `review`.
+- Completion note (2026-03-02): AC1-AC9 verification completed, including remote `docs-publish.yml` success and GitHub Pages multi-spec rendering.
 
 ### References
 
@@ -318,6 +318,10 @@ GPT-5 Codex (Codex desktop)
   - OpenAPI generation: `./gradlew :channel-service:generateOpenApiDocs :corebank-service:generateOpenApiDocs :fep-gateway:generateOpenApiDocs :fep-simulator:generateOpenApiDocs`
   - prod guard checks for all services (`SPRING_PROFILES_ACTIVE=prod`) confirmed `/v3/api-docs` + `/swagger-ui/index.html` = 404
   - GitHub Pages endpoint probe: `https://doyoulikefix.github.io/FIXYZ/` returned 404
+- 2026-03-02 remote verification run:
+  - `docs-publish.yml` on GitHub Actions completed successfully after submodule checkout + Swagger UI layout fix
+  - GitHub Pages Source configured to `gh-pages / (root)`
+  - `https://doyoulikefix.github.io/FIXYZ/` serves Swagger UI and renders multi-spec selector (Channel/CoreBank/FEP Gateway/FEP Simulator)
 
 ### Completion Notes List
 
@@ -332,8 +336,7 @@ GPT-5 Codex (Codex desktop)
   - AC6 override-based local port exposure present
   - AC7 OpenAPI generation and structural validation pass
 - Pending external verification:
-  - AC8 `main` merge-triggered `docs-publish.yml` completion and live Pages rendering (4 selectors)
-  - AC9 first-deployment Pages source setup completion evidence tied to successful initial publish run
+  - none
 
 ### File List
 
