@@ -89,6 +89,7 @@ jobs:
           <body>
           <div id="swagger-ui"></div>
           <script src="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui-bundle.js"></script>
+          <script src="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui-standalone-preset.js"></script>
           <script>
             SwaggerUIBundle({
               urls: [
@@ -100,8 +101,8 @@ jobs:
               "urls.primaryName": "Channel Service",
               dom_id: "#swagger-ui",
               deepLinking: true,
-              presets: [SwaggerUIBundle.presets.apis],
-              layout: "BaseLayout"
+              presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+              layout: "StandaloneLayout"
             });
           </script>
           </body>
