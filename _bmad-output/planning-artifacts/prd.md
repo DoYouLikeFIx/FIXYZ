@@ -74,7 +74,7 @@ _Complete Product Requirements Document for FIX. Audience: human stakeholders an
 
 ## Executive Summary
 
-**FIX** is a `docker compose up`-deployable Korean bank-affiliated securities exchange simulator. Four independently deployable services — Channel (채널계), CoreBanking (계정계), FEP Gateway (대외계 게이트웨이), FEP Simulator (가상 거래소) — built on Java 21 + Spring Boot 3.x, prove production-level engineering decisions: session integrity via Redis externalization, position consistency via pessimistic locking, fault tolerance via Resilience4j and FEP Gateway circuit breaker, FIX 4.2 protocol translation via QuickFIX/J, Order Book matching engine, and distributed observability via structured JSON logs.
+**FIX** is a `docker compose up`-deployable Korean bank-affiliated securities exchange simulator. Four independently deployable services — Channel (채널계), CoreBanking (계정계), FEP Gateway (대외계 게이트웨이), FEP Simulator (가상 거래소) — built on Java 21 + Spring Boot 3.x, prove production-level engineering decisions: session integrity via Redis externalization, position consistency via pessimistic locking, fault tolerance via Resilience4j FEP circuit breaker, FIX 4.2 protocol translation via QuickFIX/J, Order Book matching engine, and distributed observability via structured JSON logs.
 
 **Target Users:** Korean bank-affiliated securities firm hiring managers (KB증권, 신한투자증권, 미래에셋, 삼성증권) and FinTech engineering teams (토스증권, 카카오페이증권, 키움증권) evaluating backend candidates. For the evaluating engineer, FIX provides a coherent, documented system where every architectural claim is backed by a test and every design decision has a documented rationale.
 
@@ -147,7 +147,7 @@ All seven must pass in CI before the MVP is considered complete:
 
 | #   | Scenario                                                        | Layer                  | Architectural Claim Proven                                          |
 | --- | --------------------------------------------------------------- | ---------------------- | ------------------------------------------------------------------- |
-| 1   | Stock order E2E happy path (Buy → Order Book match → FILLED)   | Channel → CoreBanking → FEP | Order state machine, FIX 4.2 Execution Report, trace ID propagation |
+| 1   | Stock order E2E happy path (Buy → Order Book match → FILLED)   | Channel → CoreBanking → FEP Gateway → FEP Simulator | Order state machine, FIX 4.2 Execution Report, trace ID propagation |
 | 2   | Concurrent sell (10 threads × 100 shares on 500-share position) — exactly 5 FILLED (Order status), final positions.quantity = 0 | CoreBanking           | `SELECT FOR UPDATE` on position row; over-sell impossible           |
 | 3   | OTP failure blocks order execution                              | Channel               | Step-up re-authentication enforcement before market order           |
 | 4   | Duplicate `ClOrdID` returns idempotent result                   | CoreBanking           | No double-fill on retry; `UNIQUE INDEX idx_clordid`                 |
@@ -224,7 +224,7 @@ All seven must pass in CI before the MVP is considered complete:
 ```bash
 curl -X POST https://fix-channel/api/v1/admin/sessions/force-invalidate \
   -b "JSESSIONID={admin-session-id}" \
-  -H "X-CSRF-TOKEN: {csrf-token}" \
+  -H "X-XSRF-TOKEN: {csrf-token}" \
   -d '{"userId": "jisu-001", "reason": "suspicious_concurrent_login"}'
 ```
 
@@ -294,7 +294,7 @@ Real KYC/AML, KRX/KSD integration, and 금융투자협회 reporting are explicit
 | Standard                         | Application in FIX                                                                     |
 | -------------------------------- | -------------------------------------------------------------------------------------- |
 | OWASP Authentication Cheat Sheet | Step-up re-authentication (OTP) required for order execution                           |
-| OWASP CSRF                       | Signed Double-Submit Cookie or Spring Security CSRF token                              |
+| OWASP CSRF                       | Signed Double-Submit Cookie (`XSRF-TOKEN` cookie → `X-XSRF-TOKEN` header)               |
 | OWASP Logging Cheat Sheet        | No tokens/passwords/PII in logs; account/member numbers masked to last 4 digits        |
 | Spring Security Cookie           | HttpOnly + Secure + SameSite=Strict cookie attributes                                  |
 
@@ -678,7 +678,7 @@ FinTech Interviewer path:
 | No concurrency tests                        | `TC-ORD-08` + `PositionIntegrityIntegrationTest` — CI green, InnoDB-verified                                   |
 | Auth = JWT only (no step-up)               | Spring Session Redis + OTP step-up at order execution — 증권사 실보 HTS OTP 패턴                    |
 | No resilience pattern demonstrated          | Resilience4j circuit breaker — OPEN state live-observable in Actuator                               |
-| No FIX/exchange protocol knowledge          | FIX 4.2 via QuickFIX/J — `NewOrderSingle` / `ExecutionReport` exchange with FEP Simulator          |
+| No FIX/exchange protocol knowledge          | FIX 4.2 via QuickFIX/J — `NewOrderSingle` / `ExecutionReport` exchange with FEP Simulator |
 | README = setup instructions only            | Dual-audience README with branching discovery path + Architecture Decisions                           |
 
 **Why this combination is rare:** Most Korean portfolio projects targeting securities firm employment demonstrate CRUD + JWT. Projects attempting securities domain knowledge typically: (a) use a monolith with no service separation, (b) implement position as a running counter, or (c) omit concurrency tests and FIX protocol entirely. FIX is the first portfolio to combine all seven portfolio differentiators correctly and simultaneously, with each claim backed by a passing CI test.
@@ -729,9 +729,9 @@ No orphan executions, no oversell state — proves pessimistic lock + position u
 11-section structure, dual-audience validated:
 
 1. Project headline (≤ 8 words) — "Korean Banking Architecture Simulator — Run It Now"
-2. CI badge row: `[build]` `[coverage-channel]` `[coverage-core]` `[coverage-fep]`
+2. CI badge row: `[build]` `[coverage-channel]` `[coverage-core]` `[coverage-fep-gateway]` `[coverage-fep-simulator]`
 3. `docker compose up` Quick Start (3 commands, copy-pasteable)
-4. Architecture diagram (Mermaid — 3 services + MySQL + Redis)
+4. Architecture diagram (Mermaid — 4 backend services + MySQL + Redis (+Vault/vault-init))
 5. "What FIX Demonstrates" — 6-item list, dual-audience vocabulary
 6. Demo Script — two tracks: Bank Interviewer Track (5 steps, 5 min) + FinTech Interviewer Track (5 steps, 5 min)
 7. Architecture Decisions — simulation boundary table (5 rows) + pessimistic lock rationale
@@ -939,13 +939,14 @@ services:
 
 ### API Documentation
 
-| Service             | Swagger UI                      | API Docs                                |
-| ------------------- | ------------------------------- | --------------------------------------- |
-| Channel Service     | ✅ Enabled (`/swagger-ui.html`) | ✅ `/api-docs`                          |
-| CoreBanking Service | ❌ Disabled (internal)          | ✅ `/api-docs` (generated, not exposed) |
-| FEP Simulator       | ✅ Enabled (chaos config demo)  | ✅ `/api-docs`                          |
+| Service             | Spec Generation Source                           | Canonical Serving Endpoint                          |
+| ------------------- | ------------------------------------------------ | --------------------------------------------------- |
+| Channel Service     | ✅ `generateOpenApiDocs` → `build/openapi/*.json` | ✅ GitHub Pages aggregated Swagger UI                |
+| CoreBanking Service | ✅ `generateOpenApiDocs` → `build/openapi/*.json` | ✅ GitHub Pages aggregated Swagger UI                |
+| FEP Gateway         | ✅ `generateOpenApiDocs` → `build/openapi/*.json` | ✅ GitHub Pages aggregated Swagger UI                |
+| FEP Simulator       | ✅ `generateOpenApiDocs` → `build/openapi/*.json` | ✅ GitHub Pages aggregated Swagger UI                |
 
-`springdoc-openapi` + Spring Boot 3.x. README Quick Start step 3: `http://localhost:8080/swagger-ui.html` after `docker compose up`.
+`springdoc-openapi` + build-time spec generation. Canonical documentation endpoint: `https://<org>.github.io/<repo>/` after `docs-publish.yml`.
 
 ---
 
@@ -1074,7 +1075,7 @@ The MVP is complete when every architectural claim in FIX is backed by a passing
 | Observability  | Spring Actuator, Micrometer, `traceparent` propagation                       |
 | Notifications  | SSE stream + DB persistence (`notifications` table)                          |
 | Admin          | Force-invalidate session API (ROLE_ADMIN)                                    |
-| Documentation  | Swagger UI (Channel + FEP), dual-audience README                             |
+| Documentation  | Swagger UI (Channel + CoreBanking + FEP Gateway + FEP Simulator), dual-audience README |
 | Infrastructure | Docker Compose (6+ containers: 4 services + MySQL + Redis; 4-network isolation) |
 | CI             | GitHub Actions — 7 acceptance scenarios green                                |
 | Frontend       | React Web — 5 screens (Login, Account List, Detail, Order, Notifications)    |
@@ -1103,7 +1104,7 @@ All seven must pass in CI before MVP is complete:
 
 - [ ] 7 acceptance scenarios — GitHub Actions 그린
 - [ ] `docker compose up` → 120초 이내 첫 API 응답
-- [ ] JaCoCo: channel ≥ 70%, corebank ≥ 80%, fep ≥ 60%
+- [ ] JaCoCo: channel ≥ 70%, corebank ≥ 80%, fep-gateway ≥ 60%, fep-simulator ≥ 60%
 
 **설명 준비도 (yeongjae 기준):**
 
@@ -1116,7 +1117,7 @@ All seven must pass in CI before MVP is complete:
 **포트폴리오 노출도:**
 
 - [ ] README dual-audience 5분 탐색 완료 (직접 타이머 테스트)
-- [ ] `http://localhost:8080/swagger-ui.html` 정상 작동
+- [ ] `https://<org>.github.io/<repo>/` API Docs 정상 노출 (Channel/CoreBank/FEP Gateway/FEP Simulator selector 확인)
 - [ ] GitHub Actions badge — 마지막 CI 실행 그린
 
 ---
@@ -1318,7 +1319,7 @@ jobs:
   _Measurement: Integration test — submit state-changing request without CSRF token → expect `403 Forbidden`._
 
 - **NFR-S4:** Internal service endpoints (corebank-service:8081, fep-gateway:8083, fep-simulator:8082) must be unreachable from outside the Docker Compose network. Only channel-service:8080 is exposed on host.
-  _Measurement: `curl localhost:8081/actuator/health` → `Connection refused`; `curl localhost:8083/actuator/health` → `Connection refused`; Docker Compose `ports:` omitted for corebank, fep-gateway, and fep-simulator._
+  _Measurement: `curl localhost:8081/actuator/health` → `Connection refused`; `curl localhost:8083/actuator/health` → `Connection refused`; `curl localhost:8082/actuator/health` → `Connection refused`; Docker Compose `ports:` omitted for corebank, fep-gateway, and fep-simulator._
 
 - **NFR-S5:** TOTP step-up authentication must enforce a 3-attempt lockout per order session. Order session TTL must be ≤ 600 seconds. Both enforced server-side via Redis (`ch:otp-attempts:{sessionId}` counter + `ch:order-session:{sessionId}` TTL).
   _Measurement: Submit 3 incorrect TOTP codes → session → `FAILED`, execute call returns 409 ORD-006. Submit 4th OTP attempt on the same (now FAILED) session → HTTP 409 ORD-006 (session is in terminal FAILED state; OTP verify endpoint returns ORD-006, not AUTH-005). Session TTL: create session, wait 601s, status query → 404 ORD-005._
@@ -1410,8 +1411,8 @@ jobs:
 
 ### Observability
 
-- **NFR-O1:** `GET /swagger-ui.html` must return HTTP 200 for both channel-service (port 8080) and fep-simulator (port 8082) after service startup. All public endpoints must be documented via springdoc-openapi annotations.
-  _Measurement: `curl -o /dev/null -w "%{http_code}" localhost:8080/swagger-ui.html` → `200`._
+- **NFR-O1:** Canonical API documentation must be served from GitHub Pages (`https://<org>.github.io/<repo>/`) and expose up-to-date Channel/CoreBank/FEP Gateway/FEP Simulator specs after each `main` merge. All public endpoints must be documented via springdoc-openapi annotations.
+  _Measurement: `docs-publish.yml` succeeds, GitHub Pages returns HTTP 200, and selector tabs for Channel/CoreBank/FEP Gateway/FEP Simulator load valid OpenAPI specs._
 
 ### Logging
 
@@ -1435,5 +1436,5 @@ jobs:
 | FR-26~29, FR-54 (Fault Tolerance)          | NFR-R2 (CB OPEN after 3 failures)                    | FR defines capability; NFR defines Resilience4j configuration measurement  |
 | FR-30~32 (SSE Notifications)               | NFR-UX2 (SSE reconnect ≤ 5s)                         | Notification streaming capability requires reconnect SLA                   |
 | FR-33~37, FR-50 (Security & Audit)         | NFR-S2, NFR-L1                                       | Audit log correctness requires PII masking + JSON log structure            |
-| FR-41~42 (Portfolio & Observability)       | NFR-O1 (Swagger 200), NFR-L1 (JSON logs)             | Observability claims require both API docs and structured log verification |
+| FR-41~42 (Portfolio & Observability)       | NFR-O1 (GitHub Pages API docs 200), NFR-L1 (JSON logs) | Observability claims require both API docs and structured log verification |
 | FR-51, FR-53 (Admin operations)            | NFR-S6 (Dependabot), NFR-M2 (Architecture Decisions) | Admin endpoints require supply chain security + documented rationale       |

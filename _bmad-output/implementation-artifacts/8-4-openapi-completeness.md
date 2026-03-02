@@ -12,7 +12,7 @@ So that integration and test automation are reliable.
 
 ## Acceptance Criteria
 
-1. Given service startup When /swagger-ui.html accessed Then docs are reachable for required services.
+1. Given `docs-publish.yml` succeeds on `main`, when canonical API docs endpoint (`https://<org>.github.io/<repo>/`) is accessed, then docs selector tabs for required services are reachable.
 2. Given controller endpoints When docs generated Then operation summaries and response schemas are present.
 3. Given error codes When docs reviewed Then common failure responses are documented.
 4. Given API change When contract diff check runs Then undocumented changes fail review gate.

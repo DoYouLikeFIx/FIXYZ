@@ -24,7 +24,7 @@ so that feature teams can ship with deterministic validation.
   - [ ] Expose Testcontainers/WireMock classes with scopes that downstream test modules can resolve
   - [ ] Document local reuse behavior vs CI isolated behavior
 - [ ] Add CI workflow separation by service lane (AC: 3)
-  - [ ] Add/verify backend scoped workflows for channel/corebank/fep
+  - [ ] Add/verify backend scoped workflows for channel/corebank/fep-gateway/fep-simulator
   - [ ] Keep workflow commands deterministic and minimal
 - [ ] Enforce quality gate behavior on PR (AC: 4)
   - [ ] Ensure failing test/lint/build status blocks merge to main
@@ -39,9 +39,7 @@ so that feature teams can ship with deterministic validation.
 
 - Dependency: Story 0.1 must already define module skeleton and compose baseline.
 - This story should not duplicate FE scaffold responsibilities from Story 0.3.
-- Context conflict guardrail:
-  - `epic-0-project-foundation.md` includes CI + FE scaffold under Story 0.2 in one variant.
-  - Canonical split for this planning set keeps FE scaffold in Story 0.3.
+- Canonical Epic 0 split is fixed as `0.2 (BE Test/CI)` + `0.3 (FE scaffold)` + `0.4 (MOB scaffold)` in both planning and implementation artifacts.
 
 ### Technical Requirements
 

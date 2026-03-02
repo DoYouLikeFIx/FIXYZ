@@ -227,13 +227,28 @@ So that all system lanes can build on a consistent runtime and coding contract.
   **Then** all backend modules compile without error.
 - **Given** docker compose setup files  
   **When** `docker compose up` is executed  
-  **Then** channel/corebank/fep services become healthy.
-- **Given** common error contract requirement  
-  **When** API exception occurs  
-  **Then** standardized error schema is returned.
+  **Then** channel/corebank/fep-gateway/fep-simulator services become healthy.
+- **Given** Flyway configuration for channel/corebank schemas  
+  **When** services start  
+  **Then** baseline migrations and local/test seed data run without error.
 - **Given** internal service boundaries  
   **When** internal endpoint is called without secret header  
   **Then** request is blocked by scaffold filter.
+- **Given** common error contract requirement  
+  **When** API exception occurs  
+  **Then** standardized error schema is returned.
+- **Given** local developer visibility requirements  
+  **When** `docker-compose.override.yml` is applied  
+  **Then** MySQL/Redis/internal service ports are reachable for local tools only.
+- **Given** SpringDoc build-time generation is configured for channel/corebank/fep-gateway/fep-simulator services  
+  **When** `generateOpenApiDocs` tasks run  
+  **Then** each service outputs a valid OpenAPI 3.0 JSON artifact.
+- **Given** a merge to `main` with backend CI passing  
+  **When** `docs-publish.yml` completes  
+  **Then** GitHub Pages (`https://<org>.github.io/<repo>/`) is the canonical API docs endpoint and renders Channel/CoreBank/FEP Gateway/FEP Simulator selectors from latest generated specs.
+- **Given** first deployment on a repository without Pages source configuration  
+  **When** initial docs publish run completes  
+  **Then** one-time Pages source setup (`gh-pages` / root) is completed and recorded in ops runbook.
 
 ### Story 0.2: [BE][CH] Test & CI Foundation
 
@@ -296,13 +311,19 @@ So that mobile features follow the same contract and architecture.
   **Then** baseline app runs on target simulator/device.
 - **Given** env-based API config  
   **When** mobile calls backend health endpoint  
-  **Then** request succeeds against expected host.
+  **Then** request succeeds against host matrix (`Android emulator=http://10.0.2.2:8080`, `iOS simulator=http://localhost:8080`, `physical device=http://<LAN_IP>:8080`) with `GET /actuator/health` HTTP 200 within 5s.
 - **Given** common network module  
   **When** API errors occur  
   **Then** mobile receives parsed standardized error payload.
-- **Given** auth/cookie storage policy  
+- **Given** server-side cookie session policy  
   **When** session is issued  
-  **Then** client persists credentials in approved secure storage.
+  **Then** mobile persists no raw credentials/password/OTP in app storage and uses OS-approved secure storage controls for any sensitive client-side secret material.
+- **Given** cookie-session + CSRF contract for state-changing API calls  
+  **When** mobile sends non-GET request  
+  **Then** client includes credentials and `X-XSRF-TOKEN` header derived from `XSRF-TOKEN` cookie after explicit CSRF bootstrap/refresh (`GET /api/v1/auth/csrf`) on app start/login/resume.
+- **Given** foundation CI runs bundle-only checks  
+  **When** PR is prepared for merge  
+  **Then** AC1 is satisfied only after manual simulator/device smoke evidence (boot log/screenshot + health-call capture) is attached in PR checklist.
 
 ### Story 0.5: [BE][CH] Collaboration Webhook Notifications (MatterMost + Jira + GitHub)
 
@@ -311,7 +332,7 @@ I want Jira and GitHub webhook events delivered to MatterMost,
 So that release/quality state is visible in real time without manual polling.
 
 **Depends On:** Story 0.2
-**Implementation Decision:** 1안 (Direct integration: `GitHub Actions + Jira Automation -> MatterMost webhook`, no central relay)
+**Implementation Decision:** Option 1 (Direct integration: `GitHub Actions + Jira Automation -> MatterMost webhook`, no central relay)
 
 **Acceptance Criteria:**
 
@@ -325,11 +346,17 @@ So that release/quality state is visible in real time without manual polling.
   **When** runtime configuration is applied  
   **Then** credentials are managed only via GitHub Secrets and Jira secured webhook settings (no hardcoding).
 - **Given** duplicate delivery or retry from source systems  
-  **When** identical event context is detected by workflow/automation guard conditions  
-  **Then** duplicated user-visible spam is suppressed.
+  **When** normalized dedupe key `source + source_project + target_channel + event_type + entity_id + normalized_target_status + normalized_actor` (`null`/missing -> `_`) or source event id (`delivery_id`/equivalent) repeats within source suppression window (`GitHub=10m`, `Jira=10m`)  
+  **Then** duplicated user-visible posts are suppressed.
+- **Given** direct integration architecture (no central relay)  
+  **When** dedupe state is persisted  
+  **Then** source-specific dedupe contract is explicit and auditable (`GitHub`: Actions cache key `mm-dedupe-{dedupe_hash}-{window_bucket_10m}` where `window_bucket_10m=floor(event_epoch/600)`; `Jira`: entity/property `mm_last_hash` + `mm_last_ts` with 10-minute timestamp comparison).
 - **Given** outbound posting failure to MatterMost  
-  **When** network or API error occurs during source-side delivery  
-  **Then** source workflow/automation retry policy is applied and failure is observable in run/audit logs.
+  **When** network timeout or non-2xx response occurs  
+  **Then** source retry policy executes with bounded retries (`max_attempts=3`) using source-specific backoff contract (`GitHub`: `2s`,`5s` + jitter `±20%`; `Jira`: fixed `2s`,`5s` without jitter due platform limits), per-source+per-entity ordering guard, and final failure visibility in run/audit logs.
+- **Given** reliability validation runbook execution  
+  **When** duplicate and failure scenarios are replayed  
+  **Then** evidence artifacts are indexed under `docs/ops/webhook-validation/<YYYYMMDD>/` with reproducible naming and enforced retention configuration (`>=90 days`).
 
 ---
 
@@ -1504,7 +1531,7 @@ So that end-to-end traces are reconstructable.
   **Then** same correlation id is propagated.
 - **Given** log aggregation query  
   **When** searching by correlation id  
-  **Then** all three services show traceable chain.
+  **Then** all four backend services show traceable chain.
 - **Given** propagation regression test  
   **When** CI runs  
   **Then** 3-hop header assertions pass.
@@ -1519,9 +1546,9 @@ So that integration and test automation are reliable.
 
 **Acceptance Criteria:**
 
-- **Given** service startup  
-  **When** `/swagger-ui.html` accessed  
-  **Then** docs are reachable for required services.
+- **Given** `docs-publish.yml` succeeds on `main`  
+  **When** canonical API docs endpoint (`https://<org>.github.io/<repo>/`) is accessed  
+  **Then** docs selector tabs for required services are reachable.
 - **Given** controller endpoints  
   **When** docs generated  
   **Then** operation summaries and response schemas are present.

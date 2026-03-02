@@ -27,7 +27,7 @@ As a **developer**,
 I want the FEP simulator to support runtime chaos configuration (delay, failure mode, failure rate),  
 So that I can demonstrate circuit breaker behavior during interviews without code changes.
 
-**Depends On:** Story 0.1 (FEP Service Startup)
+**Depends On:** Story 0.1 (FEP Gateway/FEP Simulator Startup)
 
 ### Acceptance Criteria
 

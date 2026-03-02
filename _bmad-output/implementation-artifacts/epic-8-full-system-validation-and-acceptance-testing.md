@@ -90,10 +90,10 @@ So that the system's correctness claims are continuously verified.
 ```
 **And** Include `@DisplayName("Scenario #N: ...")` annotation in each scenario test class
 
-**Given** `ci-channel.yml`, `ci-corebank.yml`, `ci-fep.yml`, `ci-frontend.yml` (4 workflows)  
+**Given** `ci-channel.yml`, `ci-corebank.yml`, `ci-fep-gateway.yml`, `ci-fep-simulator.yml`, `ci-frontend.yml` (5 workflows)  
 **When** Push changes to each service  
 **Then** Run CI only for that service in parallel  
-**And** JaCoCo Reports: channel ≥ 70% (NFR-T1), corebank ≥ 80% (NFR-T2), fep ≥ 60% (NFR-T3)
+**And** JaCoCo Reports: channel ≥ 70% (NFR-T1), corebank ≥ 80% (NFR-T2), fep-gateway ≥ 60%, fep-simulator ≥ 60%
 
 ---
 
@@ -155,7 +155,7 @@ So that any interviewer can verify the system within 5 minutes of cloning the re
 **Then** `GET localhost:8080/actuator/health` → `{"status":"UP"}` (channel-service)  
 **And** `GET localhost:8081/actuator/health` → `{"status":"UP"}` (corebank-service)  
 **And** `GET localhost:8082/actuator/health` → `{"status":"UP"}` (fep-simulator)  
-**And** `GET localhost:8080/swagger-ui.html` → HTTP 200 (NFR-O1)
+**And** `https://<org>.github.io/<repo>/` → HTTP 200 with Channel/CoreBank/FEP Gateway/FEP Simulator selectors (NFR-O1)
 
 **Given** Docker Compose Port Exposure Structure  
 **When** Check `compose.yml` (base)  
@@ -202,7 +202,7 @@ schedule:
 **And** 5-minute Verification Checklist:
 ```
 □ docker compose up (Complete < 2min)
-□ localhost:8080/swagger-ui.html → HTTP 200
+□ https://<org>.github.io/<repo>/ → HTTP 200 (Channel/CoreBank/FEP Gateway/FEP Simulator selectors visible)
 □ Login → Order → SSE Notification Receive (Complete < 2min)
 □ PUT localhost:8082/fep-internal/rules (body: {"action_type":"TIMEOUT","delay_ms":3000,"failure_rate":0.0}) → trigger order 3회 via localhost:8080 → GET localhost:8081/actuator/circuitbreakers → verify state="OPEN" (< 1min)
 ```

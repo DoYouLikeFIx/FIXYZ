@@ -99,7 +99,7 @@ So that I can proceed through the OTP verification step before the order is exec
 **Given** `SessionStatusResponse` OpenAPI schema contract locked  
 **When** Story 2.1 PR merged  
 **Then** `SessionStatusResponse` schema explicitly defined with SpringDoc `@Schema` annotations  
-**And** `GET /swagger-ui.html` → response model for the endpoint visible
+**And** GitHub Pages API docs (`https://<org>.github.io/<repo>/`)에서 Channel Service endpoint response model이 visible
 
 **Given** Package Structure  
 **Then** Package Path `io.github.yeongjae.fix.channel.order.{subpackage}`:

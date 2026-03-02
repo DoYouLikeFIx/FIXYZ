@@ -13,18 +13,19 @@ so that all system lanes can build on a consistent runtime and coding contract.
 ## Acceptance Criteria
 
 1. Given a clean checkout, when `./gradlew build` runs from repo root, then all backend modules compile without error.
-2. Given docker compose setup files, when `docker compose up` is executed, then `channel:8080`, `corebank:8081`, and `fep:8082` become healthy.
+2. Given docker compose setup files, when `docker compose up` is executed, then `channel`, `corebank`, `fep-gateway`, and `fep-simulator` containers report healthy status via compose health checks (default host exposure policy applies).
 3. Given Flyway configuration for channel/corebank schemas, when services start, then baseline migrations and local/test seed data run without error.
 4. Given internal service boundaries, when `/internal/**` or `/fep-internal/**` is called without internal secret header, then request is blocked by scaffold filter.
 5. Given common error contract requirement, when API exception occurs, then standardized error schema is returned.
 6. Given local developer visibility requirements, when `docker-compose.override.yml` is applied, then MySQL/Redis/internal service ports are reachable for local tools only.
-7. Given SpringDoc is added to all three services, when `docker compose up` is run with local profile, then `GET /swagger-ui/index.html` returns HTTP 200 for each service, and `GET /v3/api-docs` returns a valid OpenAPI 3.0 JSON; Swagger UI is disabled (HTTP 404) when `SPRING_PROFILES_ACTIVE=prod`.
-8. Given a merge to `main` with all backend CI workflows passing, when the `docs-publish.yml` workflow completes, then the GitHub Pages site at `https://<org>.github.io/<repo>/` shows a Swagger UI page with selector tabs for Channel, CoreBank, and FEP services, updated to reflect the latest spec.
+7. Given SpringDoc build-time generation is configured for channel/corebank/fep-gateway/fep-simulator services, when `generateOpenApiDocs` tasks run, then each service outputs a valid OpenAPI 3.0 JSON artifact.
+8. Given a merge to `main` with backend CI passing, when `docs-publish.yml` completes, then the GitHub Pages site at `https://<org>.github.io/<repo>/` is the canonical API docs endpoint and renders Channel/CoreBank/FEP Gateway/FEP Simulator selectors from the latest generated specs; runtime Swagger endpoints remain disabled in production profile.
+9. Given first deployment on a repository where Pages source is not yet configured, when the initial docs publish run finishes, then the one-time Pages source setup (`gh-pages` / root) is completed and recorded in the ops runbook.
 
 ## Tasks / Subtasks
 
-- [ ] Create and verify 7-module backend skeleton with explicit dependency direction (AC: 1)
-  - [ ] Ensure module roles match architecture: `core-common`, `testing-support`, `channel-domain`, `channel-service`, `corebank-domain`, `corebank-service`, `fep-service`
+- [ ] Create and verify 8-module backend skeleton with explicit dependency direction (AC: 1)
+  - [ ] Ensure module roles match architecture: `core-common`, `testing-support`, `channel-domain`, `channel-service`, `corebank-domain`, `corebank-service`, `fep-gateway`, `fep-simulator`
   - [ ] Enforce dependency rule: `core-common` has zero Spring dependency and no downstream module imports
 - [ ] Implement compose baseline with health and startup sequencing (AC: 2, 6)
   - [ ] Add `depends_on: condition: service_healthy` sequencing
@@ -36,18 +37,20 @@ so that all system lanes can build on a consistent runtime and coding contract.
   - [ ] Add repeatable seed migration for local/test bootstrap accounts
 - [ ] Add internal boundary scaffold filters (AC: 4)
   - [ ] Add `InternalSecretFilter` in corebank service on `/internal/**`
-  - [ ] Add `FepInternalSecretFilter` in fep service on `/fep-internal/**`
+  - [ ] Add `FepGatewayInternalSecretFilter` in fep-gateway service on `/fep-internal/**`
+  - [ ] Add `FepSimulatorInternalSecretFilter` in fep-simulator service on `/fep-internal/**`
   - [ ] Externalize secrets with env variables and safe defaults for local
 - [ ] Add common error envelope baseline (AC: 5)
   - [ ] Define/confirm shared API error schema in common module
-  - [ ] Ensure initial exception handling returns normalized contract in channel/corebank/fep
+  - [ ] Ensure initial exception handling returns normalized contract in channel/corebank/fep-gateway/fep-simulator
 - [ ] Add smoke verification commands for Day 1 handoff (AC: 1, 2, 3, 4)
   - [ ] Build: `./gradlew build`
   - [ ] Bring-up: `docker compose up`
-  - [ ] Health checks for all three services
-- [ ] Enable SpringDoc OpenAPI (Swagger UI) on all three services (AC: 7)
+  - [ ] Health checks for all four services
+- [ ] Enable SpringDoc OpenAPI spec generation on all four services (AC: 7)
   - [ ] Add `org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.15` to each service's `build.gradle`
   - [ ] Add `springdoc-openapi-gradle-plugin` (`id 'org.springdoc.openapi-gradle-plugin' version '1.9.0'`) to each service's `build.gradle` for build-time spec generation — **no running Docker stack needed in CI**
+  - [ ] Add `application-openapi.yml` for each service with isolated `server.port` (channel=18080, corebank=18081, fep-gateway=18082, fep-simulator=18083) and OpenAPI-generation-only datasource overrides (H2 in-memory)
   - [ ] Configure per-service `application.yml` (local/default profile only):
     ```yaml
     springdoc:
@@ -64,24 +67,26 @@ so that all system lanes can build on a consistent runtime and coding contract.
       swagger-ui:
         enabled: false
     ```
-  - [ ] If Spring Security scaffold exists on any service, add explicit `permitAll` rules for doc paths:
+  - [ ] If Spring Security scaffold exists on any service, add profile-scoped `permitAll` rules for doc paths (local/dev only):
     ```java
-    .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+    .requestMatchers("/v3/api-docs/**", "/swagger-ui/**").permitAll()
     ```
-  - [ ] Verify locally: after `docker compose up`, all three `GET /swagger-ui/index.html` return HTTP 200
-  - [ ] Verify prod guard: `SPRING_PROFILES_ACTIVE=prod ./gradlew bootRun` → `/v3/api-docs` returns HTTP 404
+  - [ ] Verify local build-time generation: each service writes valid JSON to `build/openapi/`
+  - [ ] Verify prod guard: `SPRING_PROFILES_ACTIVE=prod ./gradlew bootRun` → `/v3/api-docs` and `/swagger-ui/**` are not externally exposed
 - [ ] Configure build-time OpenAPI spec generation via Gradle plugin (AC: 8)
-  - [ ] In each service `build.gradle`, configure the `openApi` extension block:
+  - [ ] In each service `build.gradle`, declare service-specific OpenAPI generation port and bind it to the `openApi` extension block:
     ```groovy
+    def springdocPort = 18080 // channel-service; corebank=18081, fep-gateway=18082, fep-simulator=18083
+
     openApi {
-      apiDocsUrl = "http://localhost:${project.ext.springdocPort}/v3/api-docs"
+      apiDocsUrl = "http://localhost:${springdocPort}/v3/api-docs"
       outputDir = file("$buildDir/openapi")
       outputFileName = "${project.name}.json"
       waitTimeInSeconds = 30
     }
     ```
-    Assign distinct ports (e.g., channel=18080, corebank=18081, fep=18082) to avoid conflicts during parallel spec generation
-  - [ ] Run `./gradlew :channel-service:generateOpenApiDocs :corebank-service:generateOpenApiDocs :fep-service:generateOpenApiDocs` and confirm each produces a valid JSON file under `build/openapi/`
+    Ensure `springdocPort` value exactly matches each service `application-openapi.yml` `server.port`
+  - [ ] Run `./gradlew :channel-service:generateOpenApiDocs :corebank-service:generateOpenApiDocs :fep-gateway:generateOpenApiDocs :fep-simulator:generateOpenApiDocs` and confirm each produces a valid JSON file under `build/openapi/`
 - [ ] Add GitHub Actions workflow `docs-publish.yml` for automated GitHub Pages deployment (AC: 8)
   - [ ] Create `.github/workflows/docs-publish.yml` with the following structure:
     ```yaml
@@ -111,30 +116,42 @@ so that all system lanes can build on a consistent runtime and coding contract.
             run: |
               ./gradlew :channel-service:generateOpenApiDocs \
                         :corebank-service:generateOpenApiDocs \
-                        :fep-service:generateOpenApiDocs
+                        :fep-gateway:generateOpenApiDocs \
+                        :fep-simulator:generateOpenApiDocs
           - name: Assemble static docs site
             run: |
               mkdir -p docs-site
               cp BE/channel-service/build/openapi/channel-service.json docs-site/channel.json
               cp BE/corebank-service/build/openapi/corebank-service.json docs-site/corebank.json
-              cp BE/fep-service/build/openapi/fep-service.json docs-site/fep.json
+              cp BE/fep-gateway/build/openapi/fep-gateway.json docs-site/fep-gateway.json
+              cp BE/fep-simulator/build/openapi/fep-simulator.json docs-site/fep-simulator.json
+              python3 - << 'PY'
+              import json, pathlib
+              for name in ("channel.json", "corebank.json", "fep-gateway.json", "fep-simulator.json"):
+                  p = pathlib.Path("docs-site") / name
+                  data = json.loads(p.read_text(encoding="utf-8"))
+                  assert str(data.get("openapi", "")).startswith("3.0"), f"{name}: openapi version missing/invalid"
+                  assert "paths" in data and isinstance(data["paths"], dict), f"{name}: paths missing"
+              print("OpenAPI structural validation passed")
+              PY
               cat > docs-site/index.html << 'EOF'
               <!DOCTYPE html>
               <html lang="en">
               <head>
                 <meta charset="utf-8">
                 <title>FIX API Docs</title>
-                <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+                <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui.css">
               </head>
               <body>
               <div id="swagger-ui"></div>
-              <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+              <script src="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui-bundle.js"></script>
               <script>
                 SwaggerUIBundle({
                   urls: [
                     { url: "channel.json",  name: "Channel Service" },
                     { url: "corebank.json", name: "CoreBank Service" },
-                    { url: "fep.json",      name: "FEP Service" }
+                    { url: "fep-gateway.json",  name: "FEP Gateway" },
+                    { url: "fep-simulator.json", name: "FEP Simulator" }
                   ],
                   "urls.primaryName": "Channel Service",
                   dom_id: "#swagger-ui",
@@ -154,12 +171,13 @@ so that all system lanes can build on a consistent runtime and coding contract.
               force_orphan: true
               commit_message: "docs: update API specs from ${{ github.sha }}"
     ```
-  - [ ] **First-deployment one-time step (manual):** After first workflow run, go to repo Settings → Pages → Source → set to `gh-pages` branch, `/ (root)`. Subsequent deployments are automatic.
+  - [ ] **First-deployment one-time step (manual, AC: 9):** After first workflow run, go to repo Settings → Pages → Source → set to `gh-pages` branch, `/ (root)`. Subsequent deployments are automatic.
+  - [ ] Record first deployment completion in `docs/ops/docs-publish-onboarding.md` (date, actor, repo, configured Pages source)
   - [ ] Add API docs badge to `README.md`:
     ```markdown
     [![API Docs](https://img.shields.io/badge/API%20Docs-GitHub%20Pages-blue)](https://<org>.github.io/<repo>/)
     ```
-  - [ ] Verify: after merging to `main`, the Pages URL loads Swagger UI with all three service tabs within ~2 minutes
+  - [ ] Verify: after merging to `main`, the Pages URL loads Swagger UI with all four service tabs within ~2 minutes
 
 ## Dev Notes
 
@@ -173,8 +191,8 @@ so that all system lanes can build on a consistent runtime and coding contract.
 
 - Runtime and topology:
   - Java 21, Spring Boot 3.x baseline.
-  - Three deployable services with compose health checks.
-  - Cold start target: first API response within 90 seconds after `docker compose up`.
+  - Four deployable services with compose health checks.
+  - Cold start target: first API response within 120 seconds after `docker compose up` (Vault + vault-init baseline).
 - Data/platform:
   - MySQL InnoDB + Redis required from Day 1.
   - Flyway validate-on-migrate behavior must fail fast on migration mismatch.
@@ -193,8 +211,11 @@ so that all system lanes can build on a consistent runtime and coding contract.
 ### SpringDoc OpenAPI & GitHub Pages Implementation Notes
 
 - **Spec generation strategy:** Use `springdoc-openapi-gradle-plugin` (build-time, no running Docker stack) rather than runtime `curl` to avoid CI environment complexity. The plugin starts the Spring app in a forked JVM with an H2 in-memory datasource override for spec generation only.
-- **Port isolation for parallel generation:** Each service must declare a distinct `server.port` in its `application-openapi.yml` profile (channel=18080, corebank=18081, fep=18082) to prevent port conflicts when all three `generateOpenApiDocs` tasks run in parallel.
+- **Architecture alignment note:** H2 is forbidden for runtime/integration behavior validation; `application-openapi.yml` H2 override is allowed only for isolated spec generation and must never be reused for transactional tests.
+- **Port isolation for parallel generation:** Each service must declare a distinct `server.port` in its `application-openapi.yml` profile (channel=18080, corebank=18081, fep-gateway=18082, fep-simulator=18083) to prevent port conflicts when all four `generateOpenApiDocs` tasks run in parallel.
+- **Port contract:** `application-openapi.yml` `server.port` and the Gradle `springdocPort` value must match per service; treat mismatches as build-breaking configuration drift.
 - **Static site pattern:** The `index.html` uses `swagger-ui-dist@5` via unpkg CDN with the multi-spec `urls` array — no npm build step required in the workflow. GitHub Pages serves pure static files.
+- **Spec validity gate:** `docs-publish.yml` must parse each generated JSON and enforce OpenAPI 3.0 + `paths` presence before deploy.
 - **GitHub Pages permissions:** `peaceiris/actions-gh-pages@v4` requires `permissions: contents: write` at the job level. `GITHUB_TOKEN` is sufficient; no PAT needed for same-repo deployment.
 - **Concurrency guard:** Set `concurrency: group: gh-pages, cancel-in-progress: true` to prevent overlapping deployments when rapid merges occur.
 - **First deployment caveat:** `GITHUB_TOKEN` cannot configure the Pages source on first run. The developer must manually enable Pages (Settings → Pages → `gh-pages` branch) after the first workflow execution creates the branch.
@@ -222,26 +243,30 @@ so that all system lanes can build on a consistent runtime and coding contract.
   - `BE/testing-support/**`
   - `BE/channel-service/**`
   - `BE/corebank-service/**`
-  - `BE/fep-service/**`
+  - `BE/fep-gateway/**`
+  - `BE/fep-simulator/**`
   - `/Users/yeongjae/fixyz/docker-compose.yml`
   - `/Users/yeongjae/fixyz/docker-compose.override.yml`
   - `/Users/yeongjae/fixyz/.env.example`
   - `/Users/yeongjae/fixyz/.github/workflows/docs-publish.yml`
-  - `/Users/yeongjae/fixyz/docs/api/` (generated OpenAPI JSON artifacts, gitignored except index)
+  - `BE/*-service/src/main/resources/application-openapi.yml`
+  - `/Users/yeongjae/fixyz/docs/ops/docs-publish-onboarding.md`
 - Do not place shared constants in service modules when they belong to `core-common`.
 
 ### Testing Requirements
 
 - Minimum checks for story completion:
   - `./gradlew build` passes from clean checkout.
-  - Health endpoints return `UP` for all three services after compose startup.
+  - Health endpoints return `UP` for all four services after compose startup.
   - Filter boundary check: internal endpoints reject missing secret header.
   - Flyway migrations apply successfully for both channel/core schemas.
-  - `GET localhost:8080/swagger-ui.html` returns HTTP 200 on local profile.
+  - `./gradlew :channel-service:generateOpenApiDocs :corebank-service:generateOpenApiDocs :fep-gateway:generateOpenApiDocs :fep-simulator:generateOpenApiDocs` produces valid spec JSON for all four services.
+  - `docs-publish.yml` OpenAPI structural validation gate passes for all generated specs.
   - `docs-publish.yml` workflow completes successfully on `main` branch and GitHub Pages URL is reachable.
+  - For first deployment, Pages source configuration completion is documented in `docs/ops/docs-publish-onboarding.md`.
 - Regression guard:
   - Empty baseline integration test compiles with Testcontainers dependencies available via `testing-support`.
-  - Swagger UI must be disabled (HTTP 404 or 403) when `SPRING_PROFILES_ACTIVE=prod`.
+  - `/v3/api-docs` and `/swagger-ui/**` must be disabled (HTTP 404 or 403) when `SPRING_PROFILES_ACTIVE=prod`.
 
 ### Latest Tech Information
 
@@ -251,7 +276,7 @@ so that all system lanes can build on a consistent runtime and coding contract.
   - `springdoc-openapi-starter-webmvc-ui`: latest stable `2.8.15` (released 2026-01-02); supports Spring Boot 3.x + OpenAPI 3.0. Source: https://github.com/springdoc/springdoc-openapi/releases
   - `org.springdoc.openapi-gradle-plugin`: latest stable `1.9.0`; generates OpenAPI spec at build time without a running server. Source: https://github.com/springdoc/springdoc-openapi-gradle-plugin
   - `peaceiris/actions-gh-pages`: latest stable `v4.0.0` (Apr 2024); supports `ubuntu-latest`, `GITHUB_TOKEN`, `force_orphan`. Source: https://github.com/peaceiris/actions-gh-pages/releases
-  - `swagger-ui-dist` (unpkg CDN): current major is `v5.x`; use `@5` tag for latest minor auto-resolution.
+  - `swagger-ui-dist` (unpkg CDN): pin exact version `5.17.14` in workflow template and update intentionally (do not float with `@5`).
 - Implementation decision for this story:
   - Stay on architecture-pinned Spring Boot 3.4.x for consistency.
   - Use latest patch within selected major/minor where compatible.

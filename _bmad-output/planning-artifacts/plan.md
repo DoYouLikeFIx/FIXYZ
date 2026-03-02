@@ -94,7 +94,7 @@
 
 Monolith이지만 MSA로 “쪼개지기 쉬운 모놀리식”을 목표로 한다. 권장 멀티모듈 구조 예시는 아래다(단일 레포, Gradle/Maven 멀티모듈).
 
-- `channel-app` : Spring Boot entry, configuration, security, actuator
+- `channel-service` : Spring Boot entry, configuration, security, actuator
 - `channel-auth` : 인증/세션/리스크 기반 재인증(주문 재인증) 유즈케이스
 - `channel-account` : 계좌조회 유즈케이스 + DTO 조립
 - `channel-order` : 주문 플로우(상태머신, FIX 4.2 NewOrderSingle) + 검증
@@ -264,7 +264,7 @@ MySQL InnoDB는 트랜잭션이 ACID 모델을 따르며(row-level locking, cons
 - MySQL(스키마 2개: `channel_db`, `core_db`)
 - Redis
 - (선택) Keycloak(SSO 실습용)
-- channel-app, corebank-app, fep-sim app
+- channel-service, corebank-service, fep-gateway, fep-simulator
 
 Keycloak은 OpenID Connect/OAuth 2.0/SAML 같은 표준 프로토콜을 지원한다고 공식 사이트에 명시되어 있어, “금융권 SSO/IDP 연계” 느낌을 포트폴리오로 담기 좋다. citeturn7search9turn7search17
 

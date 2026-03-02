@@ -33,7 +33,7 @@ Technical expert. Uses the 5-screen React app during live screenshare (~5 min de
 Mental model: "이 시스템이 리테일 증권사 내부 시스템처럼 보이는가?" Looks for: Korean-language order error messages, masked account numbers (계좌번호 마스킹), step-up OTP UI, Order Book 체결 로직, KRX/금융투자협회 준수 구조. Success signal: recognizes the 체널계/계정계/대외계 3계층 아키텍처 vocabulary used at Korean bank-affiliated securities firms.
 
 **FinTech Interviewer Track — Evaluator B**
-Mental model: "Is this well-engineered React?" Looks for: clean component structure, CI badge passing, Swagger UI accessible at `/swagger-ui.html`, SSE EventSource visible in Network tab, no Document-type requests during modal transitions. Success signal: can independently verify architectural claims within 5 minutes using Browser DevTools.
+Mental model: "Is this well-engineered React?" Looks for: clean component structure, CI badge passing, GitHub Pages API Docs accessible at `https://<org>.github.io/<repo>/`, SSE EventSource visible in Network tab, no Document-type requests during modal transitions. Success signal: can independently verify architectural claims within 5 minutes using Browser DevTools.
 
 ### Key Design Challenges
 
@@ -190,8 +190,8 @@ FIX의 감정 설계 대상은 일반 사용자가 아니라 기술 면접관과
 - **Trust before reading code:** README와 UI만으로 "이 사람이 실제로 이해하고 만들었다"는 신뢰가 형성되어야 한다.
 - **Domain recognition (Bank track):** 한국어 에러 메시지, 마스킹 패턴, OTP 단계 — "이 어휘와 패턴을 나는 안다"는 인정의 감정.
 - **Pleasant surprise:** 기대치를 상회하는 완성도에서 오는 긍정적 놀라움. 구체적 트리거:
-  1. `docker compose up` 하나로 5개 서비스 + DB + Redis가 90초 이내 준비 완료 — "설정 없이 바로 되네?"
-  2. `localhost:8080/swagger-ui.html`에서 모든 엔드포인트가 즉시 문서화됨 — "포트폴리오인데 이 수준까지?"
+  1. `docker compose up` 하나로 4개 백엔드 서비스 + MySQL + Redis (+Vault/vault-init)가 120초 이내 준비 완료 — "설정 없이 바로 되네?"
+  2. `https://<org>.github.io/<repo>/`에서 Channel/CoreBank/FEP Gateway/FEP Simulator API 문서 selector가 즉시 확인됨 — "포트폴리오인데 이 수준까지?"
   3. 보유수량 부족 에러가 `"보유수량이 부족합니다. 가용수량: 500주 / 주문수량: 600주"` 형식 — "한국 증권사 시스템이랑 똑같네"
 - **Confidence to advance:** "이 사람과 다음 단계 인터뷰를 진행하고 싶다."
 

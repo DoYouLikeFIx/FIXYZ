@@ -12,7 +12,7 @@ so that all system lanes can build on a consistent runtime and coding contract.
 Acceptance Criteria
 
 - Given a clean checkout, when `./gradlew build` runs from repo root, then all backend modules compile without error.
-- Given docker compose setup files, when `docker compose up` is executed, then `channel:8080`, `corebank:8081`, and `fep:8082` become healthy.
+- Given docker compose setup files, when `docker compose up` is executed, then `channel`, `corebank`, `fep-gateway`, and `fep-simulator` become healthy.
 - Given Flyway configuration for channel/corebank schemas, when services start, then baseline migrations and local/test seed data run without error.
 - Given internal service boundaries, when `/internal/**` or `/fep-internal/**` is called without internal secret header, then request is blocked by scaffold filter.
 - Given common error contract requirement, when API exception occurs, then standardized error schema is returned.
@@ -20,8 +20,8 @@ Acceptance Criteria
 
 Tasks / Subtasks
 
-- [ ] Create and verify 7-module backend skeleton with explicit dependency direction (AC: 1)
-  - [ ] Ensure module roles match architecture: `core-common`, `testing-support`, `channel-domain`, `channel-service`, `corebank-domain`, `corebank-service`, `fep-service`
+- [ ] Create and verify 8-module backend skeleton with explicit dependency direction (AC: 1)
+  - [ ] Ensure module roles match architecture: `core-common`, `testing-support`, `channel-domain`, `channel-service`, `corebank-domain`, `corebank-service`, `fep-gateway`, `fep-simulator`
   - [ ] Enforce dependency rule: `core-common` has zero Spring dependency and no downstream module imports
 - [ ] Implement compose baseline with health and startup sequencing (AC: 2, 6)
   - [ ] Add `depends_on: condition: service_healthy` sequencing
@@ -37,11 +37,11 @@ Tasks / Subtasks
   - [ ] Externalize secrets with env variables and safe defaults for local
 - [ ] Add common error envelope baseline (AC: 5)
   - [ ] Define/confirm shared API error schema in common module
-  - [ ] Ensure initial exception handling returns normalized contract in channel/corebank/fep
+  - [ ] Ensure initial exception handling returns normalized contract in channel/corebank/fep-gateway/fep-simulator
 - [ ] Add smoke verification commands for Day 1 handoff (AC: 1, 2, 3, 4)
   - [ ] Build: `./gradlew build`
   - [ ] Bring-up: `docker compose up`
-  - [ ] Health checks for all three services
+  - [ ] Health checks for all four backend services
 
 Dev Notes
 
@@ -55,8 +55,8 @@ Technical Requirements
 
 - Runtime and topology:
   - Java 21, Spring Boot 3.x baseline.
-  - Three deployable services with compose health checks.
-  - Cold start target: first API response within 90 seconds after `docker compose up`.
+  - Four deployable services with compose health checks.
+  - Cold start target: first API response within 120 seconds after `docker compose up` (Vault + vault-init baseline).
 - Data/platform:
   - MySQL InnoDB + Redis required from Day 1.
   - Flyway validate-on-migrate behavior must fail fast on migration mismatch.
@@ -93,7 +93,8 @@ File Structure Requirements
   - `BE/testing-support/**`
   - `BE/channel-service/**`
   - `BE/corebank-service/**`
-  - `BE/fep-service/**`
+  - `BE/fep-gateway/**`
+  - `BE/fep-simulator/**`
   - `/Users/yeongjae/fixyz/docker-compose.yml`
   - `/Users/yeongjae/fixyz/docker-compose.override.yml`
   - `/Users/yeongjae/fixyz/.env.example`
@@ -103,7 +104,7 @@ Testing Requirements
 
 - Minimum checks for story completion:
   - `./gradlew build` passes from clean checkout.
-  - Health endpoints return `UP` for all three services after compose startup.
+  - Health endpoints return `UP` for all four backend services after compose startup.
   - Filter boundary check: internal endpoints reject missing secret header.
   - Flyway migrations apply successfully for both channel/core schemas.
 - Regression guard:
@@ -179,7 +180,7 @@ Tasks / Subtasks
   - [ ] Expose Testcontainers/WireMock classes with scopes that downstream test modules can resolve
   - [ ] Document local reuse behavior vs CI isolated behavior
 - [ ] Add CI workflow separation by service lane (AC: 3)
-  - [ ] Add/verify backend scoped workflows for channel/corebank/fep
+  - [ ] Add/verify backend scoped workflows for channel/corebank/fep-gateway/fep-simulator
   - [ ] Keep workflow commands deterministic and minimal
 - [ ] Enforce quality gate behavior on PR (AC: 4)
   - [ ] Ensure failing test/lint/build status blocks merge to main
@@ -194,9 +195,9 @@ Developer Context Section
 
 - Dependency: Story 0.1 must already define module skeleton and compose baseline.
 - This story should not duplicate FE scaffold responsibilities from Story 0.3.
-- Context conflict guardrail:
-  - `epic-0-project-foundation.md` includes CI + FE scaffold under Story 0.2 in one variant.
-  - Canonical split for this planning set keeps FE scaffold in Story 0.3.
+- Canonical split guardrail:
+  - Story 0.2 = BE Test/CI foundation only.
+  - Story 0.3 = FE scaffold only.
 
 Technical Requirements
 
@@ -459,9 +460,10 @@ so that mobile features follow the same contract and architecture.
 Acceptance Criteria
 
 - Given a mobile project scaffold, when the project is built and launched, then baseline app runs on target simulator/device.
-- Given env-based API config, when mobile calls backend health endpoint, then request succeeds against expected host.
+- Given env-based API config, when mobile calls backend health endpoint, then request succeeds against host matrix (`Android emulator=http://10.0.2.2:8080`, `iOS simulator=http://localhost:8080`, `physical device=http://<LAN_IP>:8080`) with `GET /actuator/health` HTTP 200 within 5s.
 - Given a common network module, when API errors occur, then mobile receives parsed standardized error payload.
-- Given auth/cookie storage policy, when session is issued, then client persists credentials in approved secure storage.
+- Given server-side cookie session policy, when session is issued, then mobile persists no raw credentials/password/OTP in app storage and uses OS-approved secure storage controls for any sensitive client-side secret material.
+- Given cookie-session + CSRF contract for state-changing API calls, when mobile sends non-GET request, then client includes credentials and `X-XSRF-TOKEN` header derived from `XSRF-TOKEN` cookie (Double Submit Cookie).
 
 Tasks / Subtasks
 
@@ -471,12 +473,18 @@ Tasks / Subtasks
 - [ ] Implement environment-based API configuration (AC: 2)
   - [ ] Support local/dev host overrides for emulator and physical device scenarios
   - [ ] Add health endpoint connectivity smoke path
+  - [ ] Define cookie/session transport contract in network layer (`withCredentials`/cookie jar behavior, domain policy per env)
 - [ ] Implement shared network layer with error normalization (AC: 3)
   - [ ] Centralize HTTP client setup and response handling
   - [ ] Parse backend standard error envelope into app-level error model
 - [ ] Implement secure session persistence policy (AC: 4)
-  - [ ] Store sensitive session material in platform secure storage (not plain async storage)
-  - [ ] Keep storage strategy aligned with backend session/cookie model
+  - [ ] Fix the auth storage contract: cookie-session is canonical for Epic 0 (no local password/token persistence)
+  - [ ] Use platform secure storage wrappers (iOS Keychain, Android Keystore-backed storage) for any sensitive local secret
+  - [ ] Block plain AsyncStorage/unencrypted storage for secrets by lint/review rule
+  - [ ] Keep storage strategy aligned with backend session/cookie model and PRD NFR-S1/NFR-S2
+- [ ] Implement CSRF handling contract for cookie-session mode (AC: 5)
+  - [ ] Add `XSRF-TOKEN` capture and `X-XSRF-TOKEN` injection in shared network module for POST/PUT/PATCH/DELETE
+  - [ ] Ensure CSRF header injection is skipped for safe methods (GET/HEAD/OPTIONS)
 
 Dev Notes
 
@@ -492,6 +500,14 @@ Technical Requirements
 - API base URL handling must cover local development realities (host mapping and environment switching).
 - Shared network module is mandatory to avoid per-feature HTTP divergence.
 - Session-related sensitive data must use platform-secure persistence primitives.
+- Financial-sector baseline policy for this story:
+  - Do not persist password/OTP/session identifiers in plain client storage.
+  - Use device-bound secure storage primitives (Keychain/Keystore-backed) for sensitive secrets.
+  - Keep server-issued session controls as primary (HttpOnly/Secure cookie policy remains server-side authority).
+- Sensitive data class contract (must be explicit in implementation docs):
+  - `FORBIDDEN_PERSISTENCE`: password, OTP, session cookie raw value, CSRF token raw value.
+  - `CONDITIONAL_SECURE_STORAGE_ONLY`: device-bound key material, refresh bootstrap secret (if introduced later).
+  - `ALLOWED_NON_SENSITIVE`: API host config, feature flags, UX preference state.
 
 Architecture Compliance
 
@@ -599,8 +615,10 @@ Acceptance Criteria
 - Given GitHub webhook events (`pull_request`, `workflow_run`), when GitHub Actions workflow posts to MatterMost incoming webhook, then MatterMost receives standardized notifications with repository, actor, link, and result.
 - Given Jira webhook events for issue lifecycle transitions, when Jira Automation rule sends transition event to MatterMost webhook, then MatterMost receives issue key, summary, previous/new status, and assignee context.
 - Given webhook secrets and integration endpoints, when runtime configuration is applied, then credentials are managed only via GitHub Secrets and Jira secured webhook settings (no hardcoding).
-- Given duplicate delivery or retry from source systems, when identical event context is detected by workflow/automation guard conditions, then duplicated user-visible spam is suppressed.
-- Given outbound posting failure to MatterMost, when network or API error occurs during source-side delivery, then source workflow/automation retry policy is applied and failure is observable in run/audit logs.
+- Given duplicate delivery or retry from source systems, when the dedupe key `source + source_project + target_channel + event_type + entity_id + normalized_target_status + normalized_actor` (`null`/missing -> `_`) is observed again within a 10-minute suppression window, then duplicated user-visible posts are suppressed.
+- Given direct integration architecture (no central relay), when dedupe state is persisted, then source-specific dedupe contract is explicit and auditable (`GitHub`: Actions cache key `mm-dedupe-{dedupe_hash}-{window_bucket_10m}` where `window_bucket_10m=floor(event_epoch/600)`; `Jira`: entity/property `mm_last_hash` + `mm_last_ts` with 10-minute timestamp comparison).
+- Given outbound posting failure to MatterMost, when network timeout or non-2xx response occurs, then source retry policy executes with bounded retries (`max_attempts=3`), source-specific backoff contract (`GitHub`: `2s`,`5s` + jitter `±20%`; `Jira`: fixed `2s`,`5s` without jitter due platform limits), per-source+per-entity ordering guard, and final failure visibility in run/audit logs.
+- Given reliability validation runbook execution, when duplicate and failure scenarios are replayed, then evidence artifacts are indexed under `docs/ops/webhook-validation/<YYYYMMDD>/` with reproducible naming and enforced retention configuration (`>=90 days`).
 
 Tasks / Subtasks
 
@@ -614,12 +632,22 @@ Tasks / Subtasks
   - [ ] Manage webhook URL/token only via GitHub Secrets and Jira secured settings
   - [ ] Prevent sensitive token/URL leaks in logs
 - [ ] Implement idempotency and anti-spam controls (AC: 4)
-  - [ ] Add guard conditions to skip repeated context notifications within configured window
+  - [ ] Implement dedupe key normalization: `source + source_project + target_channel + event_type + entity_id + normalized_target_status + normalized_actor` (`null`/missing -> `_`)
+  - [ ] Prefer source event unique id (`delivery_id`/equivalent) when available; fallback to normalized hash key
+  - [ ] Set suppression window to 10 minutes per source (GitHub/Jira) and document rationale
   - [ ] Suppress duplicate visible posts while keeping audit trace
-- [ ] Implement source-level retry/observability for posting failures (AC: 5)
-  - [ ] Configure GitHub Actions retry/failure reporting path
-  - [ ] Configure Jira automation failure visibility and audit trail
-- [ ] Add validation runbook for GitHub/Jira flows, duplicate suppression, and failure recovery
+- [ ] Define source-specific dedupe state contract (AC: 5)
+  - [ ] GitHub: document cache-key contract `mm-dedupe-{dedupe_hash}-{window_bucket_10m}` and bucket computation rule (`floor(event_epoch/600)`) for 10-minute suppression
+  - [ ] Jira: document entity/property-based dedupe state and 10-minute timestamp comparison rule for automation
+  - [ ] Ensure dedupe state contract is auditable from workflow/audit logs
+- [ ] Implement source-level retry/observability for posting failures (AC: 6)
+  - [ ] Configure bounded retries (`max_attempts=3`) with exponential backoff (`2s`, `5s`) and jitter (`±20%`)
+  - [ ] Define per-source+per-entity ordering guard (cross-source total ordering is out of scope)
+  - [ ] Configure Jira automation failure visibility and audit trail with explicit platform-limited retry semantics
+- [ ] Add validation runbook for GitHub/Jira flows, duplicate suppression, and failure recovery (AC: 7)
+  - [ ] Include replay scenarios: duplicate webhook event, timeout, 429/5xx response, webhook URL misconfiguration
+  - [ ] Save artifacts in `docs/ops/webhook-validation/<YYYYMMDD>/` using fixed naming (`github-*.log`, `jira-*.json`, `payload-*.json`)
+  - [ ] Configure artifact retention enforcement (`retention-days: 90` for GitHub artifacts, Jira automation audit/export retention policy) and document owner
 
 Dev Notes
 
@@ -638,7 +666,8 @@ Technical Requirements
 - Delivery:
   - MatterMost message format must be standardized and link-rich.
 - Reliability:
-  - Source-side guard conditions and retry policy on post failures.
+  - Source-side dedupe state contract and retry policy on post failures.
+  - Retry policy must include bounded attempts and per-source+per-entity ordering guard; jitter is GitHub-only and Jira uses fixed delays due platform limits.
 - Security:
   - Secrets only in GitHub Secrets and Jira secured webhook configuration, zero hardcoded credentials.
 
@@ -5358,7 +5387,7 @@ Acceptance Criteria
 
 - Given inbound request without correlation id When channel filter runs Then new id is generated and returned in response header.
 - Given internal downstream calls When channel calls account and FEP Then same correlation id is propagated.
-- Given log aggregation query When searching by correlation id Then all three services show traceable chain.
+- Given log aggregation query When searching by correlation id Then all four backend services show traceable chain.
 - Given propagation regression test When CI runs Then 3-hop header assertions pass.
 
 Tasks / Subtasks
@@ -5437,7 +5466,7 @@ So that integration and test automation are reliable.
 
 Acceptance Criteria
 
-- Given service startup When /swagger-ui.html accessed Then docs are reachable for required services.
+- Given `docs-publish.yml` succeeds on `main` When canonical API docs endpoint (`https://<org>.github.io/<repo>/`) is accessed Then docs selector tabs for required services are reachable.
 - Given controller endpoints When docs generated Then operation summaries and response schemas are present.
 - Given error codes When docs reviewed Then common failure responses are documented.
 - Given API change When contract diff check runs Then undocumented changes fail review gate.

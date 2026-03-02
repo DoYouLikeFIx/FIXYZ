@@ -53,7 +53,7 @@ Six capability domains, all implemented in `channel-service` unless noted:
 
 | Scenario                              | Test Layer                                            | Rationale                                               |
 | ------------------------------------- | ----------------------------------------------------- | ------------------------------------------------------- |
-| #1 E2E happy path                     | `@SpringBootTest` + MockMvc + Testcontainers          | Full channel→core→fep-gateway wiring required           |
+| #1 E2E happy path                     | `@SpringBootTest` + MockMvc + Testcontainers          | Full channel→core→fep-gateway→fep-simulator wiring required |
 | #2 Concurrent sell (10 threads)       | Testcontainers + `ExecutorService` + `CountDownLatch` | Real InnoDB `select ... for update` on position row     |
 | #3 OTP failure blocks                 | Unit test, `OrderSessionService`                      | Pure state machine logic, no I/O                        |
 | #4 ClOrdID idempotency                | Integration, real MySQL                               | `UNIQUE INDEX` behavior requires real engine            |
@@ -67,12 +67,12 @@ Six capability domains, all implemented in `channel-service` unless noted:
 | --------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | Concurrency                 | `SELECT FOR UPDATE` on position writes                                                   | Pessimistic lock on position entity (EAGER mode); QueryDSL daily-sell-limit runs inside lock scope   |
 | Concurrent session race     | `AUTHED→EXECUTING` state transition must be atomic                                       | Redis `SET ch:txn-lock:{sessionId} NX EX 30` before CoreBanking call; `NX` failure → `CORE-003`      |
-| Security                    | HttpOnly + Secure + SameSite=Strict cookie, CSRF Synchronizer Token, PII masking, step-up OTP | Spring Security + `HttpSessionCsrfTokenRepository` + `AccountNumber.masked()` in `channel-common`  |
+| Security                    | HttpOnly + Secure + SameSite cookie, CSRF Double Submit Cookie, PII masking, step-up OTP | Spring Security + `CookieCsrfTokenRepository` (`XSRF-TOKEN` → `X-XSRF-TOKEN`) + `AccountNumber.masked()` in `channel-common`  |
 | Resilience                  | Circuit breaker OPEN after 3 FEP timeouts (Resilience4j `slidingWindowSize=3`); compensating position reversal on post-commit failure | **단일 CB 레이어**: Resilience4j `@CircuitBreaker(name="fep")` on `FepClient` in **corebank-service** — `slidingWindowSize=3`, `failureRateThreshold=100`, `waitDurationInOpenState=10s`. CB OPEN preemptive: no `@Transactional`, no order record, no position change. Post-commit FEP failure: compensating position reversal via `OrderSessionRecoveryService` (corebank-service-owned). CB state: `localhost:8081/actuator/circuitbreakers` |
 | Idempotency                 | `ClOrdID` UNIQUE at DB level                                                             | `UNIQUE INDEX idx_clordid (cl_ord_id)` in `core_db.orders`                                          |
 | Observability (Demo)        | Actuator selectively exposed for screenshare demo                                        | `circuitbreakers` + `health` endpoints accessible without auth; FEP chaos endpoint robustly designed |
 | Rate Limiting               | Login: 5 req/min/IP; OTP: 3/session; Order Prepare: 10 req/min/userId                   | Bucket4j + Redis-backed `Filter` on 3 endpoints only                                                |
-| Test Coverage               | CoreBanking ≥ 80%, Channel ≥ 70%, FEP ≥ 60%                                              | JaCoCo in Gradle; real MySQL + Redis via Testcontainers (H2 disqualified at architecture level)     |
+| Test Coverage               | CoreBanking ≥ 80%, Channel ≥ 70%, FEP Gateway ≥ 60%, FEP Simulator ≥ 60%                 | JaCoCo in Gradle; real MySQL + Redis via Testcontainers (H2 disqualified for runtime/integration, OpenAPI generation-only profile exception) |
 | Cold Start (Demo Guarantee) | `docker compose up` → first API call ≤ 120s (Vault + vault-init initialization accounts for extended window vs. non-Vault baseline) | `depends_on: condition: service_healthy` mandatory; Flyway DDL targeting < 3s total migration time  |
 
 **Scale & Complexity:**
@@ -91,8 +91,8 @@ Six capability domains, all implemented in `channel-service` unless noted:
 
 | Constraint                         | Detail                                                                                                                                                                                                |
 | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Java 21 + Spring Boot 3.x          | Non-negotiable; baseline for all 4 services                                                                                                                                                           |
-| MySQL InnoDB only                  | H2 disqualified at architecture level — does not implement `SELECT FOR UPDATE` equivalently                                                                                                           |
+| Java 21 + Spring Boot 3.x          | Non-negotiable; baseline for all 4 backend services (`channel-service`, `corebank-service`, `fep-gateway`, `fep-simulator`)                                                                          |
+| MySQL InnoDB only                  | H2 disqualified for runtime/integration paths — does not implement `SELECT FOR UPDATE` equivalently; exception: build-time OpenAPI generation profile may use isolated in-memory datasource only for spec emission |
 | Testcontainers mandatory           | `MySQLContainer("mysql:8.0")` + `RedisContainer` for all integration tests; `testcontainers.reuse.enable=true` in `~/.testcontainers.properties` is **CI-gate prerequisite**                          |
 | No distributed transactions        | Compensating state transitions for FEP order path; InnoDB ACID for order session commit                                                                                                               |
 | Redis EXPIRE enforcement           | Session TTL 30min, OTP TTL 600s, OrderSession TTL 600s — no scheduler cleanup                                                                                                                        |
@@ -100,8 +100,8 @@ Six capability domains, all implemented in `channel-service` unless noted:
 | `docker compose up` cold start     | `depends_on: condition: service_healthy` on all services; Flyway DDL targeting < 3s migration on cold boot                                                                                            |
 | No Keycloak (MVP)                  | Spring Security `AuthenticationProvider` interface used (Spring standard, zero extra cost — enables Keycloak drop-in post-MVP)                                                                        |
 | No Kafka (MVP)                     | Synchronous REST between services; Kafka/outbox pattern is vision-phase — no `NotificationPublisher` interface pre-built                                                                              |
-| Gradle module dependency direction | `channel-common` = zero Spring dependencies (pure Java only); nothing depends on `channel-app` except entry point                                                                                     |
-| X-Internal-Secret filter           | **Copy-paste for MVP across 4 services** (~20 lines each); `// TODO: extract to core-common` comment marks each copy; conscious duplication documented here                                           |
+| Gradle module dependency direction | `channel-common` = zero Spring dependencies (pure Java only); nothing depends on `channel-service` except entry point                                                                                     |
+| X-Internal-Secret filter           | **Copy-paste for MVP across 3 internal services** (~20 lines each: corebank/fep-gateway/fep-simulator); `// TODO: extract to core-common` comment marks each copy; conscious duplication documented here |
 
 ---
 
@@ -109,15 +109,15 @@ Six capability domains, all implemented in `channel-service` unless noted:
 
 | Concern                  | Scope                                | Implementation                                                                                                                                                                                                                                                                                                                                                                              |
 | ------------------------ | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Trace propagation        | All 3 services                       | `traceparent` + `X-Correlation-Id` headers; MDC injection via `OncePerRequestFilter`                                                                                                                                                                                                                                                                                                        |
+| Trace propagation        | All 4 backend services               | `traceparent` + `X-Correlation-Id` headers; MDC injection via `OncePerRequestFilter`                                                                                                                                                                                                                                                                                                        |
 | PII masking              | Channel layer (logs + API responses) | `AccountNumber.masked()` in `channel-common`; unit-tested — full number must never appear in output                                                                                                                                                                                                                                                                                         |
-| Error code taxonomy      | All services                         | API 응답: `CHANNEL-xxx` / `ORD-xxx` / `CORE-xxx` / `FEP-xxx` / `SYS-xxx` → `GlobalExceptionHandler` → standard response envelope; `AUTH-xxx`는 Spring Security 내부 코드 (RULE-031, P-F5). **FEP Gateway RC 코드**: `RC=9001 NO_ROUTE` / `RC=9002 POOL_EXHAUSTED` / `RC=9003 NOT_LOGGED_ON` / `RC=9004 TIMEOUT` / `RC=9005 KEY_EXPIRED` / `RC=9097 ORDER_REJECTED` / `RC=9098 CIRCUIT_OPEN` / `RC=9099 CONCURRENCY_FAILURE`                                                                                                                                                                                                                                                                                        |
+| Error code taxonomy      | All services                         | API 응답: `CHANNEL-xxx` / `ORD-xxx` / `CORE-xxx` / `FEP-xxx` / `SYS-xxx` → `GlobalExceptionHandler` → standard response envelope; `AUTH-xxx`는 Spring Security 내부 코드 (RULE-031, P-F5). **FEP RC 코드**: `RC=9001 NO_ROUTE` / `RC=9002 POOL_EXHAUSTED` / `RC=9003 NOT_LOGGED_ON` / `RC=9004 TIMEOUT` / `RC=9005 KEY_EXPIRED` / `RC=9097 ORDER_REJECTED` / `RC=9098 CIRCUIT_OPEN` / `RC=9099 CONCURRENCY_FAILURE`                                                                                                                                                                                                                                                                                                |
 | Docker network isolation | Compose layer                        | `external-net` (Channel only, port 8080 exposed), `core-net` (Channel↔CoreBanking), `gateway-net` (CoreBanking↔FEP Gateway:8083), `fep-net` (FEP Gateway↔FEP Simulator:8082); no ports on CoreBanking, FEP Gateway, or FEP Simulator exposed to host                                                                                                                                                                                                                                                                                                                                             |
 | Internal API secret      | Service-to-service                   | `X-Internal-Secret` header validated by `OncePerRequestFilter` (copy-paste MVP); `INTERNAL_API_SECRET` env var                                                                                                                                                                                                                                                                              |
 | Saga ownership           | Channel ↔ CoreBanking                | **Channel-service is the saga orchestrator** — owns `OrderExecutionService`, calls CoreBanking execute, issues compensating position release on FEP failure; CoreBanking executes Order Book + position mutation atomically                                                                                                                                                                |
 | Audit logging            | Channel layer                        | `audit_logs` + `security_events` tables; scheduled purge (90/180 days)                                                                                                                                                                                                                                                                                                                      |
 | Rate limiting            | Channel layer                        | Bucket4j Filter on 3 endpoints only (login, OTP verify, order prepare)                                                                                                                                                                                                                                                                                                                   |
-| CSRF                     | Channel ↔ React                      | Synchronizer Token (`HttpSessionCsrfTokenRepository`); `GET /api/v1/auth/csrf` → 로그인 전 CSRF 토큰 조회; React axios interceptor injects `X-CSRF-TOKEN` on all non-GET; 로그인 성공 후 재조회 필수 (`changeSessionId()` 후 토큰 재발급) |
+| CSRF                     | Channel ↔ React/Mobile               | Double Submit Cookie (`CookieCsrfTokenRepository.withHttpOnlyFalse()`); `GET /api/v1/auth/csrf`로 `XSRF-TOKEN` 발급 후 모든 non-GET에 `X-XSRF-TOKEN` 주입; 로그인 성공 후 재조회 필수 (`changeSessionId()` 후 토큰 재발급) |
 | SSE lifecycle            | Channel ↔ Frontend                   | SSE endpoint is session-aware push channel; backend must push session-expiry event proactively before TTL expires; CORS `allowCredentials=true` must explicitly cover `/api/v1/notifications/stream`; production (cross-origin Vercel→EC2): `allowCredentials=true` + exact origins required (`fix-xxx.vercel.app`, `localhost:5173`); `EventSource({ withCredentials: true })` on frontend |
 | Demo infrastructure      | Actuator + FEP chaos                 | `circuitbreakers` + `health` accessible without auth for screenshare; `PUT /fep-internal/rules` robustly designed (chaos endpoint is a demo use case, not test-only)                                                                                                                                                                                                                       |
 | ADR format               | Architecture document                | Key decisions use lightweight ADR: Context → Decision → Consequences; pessimistic lock rationale and simulation boundaries documented for verbatim interview narration                                                                                                                                                                                                                      |
@@ -130,10 +130,10 @@ _Decisions that look like shortcuts but are deliberate, with the production path
 
 | Simplification                                    | Why Correct for MVP                                                                    | Production Path                                                                        |
 | ------------------------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `X-Internal-Secret` copy-pasted across 4 services | 80 lines total; shared library adds Gradle publishing complexity with zero callers     | Extract to `core-common` library post-MVP; `// TODO` comment marks each copy           |
+| `X-Internal-Secret` copy-pasted across 3 internal services | ~60 lines total; shared library adds Gradle publishing complexity with zero callers | Extract to `core-common` library post-MVP; `// TODO` comment marks each copy           |
 | No `NotificationPublisher` interface abstraction  | Kafka is vision-phase; pre-building the interface adds speculative code with no caller | Add interface when Kafka is scoped; `NotificationService` → refactor boundary is clean |
 | TOTP (Google Authenticator RFC 6238) instead of SMS OTP | Real-world 2FA UX; no telephony costs; TOTP secret in Vault (NFR-grade key management); `OtpService` interface preserved for replaceability | Replace `TotpOtpService` with HSM-backed TOTP provider; Vault integration unchanged |
-| Synchronous REST between services                 | No Kafka needed for 4-service MVP; simpler to reason about and debug during demo       | Add Outbox pattern + Kafka when event streaming is scoped                              |
+| Synchronous REST between services                 | No Kafka needed for 4-backend-service MVP; simpler to reason about and debug during demo | Add Outbox pattern + Kafka when event streaming is scoped                              |
 | TLS Credential management (TLS_CERT/LOGON_PASSWORD/ADMIN_TOKEN) in `fep-gateway` | Real PKI/CA infrastructure adds external dependency; DB-managed credential store demonstrates the FIX 4.2 session security pattern (자격증명 생성·갱신·만료 관리) without external CA; `CredentialService` interface preserved for replaceability | Swap `LocalCredentialService` with real PKI/CA integration; `fep_security_keys` 테이블 구조 유지 |
 | `fep-simulator` `simulator_rules` 5-action rule engine | `simulator_rules` 테이블(APPROVE/DECLINE/IGNORE/DISCONNECT/MALFORMED_RESP + TTL + 금액/Symbol 매칭)은 단순 3-param mock을 넘어 실제 FEP 장애 유형을 시뮬레이션 — "단순 mock이 아니라 프로토콜 레벨 장애 패턴을 이해한다"는 포트폴리오 신호 | 규칙 엔진 범위는 MVP 완성 후 확장 가능 (Symbol-prefix 매칭, 시간대 스케줄 등) |
 
@@ -165,8 +165,8 @@ Distributed backend system — Gradle multi-module monolith + 3 satellite servic
 
 **ADR: Spring MVC (servlet stack) over WebFlux**
 
-- **Context:** Three Spring Boot services with blocking JPA + `@Transactional` + `@Lock(PESSIMISTIC_WRITE)` data layer.
-- **Decision:** All 3 services use `spring-boot-starter-web` (servlet stack). WebFlux rejected.
+- **Context:** Four Spring Boot backend services with blocking JPA + `@Transactional` + `@Lock(PESSIMISTIC_WRITE)` data layer.
+- **Decision:** All 4 backend services use `spring-boot-starter-web` (servlet stack). WebFlux rejected.
 - **Consequences:** `SseEmitter` + `@Async` for SSE (correct for blocking data layer). Mixing reactive controllers with blocking JPA would block the event loop — a production footgun. All services on servlet stack for homogeneity and blocking data layer compatibility.
 
 **Initialization — `channel-service` (boot entry module):**
@@ -186,7 +186,8 @@ spring init \
 
 **Dependencies for `corebank-service`:** `web,data-jpa,data-redis,actuator,validation,flyway,mysql`
 
-**Dependencies for `fep-app`:** `web,actuator,validation`
+**Dependencies for `fep-gateway`:** `web,actuator,validation`
+**Dependencies for `fep-simulator`:** `web,actuator,validation`
 
 **Additional `build.gradle` dependencies (manually added):**
 
@@ -198,10 +199,10 @@ annotationProcessor 'com.querydsl:querydsl-apt:5.x.x:jakarta'
 // Resilience4j
 implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.x.x'
 
-// Bucket4j (rate limiting, channel-app only)
+// Bucket4j (rate limiting, channel-service only)
 implementation 'com.giffing.bucket4j.spring.boot.starter:bucket4j-spring-boot-starter:0.x.x'
 
-// springdoc-openapi (channel-app + fep-app only)
+// springdoc-openapi (channel-service + corebank-service + fep-gateway + fep-simulator for spec generation)
 implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.x.x'
 
 // Testcontainers (all modules via testing-support)
@@ -210,7 +211,7 @@ testImplementation project(':testing-support')
 
 **QueryDSL APT Placement Rule:**
 
-> `annotationProcessor 'com.querydsl:querydsl-apt:...:jakarta'` belongs **only on the module that declares `@Entity` classes** (e.g., `corebank-domain`). Q-class output dir: `build/generated/sources/annotationProcessor/java/main`. The consuming module (e.g., `corebank-app`) adds `implementation project(':corebank-domain')` — the Q-classes are resolved transitively. **This is the Week 1 spike's actual complexity**, not dependency resolution.
+> `annotationProcessor 'com.querydsl:querydsl-apt:...:jakarta'` belongs **only on the module that declares `@Entity` classes** (e.g., `corebank-domain`). Q-class output dir: `build/generated/sources/annotationProcessor/java/main`. The consuming module (e.g., `corebank-service`) adds `implementation project(':corebank-domain')` — the Q-classes are resolved transitively. **This is the Week 1 spike's actual complexity**, not dependency resolution.
 
 **Architectural decisions provided by starter:**
 
@@ -310,7 +311,7 @@ export const formatKRW = (amount: number): string =>
 - Same `docker-compose.yml` used locally runs on EC2 via SSH
 - `docker compose up -d` on EC2 — no translation layer, no task definitions
 - MySQL + Redis run as compose services on EC2 (sufficient for portfolio traffic)
-- Security group: port 8080 open to internet (or behind reverse proxy); ports 8081/8082 internal only
+- Security group: port 8080 open to internet (or behind reverse proxy); ports 8081/8082/8083 internal only
 
 **Vercel deployment:**
 
@@ -363,7 +364,7 @@ VITE_API_BASE_URL=https://fix-api.example.com
 > ⚠️ **P-F2**: 아래는 초기 설계 참고용 구버전 트리입니다. **실제 구현 기준은 아래 '최종 확정 Gradle 모듈 구조 (7개)'** 및 '완전한 프로젝트 디렉토리 트리' 섹션을 따르세요.
 
 ```
-fix/                              ← root Gradle project (7-module 확정 구조: core-common, testing-support, channel-domain, channel-service, corebank-domain, corebank-service, fep-service)
+fix/                              ← root Gradle project (8-module 확정 구조: core-common, testing-support, channel-domain, channel-service, corebank-domain, corebank-service, fep-gateway, fep-simulator)
   settings.gradle.kts             ← includes all submodules
   build.gradle.kts                ← root buildscript (version catalog only, no plugins applied)
   core-common/                    ← Pure Java: 공통 상수/예외/유틸 (zero Spring deps)
@@ -374,13 +375,14 @@ fix/                              ← root Gradle project (7-module 확정 구�
   channel-service/                ← Spring Boot entry (channel-service:8080)
   corebank-domain/                ← JPA entities + repositories (APT target for QueryDSL)
   corebank-service/               ← Spring Boot entry (corebank-service:8081)
-  fep-service/                    ← Spring Boot entry (fep-simulator:8082)
+  fep-gateway/                    ← Spring Boot entry (fep-gateway:8083)
+  fep-simulator/                  ← Spring Boot entry (fep-simulator:8082)
   fix-frontend/                   ← Vite + React + TypeScript (pnpm)
     src/
       lib/axios.ts                ← axios instance (withCredentials, baseURL from env)
       utils/format.ts             ← formatKRW() and shared formatters
       test/setup.ts               ← EventSource mock stub
-  docker-compose.yml              ← channel + corebank + fep + mysql + redis
+  docker-compose.yml              ← channel + corebank + fep-gateway + fep-simulator + mysql + redis
   .env.example                    ← committed; .env gitignored
   .github/
     workflows/
@@ -425,10 +427,10 @@ _Architecture cannot be validated until all 5 pass. These are the exit criteria 
 
 | Story                             | Done Condition                                                                                                                                                                                                |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| S1.1 Gradle multi-module scaffold | All modules compile; `channel-app` starts on :8080; `settings.gradle.kts` includes all modules; dependency direction rules verified                                                                           |
+| S1.1 Gradle multi-module scaffold | All modules compile; `channel-service` starts on :8080; `settings.gradle.kts` includes all modules; dependency direction rules verified                                                                           |
 | S1.2 QueryDSL APT spike           | `QOrder` generated in `corebank-domain`; confirmed in `build/generated/sources/annotationProcessor`; one `JPAQueryFactory` query (daily-sell-qty-sum) runs against Testcontainers MySQL                |
-| S1.3 `testing-support` module     | Singleton `MySQLContainer` + `RedisContainer` with `.withReuse(true)`; one test from each of `channel-app` and `corebank-app` uses shared containers; `testcontainers.reuse.enable=true` documented in README |
-| S1.4 Docker Compose local         | `docker compose up` → all 4 services healthy; `depends_on: condition: service_healthy` confirmed; cold start ≤ 90s; `pnpm dev` connects via Vite proxy                                                      |
+| S1.3 `testing-support` module     | Singleton `MySQLContainer` + `RedisContainer` with `.withReuse(true)`; one test from each of `channel-service` and `corebank-service` uses shared containers; `testcontainers.reuse.enable=true` documented in README |
+| S1.4 Docker Compose local         | `docker compose up` → all 4 backend services healthy; `depends_on: condition: service_healthy` confirmed; cold start ≤ 120s (Vault + vault-init baseline); `pnpm dev` connects via Vite proxy             |
 | S1.5 Vite + React scaffold        | `fix-web/` created; Vite proxy configured; `vitest.setup.ts` with `EventSource` mock; `formatKRW()` utility in `src/utils/format.ts`; seed data migration runs on `test` profile                              |
 
 ---
@@ -446,10 +448,10 @@ _Flat reference for implementers. Every named decision, rule, and ADR. Reference
 | D-001 | `RestClient` for service-to-service HTTP                                                        | API & Communication         |
 | D-002 | Tailwind CSS for frontend styling                                                               | Frontend Architecture       |
 | D-003 | Lombok enabled (with entity safety rules)                                                       | Data Architecture           |
-| D-004 | Matrix Build CI (3 parallel jobs per service)                                                   | Infrastructure & Deployment |
+| D-004 | Matrix Build CI (4 parallel jobs per service)                                                   | Infrastructure & Deployment |
 | D-005 | `FepClient` as Spring bean for AOP proxy (`@CircuitBreaker`)                                    | API & Communication         |
 | D-006 | Manual DTO mapping for MVP (< 10 entity types)                                                  | Data Architecture           |
-| D-007 | `application.yml` throughout all 3 services                                                     | Infrastructure & Deployment |
+| D-007 | `application.yml` throughout all 4 backend services                                             | Infrastructure & Deployment |
 | D-008 | `NotificationContext` (React Context + `useReducer`) for SSE global state                       | Frontend Architecture       |
 | D-009 | Symbol format validated in Channel (`^\d{6}$` KRX 표준); duplicate-order guard `ORD-004`         | API & Communication         |
 | D-010 | Structured JSON logging via `logstash-logback-encoder`                                          | Infrastructure & Deployment |
@@ -479,12 +481,12 @@ _Flat reference for implementers. Every named decision, rule, and ADR. Reference
 | RULE-004 | CI triggers: `push main` + `pull_request → main`; PRs blocked if CI fails                                              | Infrastructure & Deployment |
 | RULE-005 | Trunk-based branching; `main` always deployable; feature branches `feat/{name}`; no long-lived `develop`               | Infrastructure & Deployment |
 | RULE-006 | QueryDSL `annotationProcessor` on entity-owning module only (`corebank-domain`)                                        | Data Architecture           |
-| RULE-007 | `channel-common` = zero Spring dependencies (pure Java); nothing depends on `channel-app` except entry point           | Data Architecture           |
-| RULE-008 | `X-Internal-Secret` filter copy-pasted MVP (3 services); each copy has `// TODO: extract to core-common`               | Auth & Security             |
+| RULE-007 | `channel-common` = zero Spring dependencies (pure Java); nothing depends on `channel-service` except entry point           | Data Architecture           |
+| RULE-008 | `X-Internal-Secret` filter copy-pasted MVP (3 internal services: corebank/fep-gateway/fep-simulator); each copy has `// TODO: extract to core-common` | Auth & Security             |
 | RULE-009 | Lombok JPA entity: `@EqualsAndHashCode` forbidden; `@ToString` with lazy collections forbidden                         | Data Architecture           |
-| RULE-010 | `@SpringBootTest` in `channel-app` module only; other modules use `@ExtendWith(MockitoExtension.class)`                | Infrastructure & Deployment |
+| RULE-010 | `@SpringBootTest` in `channel-service` module only; other modules use `@ExtendWith(MockitoExtension.class)`                | Infrastructure & Deployment |
 | RULE-011 | `@Valid` on `@RequestBody`; `@Validated` for path/query params; never on service layer                                 | API & Communication         |
-| RULE-012 | Permit `/swagger-ui/**`, `/v3/api-docs/**` in `SecurityConfig.permitAll()` from day 1                                  | Auth & Security             |
+| RULE-012 | Permit `/swagger-ui/**`, `/v3/api-docs/**` in `SecurityConfig.permitAll()` for local/dev profiles only; keep docs disabled in prod | Auth & Security             |
 | RULE-013 | `@EnableAsync` on `ChannelAppConfig`; `NotificationService.push()` `@Async`; `SyncTaskExecutor` in tests               | API & Communication         |
 | RULE-014 | Docker healthcheck: MySQL `start_period: 30s`; Redis `start_period: 5s`; both required                                 | Infrastructure & Deployment |
 | RULE-015 | OTP attempt debounce: `SET ch:otp-attempt-ts:{orderSessionId} NX EX 1`; key exists → HTTP 429 `RATE-001`, no attempt consumed | Auth & Security             |
@@ -637,7 +639,7 @@ Before consuming an OTP attempt: `SET ch:otp-attempt-ts:{orderSessionId} NX EX 1
 
 **RULE-008 — X-Internal-Secret filter (conscious duplication)**
 
-`OncePerRequestFilter` validates `X-Internal-Secret` header on `corebank-service` and `fep-app`. Copy-pasted ~20 lines in each service. Each copy has:
+`OncePerRequestFilter` validates `X-Internal-Secret` header on `corebank-service`, `fep-gateway`, and `fep-simulator`. Copy-pasted ~20 lines in each service. Each copy has:
 
 ```java
 // TODO: extract to core-common when adding a 4th service
@@ -649,7 +651,7 @@ URL prefix enforced at `SecurityConfig` path matchers, not just controller annot
 
 1. `InternalSecretFilter` → validates `/internal/v1/**` and `/fep-internal/**` before reaching controllers
 2. Spring Security session auth → validates `/api/v1/**` (except per `permitAll()` list)
-3. `permitAll()` → `/api/v1/auth/login`, `/api/v1/auth/register`, `/api/v1/auth/csrf`, `/swagger-ui/**`, `/v3/api-docs/**`, `/actuator/health`, `/actuator/circuitbreakers`
+3. `permitAll()` → `/api/v1/auth/login`, `/api/v1/auth/register`, `/api/v1/auth/csrf`, `/actuator/health`, `/actuator/circuitbreakers` (+ `/swagger-ui/**`, `/v3/api-docs/**` in local/dev profiles only)
    > ℹ️ `/api/v1/auth/register` — login-flow.md Story 1.1에서 MVP에 포함됨 (BCrypt 해싱 + corebank 계좌 자동 생성)
 
 ---
@@ -816,7 +818,7 @@ export function NotificationProvider({ children }) {
 
 **D-004 — Matrix Build CI**
 
-Three parallel GitHub Actions jobs: `channel-service`, `corebank-service`, `fep-simulator`. Each job runs on isolated GitHub-hosted runner VM — no Testcontainers port conflicts. Fresh containers per job is correct (not reuse).
+Four parallel GitHub Actions jobs: `channel-service`, `corebank-service`, `fep-gateway`, `fep-simulator`. Each job runs on isolated GitHub-hosted runner VM — no Testcontainers port conflicts. Fresh containers per job is correct (not reuse).
 
 JaCoCo thresholds per service enforced in `build.gradle` via `jacocoTestCoverageVerification` (RULE-017):
 
@@ -825,14 +827,14 @@ jacocoTestCoverageVerification {
     violationRules {
         rule {
             limit { minimum = 0.80 }  // corebank: 80%
-            // channel-app: 0.70, fep-app: 0.60
+            // channel-service: 0.70, fep-gateway: 0.60, fep-simulator: 0.60
         }
     }
 }
 check.dependsOn jacocoTestCoverageVerification
 ```
 
-CI badge row in README: `[build]` `[coverage-channel]` `[coverage-core]` `[coverage-fep]`
+CI badge row in README: `[build]` `[coverage-channel]` `[coverage-core]` `[coverage-fep-gateway]` `[coverage-fep-simulator]`
 
 **CI trigger (RULE-004):**
 
@@ -846,11 +848,11 @@ on:
 
 **D-007 — application.yml throughout**
 
-All 3 services use YAML config exclusively. No `.properties` files except `gradle.properties`. Profiles: `local` (dev), `test` (CI/Testcontainers), `deploy` (AWS EC2).
+All 4 backend services use YAML config exclusively. No `.properties` files except `gradle.properties`. Profiles: `local` (dev), `test` (CI/Testcontainers), `deploy` (AWS EC2).
 
 **D-010 — Structured logging**
 
-`logstash-logback-encoder` in all 3 services:
+`logstash-logback-encoder` in all 4 backend services:
 
 ```groovy
 implementation 'net.logstash.logback:logstash-logback-encoder:7.x'
@@ -885,7 +887,7 @@ CoreBank exposes `health` + `metrics` only (internal — no public Actuator demo
 testImplementation 'org.wiremock:wiremock-standalone:3.x.x'
 ```
 
-`FepClient` integration tests in `channel-app` use WireMock to simulate FEP timeout. FEP chaos endpoint (`PUT /fep-internal/rules`) reserved for demo screenshare and manual verification — not in automated CI.
+`FepClient` integration tests in `channel-service` use WireMock to simulate FEP timeout. FEP chaos endpoint (`PUT /fep-internal/rules`) reserved for demo screenshare and manual verification — not in automated CI.
 
 **D-019 — Docker healthcheck specs**
 
@@ -1133,7 +1135,8 @@ src/
 ```
 channel-service  →  channel-domain  →  (없음)
 corebank-service →  corebank-domain →  (없음)
-fep-service      →  fep-domain      →  (없음)
+fep-gateway      →  (없음)
+fep-simulator    →  (없음)
 *-service        →  core-common
 *-domain         →  core-common
 testing-support  →  core-common, *-domain
@@ -1545,7 +1548,7 @@ application-prod.yml      — AWS EC2
 # 형식: <type>(<scope>): <subject>
 #
 # type: feat | fix | refactor | test | docs | chore | style
-# scope: channel | corebank | fep | core-common | frontend | infra | ci
+# scope: channel | corebank | fep-gateway | fep-simulator | core-common | frontend | infra | ci
 #
 # 예시:
 # feat(channel): add OTP verification endpoint
@@ -1678,6 +1681,7 @@ jib {
 # springdoc.api-docs.enabled: false  (필수 비활성화)
 
 # SecurityConfig: /swagger-ui/**, /v3/api-docs/** → local만 permitAll
+# Canonical API docs serving endpoint: GitHub Pages (`https://<org>.github.io/<repo>/`) via docs-publish workflow
 # ✅ @Operation(summary, description) — 모든 public 엔드포인트
 # ❌ 금지: prod 배포 후 /v3/api-docs 외부 노출
 ```
@@ -1829,7 +1833,7 @@ spring:
 
 # Redis:
 # spring.data.redis.lettuce.pool.max-active: 8
-# 3서비스 × 10 = 30 connections < MySQL max_connections 151 (안전)
+# 4서비스 × 10 = 40 connections < MySQL max_connections 151 (안전)
 # ❌ 금지: maximum-pool-size > 20
 ```
 
@@ -1877,12 +1881,14 @@ spring:
 ```bash
 # 배포 순서:
 # 1. corebank-service (Flyway 실행)
-# 2. fep-simulator
-# 3. channel-service
+# 2. fep-gateway
+# 3. fep-simulator
+# 4. channel-service
 
 docker compose pull
 docker compose up -d corebank-service
 # healthcheck 확인 후:
+docker compose up -d fep-gateway
 docker compose up -d fep-simulator
 docker compose up -d channel-service
 
@@ -2126,13 +2132,13 @@ RULE 위반이 정당화되는 경우 (성능 최적화, 외부 라이브러리 
 | 항목              | 변경 전                    | 변경 후                  | 이유                                     |
 | ----------------- | -------------------------- | ------------------------ | ---------------------------------------- |
 | D-017 패키지      | `io.github.yeongjae.fix.*` | `com.fix.*`              | 포트폴리오 프로젝트에 OSS 배포 관례 과분 |
-| fep-domain 모듈   | 별도 Gradle 모듈           | fep-service 내부 패키지  | corebank가 공유 불필요                   |
+| fep-domain 모듈   | 별도 Gradle 모듈           | fep-simulator 내부 패키지  | corebank가 공유 불필요                 |
 | Flyway channel_db | corebank-service 아래      | channel-service 아래     | 스키마 소유권 정정                       |
-| FepClient 위치    | fep-service/client/        | corebank-service/client/ | 호출자가 소유                            |
+| FepClient 위치    | fep-gateway/client/        | corebank-service/client/ | 호출자가 소유                            |
 
 ---
 
-### 최종 확정 Gradle 모듈 구조 (7개)
+### 최종 확정 Gradle 모듈 구조 (8개)
 
 | 모듈               | 역할                | Spring Boot | 포트 | Flyway        | QueryDSL APT |
 | ------------------ | ------------------- | ----------- | ---- | ------------- | ------------ |
@@ -2142,7 +2148,8 @@ RULE 위반이 정당화되는 경우 (성능 최적화, 외부 라이브러리 
 | `channel-service`  | 채널 서비스 진입점  | ✅          | 8080 | ✅ channel_db | ❌           |
 | `corebank-domain`  | 코어뱅킹 Entity     | ❌          | —    | ❌            | ✅           |
 | `corebank-service` | 코어뱅킹 진입점     | ✅          | 8081 | ✅ core_db    | ❌           |
-| `fep-service`      | FEP 시뮬레이터      | ✅          | 8082 | ❌            | ❌           |
+| `fep-gateway`      | FEP 게이트웨이      | ✅          | 8083 | ❌            | ❌           |
+| `fep-simulator`    | FEP 시뮬레이터      | ✅          | 8082 | ❌            | ❌           |
 
 ---
 
@@ -2154,12 +2161,13 @@ fix/                                          # 모노레포 루트
 │   └── workflows/
 │       ├── ci-channel.yml                    # matrix job 1
 │       ├── ci-corebank.yml                   # matrix job 2
-│       ├── ci-fep.yml                        # matrix job 3
+│       ├── ci-fep-gateway.yml                # matrix job 3
+│       ├── ci-fep-simulator.yml              # matrix job 4
 │       └── ci-frontend.yml                   # Vite + Vitest (R2)
 ├── .gitignore                                # *.env, build/, .gradle/, node_modules/
 ├── README.md                                 # Quick Start, 아키텍처 개요
 ├── CONTRIBUTING.md                           # 브랜치/커밋/PR 컨벤션 (R6)
-├── docker-compose.yml                        # mysql, redis, 3서비스 + 네트워크
+├── docker-compose.yml                        # mysql, redis, 4서비스 + 네트워크
 ├── docker-compose.override.yml               # 로컬 포트 바인딩 (gitignore)
 ├── .env.example                              # 모든 환경변수 키 (값 빈칸)
 ├── build.gradle                              # 루트 공통 설정 (subprojects)
@@ -2238,7 +2246,7 @@ fix/                                          # 모노레포 루트
 │       │   ├── java/com/fix/channel/
 │       │   │   ├── ChannelApplication.java
 │       │   │   ├── config/
-│       │   │   │   ├── SecurityConfig.java     # Spring Session + CORS + HttpSessionCsrfTokenRepository + permitAll
+│       │   │   │   ├── SecurityConfig.java     # Spring Session + CORS + CookieCsrfTokenRepository + permitAll
 │       │   │   │   ├── CorsConfig.java         # profile별 allowedOrigins (R5)
 │       │   │   │   ├── SessionConfig.java      # @EnableRedisHttpSession + SpringSessionBackedSessionRegistry (R5)
 │       │   │   │   ├── JpaConfig.java          # @EnableJpaAuditing (R5)
@@ -2381,7 +2389,7 @@ fix/                                          # 모노레포 루트
 │                   ├── FepCircuitBreakerIntegrationTest.java  # Scenario #5 (R4)
 │                   └── LedgerIntegrityIntegrationTest.java    # Scenario #7 (R4)
 │
-├── fep-service/                               # fep-domain 흡수 (R6)
+├── fep-simulator/                             # fep-domain 흡수 (R6)
 │   ├── build.gradle
 │   └── src/
 │       ├── main/
@@ -2500,9 +2508,10 @@ fix/                                          # 모노레포 루트
 
 | 경계                               | 통신 방식       | 인증               | 네트워크     |
 | ---------------------------------- | --------------- | ------------------ | ------------ |
-| Vercel → channel-service           | HTTPS REST      | JWT Session Cookie | external-net |
+| Vercel → channel-service           | HTTPS REST      | Spring Session Cookie | external-net |
 | channel-service → corebank-service | HTTP REST       | X-Internal-Secret  | core-net     |
-| corebank-service → fep-simulator   | HTTP REST       | X-Internal-Secret  | fep-net      |
+| corebank-service → fep-gateway     | HTTP REST       | X-Internal-Secret  | gateway-net  |
+| fep-gateway → fep-simulator        | HTTP REST       | X-Internal-Secret  | fep-net      |
 | channel-service → SSE Client       | HTTP long-lived | Session Cookie     | external-net |
 | CI → EC2                           | SSH             | SSH Key            | 인터넷       |
 
@@ -2512,14 +2521,18 @@ fix/                                          # 모노레포 루트
 networks:
   external-net: # channel-service ↔ 외부
   core-net: # channel-service ↔ corebank-service
-  fep-net: # corebank-service ↔ fep-simulator
+  gateway-net: # corebank-service ↔ fep-gateway
+  fep-net: # fep-gateway ↔ fep-simulator
 
 services:
   channel-service:
     networks: [external-net, core-net]
     ports: ["8080:8080"]
   corebank-service:
-    networks: [core-net, fep-net]
+    networks: [core-net, gateway-net]
+    # ports 없음
+  fep-gateway:
+    networks: [gateway-net, fep-net]
     # ports 없음
   fep-simulator:
     networks: [fep-net]
@@ -2612,7 +2625,8 @@ include(
     'channel-service',
     'corebank-domain',
     'corebank-service',
-    'fep-service'       // fep-domain 폐기됨 (R6)
+    'fep-gateway',
+    'fep-simulator'     // fep-domain 폐기됨 (R6)
 )
 ```
 
@@ -2705,12 +2719,14 @@ Phase 1 — 인프라 기반:
 Phase 2 — 도메인 레이어:
   5. channel-domain/ (Member, OrderSession)
   6. corebank-domain/ (Position, Order + QueryDSL APT)
-  7. fep-service/domain/ (FepOrderRequest/Response, FIX 4.2)
+  7. fep-gateway/domain/ (GatewayRequest/Response, FIX 4.2 라우팅)
+  8. fep-simulator/domain/ (FepOrderRequest/Response, FIX 4.2 시뮬레이션)
 
 Phase 3 — 서비스 레이어 (동시 작업 가능):
   8. channel-service/ (Application + SecurityConfig + Flyway)
   9. corebank-service/ (Application + SecurityConfig + Flyway)
-  10. fep-service/ (Application + FepChaosController)
+  10. fep-gateway/ (Application + FepGatewayController)
+  11. fep-simulator/ (Application + FepChaosController)
 
 Phase 4 — 프론트엔드:
   11. fix-frontend/ (Vite + lib/axios.ts + types/api.ts + vercel.json)
@@ -2772,7 +2788,7 @@ Phase 4 — 프론트엔드:
 | Q-7-11  | X-Correlation-Id 전파 체인: 생성(CorrelationIdFilter/Spring Session 필터) → 전파(CoreBankClient/FepClient) → 수신(InternalSecretFilter MDC) | **Critical** | R4     |
 | Q-7-12  | DESIGN-DECISION-018: CoreBankClient no-CB/no-Retry (근거: FSM + RecoveryScheduler)                                | Important    | R4     |
 | Q-7-13  | Actuator 보안: `health,info,metrics` expose, `/actuator/health` permitAll, 나머지 ROLE_ADMIN                      | Important    | R5     |
-| Q-7-14  | docker-compose.override.yml 최소 내용: mysql:3306, redis:6379, 8081, 8082 호스트 노출                             | Important    | R5     |
+| Q-7-14  | docker-compose.override.yml 최소 내용: mysql:3306, redis:6379, 8081, 8082, 8083 호스트 노출                       | Important    | R5     |
 | Q-7-15  | OrderService.execute() 트랜잭션 경계: FEP 호출 트랜잭션 외부, DB 기록 트랜잭션 내부                              | **Critical** | R6     |
 | Q-7-16  | 매도 한도 검증 위치: channel-service OrderSessionService.initiate() (세션 생성 전)                               | Important    | R6     |
 | Q-7-17  | GET /api/v1/orders/{sessionId} — 세션 상태 조회 엔드포인트 (SessionStatusResponse)                               | Important    | R7     |
@@ -2841,7 +2857,7 @@ Gradle 모듈 경계 = Docker network 경계 = 보안 경계 3중 일치. Flyway
       - MDC.put("correlationId", correlationId)
       (참고: JwtAuthenticationFilter 제거 — Spring Session이 모든 세션 검증 처리)
 전파: CoreBankClient, FepClient → HTTP 요청 헤더에 MDC 값 삽입
-수신: InternalSecretFilter (corebank-service, fep-service)
+수신: InternalSecretFilter (corebank-service, fep-gateway, fep-simulator)
       - request.getHeader("X-Correlation-Id") → MDC.put("correlationId", ...)
 logback-spring.xml 패턴: [%X{correlationId}] 포함
 ```
@@ -2985,6 +3001,8 @@ services:
     ports: ["6379:6379"]
   corebank-service:
     ports: ["8081:8081"]
+  fep-gateway:
+    ports: ["8083:8083"]
   fep-simulator:
     ports: ["8082:8082"]
 ```
@@ -2998,7 +3016,8 @@ channel-service: InternalSecretFilter 없음 — 의도적 설계
       미적용이 버그가 아님을 명시
 
 corebank-service: InternalSecretFilter 있음 (channel → corebank)
-fep-service: InternalSecretFilter 있음 (corebank → fep)
+fep-gateway: InternalSecretFilter 있음 (corebank → fep-gateway)
+fep-simulator: InternalSecretFilter 있음 (fep-gateway → fep-simulator)
 ```
 
 #### Sprint DoD (Q-7-6)
@@ -3054,7 +3073,7 @@ eventsource.onerror = () => {
 | D-013 | Zod + React Hook Form              | Step 5        |
 | D-014 | pnpm + Vercel 배포                 | Step 3        |
 | D-015 | Docker Compose (단일 EC2)          | Step 3        |
-| D-016 | fep-domain 폐기 (fep-service 내부) | Step 6 R6     |
+| D-016 | fep-domain 폐기 (fep-simulator 내부) | Step 6 R6     |
 | D-017 | 패키지명 com.fix.\*                | Step 6 R8     |
 | D-018 | CoreBankClient no-CB/no-Retry      | Step 7 Q-7-12 |
 
@@ -3124,7 +3143,7 @@ eventsource.onerror = () => {
 **AI Agent Guidelines:**
 
 - 신규 파일은 `com.fix.{service}.{layer}` 패키지 규칙 준수
-- `InternalSecretFilter`는 corebank-service + fep-service에만 배치 (channel-service 제외 의도적)
+- `InternalSecretFilter`는 corebank-service + fep-gateway + fep-simulator에만 배치 (channel-service 제외 의도적)
 - `BaseTimeEntity`는 core-common에서 상속
 - `@DynamicPropertySource` 방식만 허용 — TC shorthand URL(`jdbc:tc:`) 금지
 - `ApiResponse<T>` 래퍼 모든 컨트롤러 응답에 적용
