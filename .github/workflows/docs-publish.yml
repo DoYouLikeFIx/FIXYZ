@@ -1,0 +1,112 @@
+name: Publish API Docs to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'BE/**'
+      - '.github/workflows/docs-publish.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gh-pages
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Restore Node PATH for act compatibility
+        if: ${{ env.ACT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node_bin=""
+          for candidate in /opt/acttoolcache/node/*/x64/bin/node /usr/local/bin/node /usr/bin/node; do
+            if [ -x "$candidate" ]; then
+              dir="$(dirname "$candidate")"
+              echo "$dir" >> "$GITHUB_PATH"
+              if [ -z "$node_bin" ]; then
+                node_bin="$dir"
+              fi
+            fi
+          done
+          if [ -n "$node_bin" ]; then
+            export PATH="$node_bin:$PATH"
+          fi
+          command -v node
+          node -v
+
+      - name: Generate OpenAPI specs (build-time, no Docker needed)
+        working-directory: BE
+        run: |
+          ./gradlew :channel-service:generateOpenApiDocs \
+                    :corebank-service:generateOpenApiDocs \
+                    :fep-gateway:generateOpenApiDocs \
+                    :fep-simulator:generateOpenApiDocs
+
+      - name: Assemble static docs site
+        run: |
+          mkdir -p docs-site
+          cp BE/channel-service/build/openapi/channel-service.json docs-site/channel.json
+          cp BE/corebank-service/build/openapi/corebank-service.json docs-site/corebank.json
+          cp BE/fep-gateway/build/openapi/fep-gateway.json docs-site/fep-gateway.json
+          cp BE/fep-simulator/build/openapi/fep-simulator.json docs-site/fep-simulator.json
+          python3 - << 'PY'
+          import json
+          import pathlib
+
+          for name in ("channel.json", "corebank.json", "fep-gateway.json", "fep-simulator.json"):
+              p = pathlib.Path("docs-site") / name
+              data = json.loads(p.read_text(encoding="utf-8"))
+              assert str(data.get("openapi", "")).startswith("3.0"), f"{name}: openapi version missing/invalid"
+              assert "paths" in data and isinstance(data["paths"], dict), f"{name}: paths missing"
+          print("OpenAPI structural validation passed")
+          PY
+          cat > docs-site/index.html << 'HTML'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <title>FIX API Docs</title>
+            <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui.css">
+          </head>
+          <body>
+          <div id="swagger-ui"></div>
+          <script src="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui-bundle.js"></script>
+          <script>
+            SwaggerUIBundle({
+              urls: [
+                { url: "channel.json", name: "Channel Service" },
+                { url: "corebank.json", name: "CoreBank Service" },
+                { url: "fep-gateway.json", name: "FEP Gateway" },
+                { url: "fep-simulator.json", name: "FEP Simulator" }
+              ],
+              "urls.primaryName": "Channel Service",
+              dom_id: "#swagger-ui",
+              deepLinking: true,
+              presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
+              layout: "StandaloneLayout"
+            });
+          </script>
+          </body>
+          </html>
+          HTML
+
+      - name: Deploy to GitHub Pages
+        if: ${{ !env.ACT }}
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs-site
+          force_orphan: true
+          commit_message: "docs: update API specs from ${{ github.sha }}"

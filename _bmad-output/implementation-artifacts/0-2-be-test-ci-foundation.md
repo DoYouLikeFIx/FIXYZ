@@ -19,7 +19,7 @@ so that feature teams can ship with deterministic validation.
 
 ## Tasks / Subtasks
 
-- [ ] Establish shared test foundation in `testing-support` (AC: 1, 2)
+- [ ] Establish shared test foundation in service module test scope (AC: 1, 2)
   - [ ] Provide reusable MySQL and Redis Testcontainers base support
   - [ ] Expose Testcontainers/WireMock classes with scopes that downstream test modules can resolve
   - [ ] Document local reuse behavior vs CI isolated behavior
@@ -54,7 +54,7 @@ so that feature teams can ship with deterministic validation.
 
 - Respect test layering guidance:
   - heavy integration in service modules
-  - shared utility/container scaffolding in `testing-support`
+  - shared utility/container scaffolding in each service test source set
 - Maintain dependency direction and avoid coupling production code to test utilities.
 - For FEP-related contract behavior, prefer standardized WireMock patterns to avoid divergent test setup.
 
@@ -70,7 +70,6 @@ so that feature teams can ship with deterministic validation.
 ### File Structure Requirements
 
 - Expected touched areas:
-  - `BE/testing-support/**`
   - `BE/*-service/src/test/**`
   - `/Users/yeongjae/fixyz/.github/workflows/**`
   - `/Users/yeongjae/fixyz/README.md` (quality gate and local test runbook updates, if needed)
@@ -121,7 +120,7 @@ so that feature teams can ship with deterministic validation.
 
 - `_bmad-output/planning-artifacts/epics.md` (Epic 0, Story 0.2)
 - `_bmad-output/implementation-artifacts/epic-0-project-foundation.md` (Story 0.2 detail variant)
-- `_bmad-output/planning-artifacts/architecture.md` (testing-support scope, CI patterns, WireMock guidance)
+- `_bmad-output/planning-artifacts/architecture.md` (test scope, CI patterns, WireMock guidance)
 - `_bmad-output/planning-artifacts/prd.md` (CI and quality NFR coverage context)
 - Testcontainers metadata: https://repo1.maven.org/maven2/org/testcontainers/testcontainers/maven-metadata.xml
 - WireMock metadata: https://repo1.maven.org/maven2/org/wiremock/wiremock-standalone/maven-metadata.xml

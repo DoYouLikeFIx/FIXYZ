@@ -13,3 +13,4 @@ _bmad-output/test-artifacts
 node_modules/
 
 .DS_Store
+.actrc

@@ -1,0 +1,139 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: mysql
+    environment:
+      MYSQL_DATABASE: channel_db
+      MYSQL_USER: ${MYSQL_USER:-fix}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-fix}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u${MYSQL_USER:-fix} -p${MYSQL_PASSWORD:-fix}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - fix-net
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: redis
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - redis-data:/data
+    networks:
+      - fix-net
+
+  corebank-service:
+    container_name: corebank-service
+    build:
+      context: ./BE
+      dockerfile: Dockerfile
+      args:
+        SERVICE_MODULE: corebank-service
+    environment:
+      CORE_DB_URL: jdbc:mysql://mysql:3306/core_db?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true
+      CORE_DB_USERNAME: ${MYSQL_USER:-fix}
+      CORE_DB_PASSWORD: ${MYSQL_PASSWORD:-fix}
+      INTERNAL_SECRET: ${INTERNAL_SECRET:-local-internal-secret}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8081/actuator/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    networks:
+      - fix-net
+
+  fep-gateway:
+    container_name: fep-gateway
+    build:
+      context: ./BE
+      dockerfile: Dockerfile
+      args:
+        SERVICE_MODULE: fep-gateway
+    environment:
+      INTERNAL_SECRET: ${INTERNAL_SECRET:-local-internal-secret}
+    depends_on:
+      corebank-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8083/actuator/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    networks:
+      - fix-net
+
+  fep-simulator:
+    container_name: fep-simulator
+    build:
+      context: ./BE
+      dockerfile: Dockerfile
+      args:
+        SERVICE_MODULE: fep-simulator
+    environment:
+      INTERNAL_SECRET: ${INTERNAL_SECRET:-local-internal-secret}
+    depends_on:
+      fep-gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8082/actuator/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    networks:
+      - fix-net
+
+  channel-service:
+    container_name: channel-service
+    build:
+      context: ./BE
+      dockerfile: Dockerfile
+      args:
+        SERVICE_MODULE: channel-service
+    environment:
+      CHANNEL_DB_URL: jdbc:mysql://mysql:3306/channel_db?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true
+      CHANNEL_DB_USERNAME: ${MYSQL_USER:-fix}
+      CHANNEL_DB_PASSWORD: ${MYSQL_PASSWORD:-fix}
+      INTERNAL_SECRET: ${INTERNAL_SECRET:-local-internal-secret}
+    depends_on:
+      corebank-service:
+        condition: service_healthy
+      fep-gateway:
+        condition: service_healthy
+      fep-simulator:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/actuator/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    networks:
+      - fix-net
+
+volumes:
+  mysql-data:
+  redis-data:
+
+networks:
+  fix-net:
+    driver: bridge
