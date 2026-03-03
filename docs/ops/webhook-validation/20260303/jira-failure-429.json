@@ -1,0 +1,27 @@
+{
+  "source": "jira",
+  "event_type": "jira:issue_updated",
+  "entity_id": "FIX-25",
+  "max_attempts": 3,
+  "retry_schedule_ms": [
+    2000,
+    5000
+  ],
+  "attempt_results": [
+    {
+      "attempt": 1,
+      "status_code": 429
+    },
+    {
+      "attempt": 2,
+      "status_code": 429
+    },
+    {
+      "attempt": 3,
+      "status_code": 429
+    }
+  ],
+  "final_outcome": "failed_after_retries",
+  "audit_visible": true
+}
+

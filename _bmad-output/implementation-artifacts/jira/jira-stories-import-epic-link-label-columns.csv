@@ -169,7 +169,7 @@ Acceptance Criteria
 
 - Given Testcontainers base classes, when integration tests execute, then MySQL/Redis test resources spin up deterministically.
 - Given WireMock dependency policy, when contract test stubs are compiled, then test modules resolve all required classes.
-- Given CI split workflow design, when push/PR occurs, then service-scoped pipelines execute independently.
+- Given CI split workflow design in BE repository workflows (`BE/.github/workflows`), when push/PR occurs, then service-scoped pipelines execute independently.
 - Given failed quality checks, when pipeline runs, then merge is blocked by status checks.
 
 Tasks / Subtasks
@@ -179,11 +179,11 @@ Tasks / Subtasks
   - [ ] Expose Testcontainers/WireMock classes with scopes that downstream test modules can resolve
   - [ ] Document local reuse behavior vs CI isolated behavior
 - [ ] Add CI workflow separation by service lane (AC: 3)
-  - [ ] Add/verify backend scoped workflows for channel/corebank/fep-gateway/fep-simulator
+  - [ ] Add/verify backend scoped workflows for channel/corebank/fep-gateway/fep-simulator under `BE/.github/workflows`
   - [ ] Keep workflow commands deterministic and minimal
 - [ ] Enforce quality gate behavior on PR (AC: 4)
   - [ ] Ensure failing test/lint/build status blocks merge to main
-  - [ ] Ensure CI status checks are explicit branch protection targets
+  - [ ] Ensure CI status checks are explicit branch protection targets in the BE repository
 - [ ] Add baseline verification scripts/docs (AC: 1, 3, 4)
   - [ ] Command snippets for local fast validation
   - [ ] CI troubleshooting notes for containerized tests
@@ -203,6 +203,7 @@ Technical Requirements
 - Integration tests must use real MySQL/Redis semantics through Testcontainers.
 - CI must run lane-specific pipelines so failures localize quickly.
 - Coverage/quality checks should fail fast and block merges on red states.
+- Backend CI workflow ownership is in the BE submodule repository (`BE/.github/workflows`), not the parent repository root workflows.
 - Keep Testcontainers behavior predictable:
   - local can leverage reuse optimization
   - CI must assume fresh isolated environment per job
@@ -228,7 +229,7 @@ File Structure Requirements
 
 - Expected touched areas:
   - `BE/*-service/src/test/**`
-  - `/Users/yeongjae/fixyz/.github/workflows/**`
+  - `/Users/yeongjae/fixyz/BE/.github/workflows/**`
   - `/Users/yeongjae/fixyz/README.md` (quality gate and local test runbook updates, if needed)
 - Do not implement application features in this story; CI/test infrastructure only.
 
@@ -238,7 +239,7 @@ Testing Requirements
   - Shared test base compiles from consuming service modules.
   - At least one integration test per lane can boot required containers.
   - CI workflows run independently and fail correctly on broken checks.
-  - Branch protection-compatible status checks are produced.
+  - Branch protection-compatible status checks are produced in the BE repository.
 
 Previous Story Intelligence
 

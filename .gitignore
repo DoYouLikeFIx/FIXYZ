@@ -1,6 +1,7 @@
 _bmad
 _bmad-output/bmb-creations
 _bmad-output/test-artifacts
+.tmp/
 
 .agent
 .agents

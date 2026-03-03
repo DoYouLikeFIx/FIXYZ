@@ -64,13 +64,13 @@
   - When: contract test stubs are compiled  
   - Then: test module resolves all required classes.
 - BR-0.2-03
-  - Given: CI split workflow design  
+  - Given: CI split workflow design in BE repository workflows (`BE/.github/workflows`)  
   - When: push/PR occurs  
   - Then: service-scoped pipelines execute independently.
 - BR-0.2-04
   - Given: failed quality check  
   - When: pipeline runs  
-  - Then: merge is blocked by status check.
+  - Then: merge is blocked by status check in BE repository branch protection.
 
 ### Story 0.3: [FE] Frontend Foundation Scaffold
 
@@ -157,6 +157,220 @@
   - Given: reliability validation runbook execution  
   - When: duplicate and failure scenarios are replayed  
   - Then: evidence artifacts are indexed under `docs/ops/webhook-validation/<YYYYMMDD>/` with reproducible naming and enforced retention configuration (`>=90 days`).
+
+### Story 0.6: [BE][FE][MOB][CH] Multi-Repo Collaboration Webhook Rollout
+
+- Depends On: Story 0.5
+- 분기 수: 5
+
+- BR-0.6-01
+  - Given: repository topology includes `FIXYZ`, `FIXYZ-BE`, `FIXYZ-FE`, and `FIXYZ-MOB`  
+  - When: rollout is complete  
+  - Then: each repository has a repository-local GitHub->MatterMost workflow for PR/workflow events.
+- BR-0.6-02
+  - Given: secure runtime configuration  
+  - When: workflows are configured  
+  - Then: `MATTERMOST_WEBHOOK_URL` is configured per repository secret and never hardcoded.
+- BR-0.6-03
+  - Given: channel routing requirements  
+  - When: variable configuration is applied  
+  - Then: each repository can independently set `MATTERMOST_CHANNEL_KEY` without code edits.
+- BR-0.6-04
+  - Given: reliability contracts from Story 0.5  
+  - When: notifications are posted from each repository  
+  - Then: dedupe/retry/failure-observability behavior remains contract-compatible.
+- BR-0.6-05
+  - Given: per-repository validation runs  
+  - When: duplicate and failure scenarios are replayed in each repository  
+  - Then: repository-scoped evidence is indexed under `docs/ops/webhook-validation/<YYYYMMDD>/`.
+
+### Story 0.7: [BE][CH] Edge Gateway Baseline (Nginx)
+
+- Depends On: Story 0.1
+- 분기 수: 4
+
+- BR-0.7-01
+  - Given: edge proxy option decision (`Nginx`)  
+  - When: Epic 0 edge baseline is finalized  
+  - Then: a documented ADR records selected option, rationale, and operational trade-offs.
+- BR-0.7-02
+  - Given: external traffic enters through edge proxy  
+  - When: requests are routed  
+  - Then: channel/corebank/fep-gateway/fep-simulator routes are forwarded by explicit upstream rules.
+- BR-0.7-03
+  - Given: TLS and security baseline requirements  
+  - When: edge config is applied  
+  - Then: HTTPS termination, HSTS, and baseline security headers are enforced.
+- BR-0.7-04
+  - Given: edge failure scenarios  
+  - When: upstream is unhealthy  
+  - Then: health-check and deterministic error responses are observable in logs/metrics.
+
+### Story 0.8: [BE][CH] Vault Secrets Foundation
+
+- Depends On: Story 0.1
+- 분기 수: 4
+
+- BR-0.8-01
+  - Given: secret management policy  
+  - When: Vault baseline is configured  
+  - Then: app/infrastructure secrets are sourced from Vault paths rather than hardcoded or committed files.
+- BR-0.8-02
+  - Given: CI/CD and runtime authentication needs  
+  - When: service identity is configured  
+  - Then: Vault access uses short-lived auth mechanisms and least-privilege policies.
+- BR-0.8-03
+  - Given: secret rotation requirement  
+  - When: rotation drill is executed  
+  - Then: at least one critical secret is rotated without service outage.
+- BR-0.8-04
+  - Given: audit requirements  
+  - When: secret read/write happens  
+  - Then: Vault audit logs provide traceable access records.
+
+### Story 0.9: [BE][CH] Additional Infrastructure Bootstrap
+
+- Depends On: Story 0.7, Story 0.8
+- 분기 수: 3
+
+- BR-0.9-01
+  - Given: infrastructure baseline scope  
+  - When: bootstrap scripts/IaC are executed  
+  - Then: required shared components (network, ingress, cache, message/event utilities if needed) are provisioned reproducibly.
+- BR-0.9-02
+  - Given: environment drift risk  
+  - When: bootstrap validation runs  
+  - Then: configuration parity checks detect missing or divergent components.
+- BR-0.9-03
+  - Given: onboarding requirements  
+  - When: a new engineer follows runbook  
+  - Then: environment bootstrap succeeds using documented commands only.
+
+### Story 0.10: [AC][CH] Database High Availability and Replication Baseline
+
+- Depends On: Story 0.9
+- 분기 수: 7
+
+- BR-0.10-01
+  - Given: primary-replica architecture baseline  
+  - When: database topology is provisioned  
+  - Then: replication is healthy and lag is observable with alert thresholds.
+- BR-0.10-02
+  - Given: application read/write contract  
+  - When: runtime configuration is applied  
+  - Then: writes are pinned to primary and read-routing strategy is explicit/documented.
+- BR-0.10-03
+  - Given: failover drill scenario  
+  - When: primary node is simulated unavailable  
+  - Then: recovery procedure and measured targets (`RTO <= 300s`, `RPO <= 60s`) are captured with explicit calculation method.
+- BR-0.10-04
+  - Given: backup and restore requirements  
+  - When: recovery rehearsal is executed  
+  - Then: restore integrity is validated against deterministic `SHA-256` checksum procedure.
+- BR-0.10-05
+  - Given: alerting requirements  
+  - When: lag/failure thresholds are evaluated  
+  - Then: alert rules apply explicit windows (`warn: lag >= 5s for 3 samples @10s`, `critical: lag >= 30s for 2 samples @10s` or replication stopped >= 60s).
+- BR-0.10-06
+  - Given: architecture baseline contains single-node local runtime decision  
+  - When: HA baseline is introduced  
+  - Then: ADR records HA scope boundary (`deploy/staging`) and rollback assumptions.
+- BR-0.10-07
+  - Given: read-replica consistency trade-off  
+  - When: read-routing is enabled  
+  - Then: strong-consistency endpoint allowlist is pinned to primary and tested against stale-read risk.
+
+### Story 0.11: [BE][FE][MOB][CH] Supply Chain Security Baseline
+
+- Depends On: Story 0.2, Story 0.6
+- 분기 수: 12
+
+- BR-0.11-01
+  - Given: repository topology includes `FIXYZ`, `FIXYZ-BE`, `FIXYZ-FE`, and `FIXYZ-MOB`  
+  - When: supply-chain baseline is applied  
+  - Then: each repository has ecosystem-appropriate dependency update and scan configuration.
+- BR-0.11-02
+  - Given: scheduled and PR-triggered security scans  
+  - When: vulnerabilities are analyzed  
+  - Then: findings are published with repository, package, severity, and fix availability context.
+- BR-0.11-03
+  - Given: high-risk vulnerability policy (`CVSS >= 7.0`)  
+  - When: unresolved critical/high findings exist on target branch  
+  - Then: merge is blocked by required security status checks.
+- BR-0.11-04
+  - Given: unavoidable false-positive or temporary exception cases  
+  - When: suppression is requested  
+  - Then: time-bounded exception process with owner, reason, expiry, audit trail, and auto-expiry re-blocking is enforced.
+- BR-0.11-05
+  - Given: evidence and audit requirements  
+  - When: scan workflow completes  
+  - Then: reports are retained and indexed under `docs/ops/security-scan/<YYYYMMDD>/`.
+- BR-0.11-06
+  - Given: secret-handling constraints  
+  - When: scan/reporting workflows run  
+  - Then: credentials/tokens are not hardcoded or exposed in logs.
+- BR-0.11-07
+  - Given: branch-protection integration needs  
+  - When: baseline rollout completes  
+  - Then: required security checks are verifiably bound in all 4 repositories with evidence artifacts.
+- BR-0.11-08
+  - Given: multi-source CVSS scoring differences  
+  - When: threshold decision is made  
+  - Then: score precedence is explicit (`GitHub Advisory CVSS` primary, `NVD` fallback).
+- BR-0.11-09
+  - Given: GitHub Actions supply-chain risk  
+  - When: security workflows are defined  
+  - Then: actions are SHA-pinned or temporary exception record is required with auto-expiry.
+- BR-0.11-10
+  - Given: advisories without CVSS score in primary/fallback sources  
+  - When: risk is evaluated  
+  - Then: finding enters mandatory manual-triage state and merge remains blocked until decision.
+- BR-0.11-11
+  - Given: action pinning operational constraints  
+  - When: action cannot be pinned immediately  
+  - Then: time-bounded exception record is required and policy reverts to blocking on expiry.
+- BR-0.11-12
+  - Given: evidence collection requirements  
+  - When: workflows complete  
+  - Then: evidence follows fixed machine-readable artifact contract (`index.json`, `scan-summary-<repo>.json`, `branch-protection-<repo>.json`, `exceptions-<repo>.json`).
+
+### Story 0.12: [BE][CH] Redis Recovery and Self-Healing Baseline
+
+- Depends On: Story 0.2, Story 0.9
+- 분기 수: 8
+
+- BR-0.12-01
+  - Given: Redis restart fault injection scenario  
+  - When: `redis` is restarted during active platform runtime  
+  - Then: all backend services recover to healthy status within 60 seconds without manual service restarts, using internal-network probe execution context.
+- BR-0.12-02
+  - Given: outage window during Redis unavailability  
+  - When: stateful endpoints are called  
+  - Then: failures are deterministic and normalized, with no unrecoverable stuck session/order state after recovery.
+- BR-0.12-03
+  - Given: post-restart verification flow  
+  - When: recovery checks run  
+  - Then: representative authentication/session/order smoke scenarios pass after Redis returns.
+- BR-0.12-04
+  - Given: repeatable recovery drill requirement  
+  - When: automation script or CI job executes the drill  
+  - Then: timestamps, measured recovery duration, and pass/fail threshold outputs are captured.
+- BR-0.12-05
+  - Given: operations runbook requirements  
+  - When: an engineer follows documented recovery steps  
+  - Then: troubleshooting matrix and escalation path are actionable from runbook only.
+- BR-0.12-06
+  - Given: stuck-state guardrail requirement  
+  - When: recovery validation runs  
+  - Then: no non-terminal order session exceeds `TTL + 60s` (`TTL` default 600s unless documented override).
+- BR-0.12-07
+  - Given: full-operational verdict requirement  
+  - When: drill completes  
+  - Then: success quorum is 100% pass across required probes in a single run.
+- BR-0.12-08
+  - Given: internal service exposure policy (`NFR-S4`)  
+  - When: recovery probes are executed  
+  - Then: internal service probes run from compose network context, not host-exposed ports.
 
 ### Story 1.1: [BE][CH] Registration & Login Session Core
 

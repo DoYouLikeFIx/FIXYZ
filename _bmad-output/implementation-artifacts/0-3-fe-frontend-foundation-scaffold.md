@@ -1,6 +1,6 @@
 # Story 0.3: FE Frontend Foundation Scaffold
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -19,25 +19,26 @@ so that product UI features can be implemented consistently.
 
 ## Tasks / Subtasks
 
-- [ ] Scaffold FE app baseline with modern React + TS stack (AC: 1)
-  - [ ] Initialize/verify Vite React TypeScript scaffold in FE lane
-  - [ ] Ensure local dev boot command is deterministic
-  - [ ] Verify HMR and production build both succeed
-- [ ] Implement API client baseline with environment-aware config (AC: 2)
-  - [ ] Single axios client module with base URL env wiring
-  - [ ] Development proxy routing to channel service
-  - [ ] Health endpoint smoke check from UI layer
-- [ ] Implement alias conventions and path safety (AC: 3)
-  - [ ] Configure alias consistently in Vite + tsconfig
-  - [ ] Ensure runtime and typechecker resolve same aliases
-- [ ] Implement normalized error handling contract (AC: 4)
-  - [ ] Add response interceptor for standard backend error schema
-  - [ ] Map transport and contract errors to consistent UI-safe messages
-- [ ] Add FE CI workflow (`ci-frontend.yml`) scoped to the FE lane (AC: 1)
-  - [ ] Create `.github/workflows/ci-frontend.yml` triggered on push/PR with path filter `FE/**`
-  - [ ] Workflow steps: `pnpm install --frozen-lockfile` → `pnpm run type-check` → `pnpm run lint` → `pnpm run build`
-  - [ ] Ensure workflow produces a named status check (`ci-frontend`) compatible with branch protection rules
-  - [ ] Verify `pnpm build` exits with code 0 and produces `dist/` artifact
+- [x] Scaffold FE app baseline with modern React + TS stack (AC: 1)
+  - [x] Initialize/verify Vite React TypeScript scaffold in FE lane
+  - [x] Ensure local dev boot command is deterministic
+  - [x] Verify HMR and production build both succeed
+- [x] Implement API client baseline with environment-aware config (AC: 2)
+  - [x] Single axios client module with base URL env wiring
+  - [x] Development proxy routing to channel service
+  - [x] Health endpoint smoke check from UI layer
+- [x] Implement alias conventions and path safety (AC: 3)
+  - [x] Configure alias consistently in Vite + tsconfig
+  - [x] Ensure runtime and typechecker resolve same aliases
+- [x] Implement normalized error handling contract (AC: 4)
+  - [x] Add response interceptor for standard backend error schema
+  - [x] Map transport and contract errors to consistent UI-safe messages
+- [x] Add FE-native CI workflow (`ci-frontend.yml`) in the FE repo (AC: 1)
+  - [x] Create `FE/.github/workflows/ci-frontend.yml` triggered on FE repo push/PR (do not rely on super-repo path filter `FE/**`)
+  - [x] Workflow steps: `pnpm install --frozen-lockfile` → `pnpm run type-check` → `pnpm run lint` → `pnpm run build`
+  - [x] Ensure workflow produces a named status check (`ci-frontend`) compatible with FE repo branch protection rules
+  - [x] Verify `pnpm build` exits with code 0 and produces `dist/` artifact
+  - [x] Keep root-repo CI limited to integration/sync checks; FE quality gate ownership remains in FE repo CI
 
 ## Dev Notes
 
@@ -48,6 +49,7 @@ so that product UI features can be implemented consistently.
   - This story covers FE scaffold and web API client baseline only.
   - Keep business-domain UI features out of scope.
 - FE is a separate submodule; avoid editing BE/MOB lanes except contract docs if required.
+- FE CI ownership is lane-local: define and enforce FE required checks in FE submodule workflows.
 
 ### Technical Requirements
 
@@ -81,7 +83,7 @@ so that product UI features can be implemented consistently.
   - `FE/src/lib/axios.*`
   - `FE/src/types/**` (if error contract types centralized)
   - `FE/.env.example` or equivalent env docs
-  - `/Users/yeongjae/fixyz/.github/workflows/ci-frontend.yml`
+  - `FE/.github/workflows/ci-frontend.yml`
 - Keep API client as single shared source; do not duplicate per-feature clients in foundation story.
 
 ### Testing Requirements
@@ -139,15 +141,70 @@ so that product UI features can be implemented consistently.
 
 GPT-5 Codex (Codex desktop)
 
+### Implementation Plan
+
+- Replace FE placeholder package with a Vite + React + TypeScript baseline using pnpm scripts for dev/build/test/lint/type-check.
+- Implement a single shared axios client with env-aware baseURL, dev proxy compatibility, and response/error interception for the standard `{ success, data, error }` envelope.
+- Validate API wiring by adding a simple health-check UI path that uses the shared client.
+- Enforce alias parity (`@/*`) in both bundler and TypeScript configs.
+- Add FE-native GitHub Actions workflow with the required `ci-frontend` quality gate sequence.
+- Add unit and integration tests to validate error normalization and health-check UI behavior.
+
 ### Debug Log References
 
-- Story generated from create-story workflow instructions and Epic 0 artifact synthesis.
+- `pnpm install`
+- `pnpm run type-check`
+- `pnpm run lint`
+- `pnpm run test`
+- `pnpm run build`
+- `pnpm dev --host 127.0.0.1 --port 5173` (startup smoke check)
+- `pnpm run test` (QA augmentation run: 3 files, 11 tests passed)
+- `pnpm run type-check && pnpm run lint` (post-QA verification)
 
 ### Completion Notes List
 
-- FE foundation constraints split from BE CI foundation to prevent overlap.
-- Version guidance added with compatibility guardrails.
+- Replaced FE placeholder package with Vite 7 + React 19 + TypeScript scaffold and deterministic pnpm scripts.
+- Implemented shared axios client (`src/lib/axios.ts`) with baseURL env wiring, credentials support, and response/error interceptors.
+- Added Vite proxy routing for `/api` and `/actuator` with optional `VITE_DEV_PROXY_TARGET`.
+- Implemented health-check smoke path from UI (`App.tsx` + `fetchHealth`) using shared client.
+- Added alias single source of truth in Vite and TypeScript (`@/*`).
+- Added unit and integration tests for interceptor normalization and health-check UX flow.
+- Added FE-native CI workflow `ci-frontend.yml` with required status check name `ci-frontend` and dist artifact verification.
+- QA pass added focused API/service test coverage for health endpoint contract (`health.test.ts`).
+- QA pass expanded user-flow test coverage for loading state and retry failure transitions in `App.test.tsx`.
+- QA automation summary generated at `_bmad-output/implementation-artifacts/tests/test-summary.md`.
 
 ### File List
 
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/0-3-fe-frontend-foundation-scaffold.md
+- FE/.env.example
+- FE/.github/workflows/ci-frontend.yml
+- FE/.gitignore
+- FE/README.md
+- FE/eslint.config.js
+- FE/index.html
+- FE/package-lock.json (deleted)
+- FE/package.json
+- FE/pnpm-lock.yaml
+- FE/src/App.test.tsx
+- FE/src/App.tsx
+- FE/src/index.css
+- FE/src/lib/axios.test.ts
+- FE/src/lib/axios.ts
+- FE/src/lib/errors.ts
+- FE/src/lib/health.ts
+- FE/src/lib/health.test.ts
+- FE/src/main.tsx
+- FE/src/test/setup.ts
+- FE/src/types/api.ts
+- FE/src/types/health.ts
+- FE/src/vite-env.d.ts
+- FE/tsconfig.app.json
+- FE/tsconfig.json
+- FE/tsconfig.node.json
+- FE/vite.config.ts
+- _bmad-output/implementation-artifacts/tests/test-summary.md
+
+### Change Log
+
+- 2026-03-02: Implemented FE foundation scaffold, shared API client/interceptor, alias/proxy configuration, validation tests, and FE-native CI workflow.
+- 2026-03-02: QA automation pass added health service API tests, expanded UI health-check flow tests, and published test summary artifact.

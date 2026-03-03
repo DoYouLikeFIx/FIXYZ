@@ -1,0 +1,65 @@
+{
+  "name": "MatterMost - Jira Transition Notifications",
+  "description": "Transition notifications with dedupe and bounded retry for Story/Epic lifecycle events.",
+  "projects": [
+    "FIX"
+  ],
+  "trigger": {
+    "type": "jira.issue.transitioned"
+  },
+  "filters": [
+    {
+      "type": "issueType",
+      "include": [
+        "Story",
+        "Epic"
+      ]
+    }
+  ],
+  "secure_variables": [
+    "MATTERMOST_WEBHOOK_URL"
+  ],
+  "dedupe_contract": {
+    "normalized_key": "source + source_project + target_channel + event_type + entity_id + normalized_target_status + normalized_actor",
+    "null_fallback": "_",
+    "source_event_id_precedence": true,
+    "state": {
+      "hash_property": "mm_last_hash",
+      "timestamp_property": "mm_last_ts",
+      "window_ms": 600000
+    }
+  },
+  "retry_contract": {
+    "max_attempts": 3,
+    "delays_ms": [
+      2000,
+      5000
+    ],
+    "jitter": false
+  },
+  "ordering_guard": {
+    "scope": "source+entity",
+    "entity_key": "{{issue.key}}",
+    "parallel_execution": "disabled_for_same_issue"
+  },
+  "payload_template": {
+    "text": "[Jira] {{issue.key}} {{fieldChange.fromString}} -> {{fieldChange.toString}}\\nsummary={{issue.summary}}\\nassignee={{issue.assignee.displayName}} actor={{initiator.displayName}}\\n{{baseUrl}}/browse/{{issue.key}}",
+    "props": {
+      "source": "jira",
+      "source_project": "{{issue.project.key}}",
+      "event_type": "{{webhookEvent}}",
+      "entity_id": "{{issue.key}}",
+      "previous_status": "{{fieldChange.fromString}}",
+      "target_status": "{{fieldChange.toString}}",
+      "summary": "{{issue.summary}}",
+      "assignee": "{{issue.assignee.displayName}}",
+      "actor": "{{initiator.displayName}}",
+      "issue_url": "{{baseUrl}}/browse/{{issue.key}}"
+    }
+  },
+  "audit": {
+    "retention_days_minimum": 90,
+    "owner": "delivery-platform"
+  }
+}
+

@@ -1,6 +1,6 @@
 # Story 0.5: Collaboration Webhook Notifications (MatterMost + Jira + GitHub)
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -22,39 +22,39 @@ so that release/quality state is visible in real time without manual polling.
 
 ## Tasks / Subtasks
 
-- [ ] Implement GitHub Actions -> MatterMost notification workflow (AC: 1)
-  - [ ] Support PR lifecycle and workflow result event triggers
-  - [ ] Normalize message template (repo, actor, event, URL, result)
-- [ ] Implement Jira Automation -> MatterMost notification rule set (AC: 2)
-  - [ ] Support Story/Epic transition events
-  - [ ] Normalize message template (issue key, summary, status change, assignee)
-- [ ] Implement secure configuration management for webhook integration (AC: 3)
-  - [ ] Manage webhook URL/token only via GitHub Secrets and Jira secured settings
-  - [ ] Prevent sensitive token/URL leaks in logs
-- [ ] Implement idempotency and anti-spam controls (AC: 4)
-  - [ ] Implement dedupe key normalization: `source + source_project + target_channel + event_type + entity_id + normalized_target_status + normalized_actor` (`null`/missing -> `_`)
-  - [ ] Prefer source event unique id (`delivery_id`/equivalent) when available; fallback to normalized hash key
-  - [ ] Set suppression window to 10 minutes per source (GitHub/Jira) and document rationale
-  - [ ] Suppress duplicate visible posts while keeping audit trace
-- [ ] Define source-specific dedupe state contract (AC: 5)
-  - [ ] GitHub: document cache-key contract `mm-dedupe-{dedupe_hash}-{window_bucket_10m}` and bucket computation rule (`floor(event_epoch/600)`) for 10-minute suppression
-  - [ ] Jira: document entity/property-based dedupe state (`mm_last_hash`, `mm_last_ts`) and 10-minute timestamp comparison rule
-  - [ ] Ensure dedupe state contract is auditable from workflow/audit logs
-- [ ] Implement source-level retry/observability for posting failures (AC: 6)
-  - [ ] Configure bounded retries (`max_attempts=3`) with source-specific backoff (`GitHub`: `2s`,`5s` + jitter `±20%`; `Jira`: fixed `2s`,`5s`, no jitter)
-  - [ ] Define per-source+per-entity ordering guard (cross-source total ordering is out of scope)
-  - [ ] Configure Jira automation failure visibility and audit trail with explicit platform-limited retry semantics
-  - [ ] Define deterministic verification rule: GitHub retries assert delay range; Jira retries assert fixed delay sequence
-- [ ] Add validation runbook for GitHub/Jira flows, duplicate suppression, and failure recovery (AC: 7)
-  - [ ] Include replay scenarios: duplicate webhook event, timeout, 429/5xx response, webhook URL misconfiguration
-  - [ ] Save artifacts in `docs/ops/webhook-validation/<YYYYMMDD>/` using fixed naming (`github-*.log`, `jira-*.json`, `payload-*.json`)
-  - [ ] Configure artifact retention enforcement (`retention-days: 90` for GitHub artifacts, Jira automation audit/export retention policy) and document owner
+- [x] Implement GitHub Actions -> MatterMost notification workflow (AC: 1)
+  - [x] Support PR lifecycle and workflow result event triggers
+  - [x] Normalize message template (repo, actor, event, URL, result)
+- [x] Implement Jira Automation -> MatterMost notification rule set (AC: 2)
+  - [x] Support Story/Epic transition events
+  - [x] Normalize message template (issue key, summary, status change, assignee)
+- [x] Implement secure configuration management for webhook integration (AC: 3)
+  - [x] Manage webhook URL/token only via GitHub Secrets and Jira secured settings
+  - [x] Prevent sensitive token/URL leaks in logs
+- [x] Implement idempotency and anti-spam controls (AC: 4)
+  - [x] Implement dedupe key normalization: `source + source_project + target_channel + event_type + entity_id + normalized_target_status + normalized_actor` (`null`/missing -> `_`)
+  - [x] Prefer source event unique id (`delivery_id`/equivalent) when available; fallback to normalized hash key
+  - [x] Set suppression window to 10 minutes per source (GitHub/Jira) and document rationale
+  - [x] Suppress duplicate visible posts while keeping audit trace
+- [x] Define source-specific dedupe state contract (AC: 5)
+  - [x] GitHub: document cache-key contract `mm-dedupe-{dedupe_hash}-{window_bucket_10m}` and bucket computation rule (`floor(event_epoch/600)`) for 10-minute suppression
+  - [x] Jira: document entity/property-based dedupe state (`mm_last_hash`, `mm_last_ts`) and 10-minute timestamp comparison rule
+  - [x] Ensure dedupe state contract is auditable from workflow/audit logs
+- [x] Implement source-level retry/observability for posting failures (AC: 6)
+  - [x] Configure bounded retries (`max_attempts=3`) with source-specific backoff (`GitHub`: `2s`,`5s` + jitter `±20%`; `Jira`: fixed `2s`,`5s`, no jitter)
+  - [x] Define per-source+per-entity ordering guard (cross-source total ordering is out of scope)
+  - [x] Configure Jira automation failure visibility and audit trail with explicit platform-limited retry semantics
+  - [x] Define deterministic verification rule: GitHub retries assert delay range; Jira retries assert fixed delay sequence
+- [x] Add validation runbook for GitHub/Jira flows, duplicate suppression, and failure recovery (AC: 7)
+  - [x] Include replay scenarios: duplicate webhook event, timeout, 429/5xx response, webhook URL misconfiguration
+  - [x] Save artifacts in `docs/ops/webhook-validation/<YYYYMMDD>/` using fixed naming (`github-*.log`, `jira-*.json`, `payload-*.json`)
+  - [x] Configure artifact retention enforcement (`retention-days: 90` for GitHub artifacts, Jira automation audit/export retention policy) and document owner
 
 ## Dev Notes
 
 ### Developer Context Section
 
-- Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 0 (`0.1`~`0.5`).
+- Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 0 (`0.1`~`0.10`).
 - Depends on Story 0.2 (CI foundation and quality-gate context).
 - Scope is collaboration visibility automation only; no product-domain feature logic.
 - Approach decision: Option 1 finalized (`GitHub Actions + Jira Automation` direct delivery to MatterMost), no central relay service in this story.
@@ -132,13 +132,47 @@ GPT-5 Codex (Codex desktop)
 
 ### Debug Log References
 
-- Story generated from canonical Epic 0 update and party-mode review criteria.
+- `npm run lint:collab-webhook`
+- `npm run test:collab-webhook`
+- `npm test`
+- `GITHUB_EVENT_PATH=<tmpfile> GITHUB_EVENT_NAME=pull_request GITHUB_REPOSITORY=DoYouLikeFix/FIXYZ GITHUB_ACTOR=yeongjae MATTERMOST_CHANNEL_KEY=fix-delivery node .github/scripts/collab-webhook/build-github-payload.js`
 
 ### Completion Notes List
 
-- Added webhook security, idempotency, and retry/observability controls as explicit gates.
-- Locked implementation decision to Option 1 (direct tool integration, no central relay).
+- Implemented root-level GitHub workflow `collaboration-webhook-notifications.yml` for `pull_request` and `workflow_run` events with standardized MatterMost payload generation.
+- Added source-aware dedupe contract with normalized key fallback, source event id precedence, and GitHub cache key contract `mm-dedupe-{dedupe_hash}-{window_bucket_10m}`.
+- Added bounded retry sender with source-specific policy (`GitHub` jitter `+-20%`, `Jira` fixed delays), plus structured failure observability logs.
+- Added Jira automation integration artifacts and setup guide documenting issue transition mapping, issue property dedupe state (`mm_last_hash`, `mm_last_ts`), fixed retry semantics, and secure webhook variable usage.
+- Added reliability runbook and dated evidence bundle under `docs/ops/webhook-validation/20260303/` with fixed naming and retention metadata (`>=90 days`).
+- Added unit tests validating message normalization, dedupe behavior, retry schedules, and deterministic delay contract checks.
 
 ### File List
 
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/0-5-collaboration-webhook-notifications.md
+- .github/scripts/collab-webhook/README.md
+- .github/scripts/collab-webhook/build-github-payload.js
+- .github/scripts/collab-webhook/build-jira-payload.js
+- .github/scripts/collab-webhook/notification-utils.js
+- .github/scripts/collab-webhook/post-to-mattermost.js
+- .github/scripts/collab-webhook/retry-utils.js
+- .github/workflows/collaboration-webhook-notifications.yml
+- docs/ops/collaboration-webhook-notifications.md
+- docs/ops/jira/mattermost-automation-rule-template.json
+- docs/ops/jira/mattermost-automation-setup.md
+- docs/ops/webhook-validation/README.md
+- docs/ops/webhook-validation/20260303/github-duplicate.log
+- docs/ops/webhook-validation/20260303/github-timeout.log
+- docs/ops/webhook-validation/20260303/index.json
+- docs/ops/webhook-validation/20260303/index.md
+- docs/ops/webhook-validation/20260303/jira-duplicate.json
+- docs/ops/webhook-validation/20260303/jira-failure-429.json
+- docs/ops/webhook-validation/20260303/payload-github-pr-opened.json
+- docs/ops/webhook-validation/20260303/payload-jira-transition.json
+- package.json
+- tests/collab-webhook/notification-utils.test.js
+- tests/collab-webhook/retry-utils.test.js
+- _bmad-output/implementation-artifacts/0-5-collaboration-webhook-notifications.md
+- _bmad-output/implementation-artifacts/sprint-status.yaml
+
+### Change Log
+
+- 2026-03-03: Implemented Story 0.5 direct GitHub/Jira -> MatterMost notification flow with secure secret handling, dedupe/retry contracts, validation artifacts, and automated tests.
