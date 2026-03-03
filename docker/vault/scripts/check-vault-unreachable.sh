@@ -56,12 +56,28 @@ docker start vault >/dev/null
 wait_for_vault_healthy() {
   elapsed=0
   while [ "${elapsed}" -lt "${VAULT_RESTART_WAIT_SECONDS}" ]; do
-    status="$(
-      docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' vault 2>/dev/null || true
+    container_state="$(docker inspect -f '{{.State.Status}}' vault 2>/dev/null || true)"
+    if [ "${container_state}" != "running" ]; then
+      sleep 1
+      elapsed=$((elapsed + 1))
+      continue
+    fi
+
+    health_state="$(
+      docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' vault 2>/dev/null || true
     )"
-    if [ "${status}" = "healthy" ] || [ "${status}" = "running" ]; then
+
+    if [ "${health_state}" != "none" ] && [ "${health_state}" != "healthy" ]; then
+      sleep 1
+      elapsed=$((elapsed + 1))
+      continue
+    fi
+
+    # Explicit readiness gate: Vault API must answer status from inside container namespace.
+    if docker exec vault sh -lc 'VAULT_ADDR=http://127.0.0.1:8200 vault status >/dev/null 2>&1'; then
       return
     fi
+
     sleep 1
     elapsed=$((elapsed + 1))
   done
@@ -93,7 +109,10 @@ wait_for_vault_init_exit() {
 wait_for_vault_healthy
 
 if docker ps -a --format '{{.Names}}' | grep -qx "vault-init"; then
-  docker start vault-init >/dev/null
+  vault_init_state="$(docker inspect -f '{{.State.Status}}' vault-init 2>/dev/null || true)"
+  if [ "${vault_init_state}" != "running" ]; then
+    docker start vault-init >/dev/null
+  fi
   wait_for_vault_init_exit
   wait_for_vault_healthy
 fi
