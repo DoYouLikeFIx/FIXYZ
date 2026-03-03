@@ -45,7 +45,7 @@ development_status:
   0-7-edge-gateway-baseline-nginx: done
   0-8-vault-secrets-foundation: done
   0-9-additional-infrastructure-bootstrap: done
-  0-10-database-high-availability-and-replication-baseline: ready-for-dev
+  0-10-database-high-availability-and-replication-baseline: done
   0-11-supply-chain-security-baseline: ready-for-dev
   0-12-redis-recovery-and-self-healing-baseline: ready-for-dev
   0-13-vault-production-separation-and-external-operations: ready-for-dev
