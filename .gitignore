@@ -32,3 +32,7 @@ docs/ops/evidence/*.log
 scripts/infra-bootstrap/output/
 docs/ops/evidence/*.json
 docs/ops/evidence/*.jsonl
+
+# Local redis recovery runtime artifacts
+docs/ops/redis-recovery/**/*.log
+docs/ops/redis-recovery/**/*.json

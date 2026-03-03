@@ -1,6 +1,6 @@
 # Story 0.12: Redis Recovery and Self-Healing Baseline
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -25,25 +25,25 @@ so that service continuity targets are met after cache/session infrastructure in
 
 ## Tasks / Subtasks
 
-- [ ] Define Redis recovery SLO and drill scenario contract (AC: 1, 2, 4, 7, 8)
-  - [ ] Define start/end measurement points for 60-second recovery SLO
-  - [ ] Define explicit full-operational probe set and success quorum (`100%`)
-  - [ ] Define probe execution context inside compose network for internal service checks
-  - [ ] Define deterministic expected behavior during outage and recovery windows
-  - [ ] Define stuck-state predicate and invariant query/checklist (`TTL=600s default`, fail if non-terminal beyond `TTL + 60s`)
-  - [ ] Define pass/fail criteria and escalation thresholds
-- [ ] Implement recovery drill automation (AC: 1, 3, 4, 5)
-  - [ ] Add script or workflow entrypoint to restart Redis and execute checks
-  - [ ] Capture health/smoke probe timestamps and duration calculations
-  - [ ] Save run artifacts with reproducible naming
-- [ ] Implement outage and recovery verification probes (AC: 2, 3, 7)
-  - [ ] Verify normalized failure responses during outage window
-  - [ ] Verify auth/session/order representative flow after Redis recovery
-  - [ ] Verify no stuck states remain based on explicit predicate (`TTL + 60s` non-terminal state breach = fail)
-- [ ] Publish operations runbook and troubleshooting matrix (AC: 5, 6)
-  - [ ] Document standard drill steps and expected outputs
-  - [ ] Document failure signatures and remediation/escalation paths
-  - [ ] Execute at least one rehearsal by following runbook-only instructions from clean-shell environment
+- [x] Define Redis recovery SLO and drill scenario contract (AC: 1, 2, 4, 7, 8)
+  - [x] Define start/end measurement points for 60-second recovery SLO
+  - [x] Define explicit full-operational probe set and success quorum (`100%`)
+  - [x] Define probe execution context inside compose network for internal service checks
+  - [x] Define deterministic expected behavior during outage and recovery windows
+  - [x] Define stuck-state predicate and invariant query/checklist (`TTL=600s default`, fail if non-terminal beyond `TTL + 60s`)
+  - [x] Define pass/fail criteria and escalation thresholds
+- [x] Implement recovery drill automation (AC: 1, 3, 4, 5)
+  - [x] Add script or workflow entrypoint to restart Redis and execute checks
+  - [x] Capture health/smoke probe timestamps and duration calculations
+  - [x] Save run artifacts with reproducible naming
+- [x] Implement outage and recovery verification probes (AC: 2, 3, 7)
+  - [x] Verify normalized failure responses during outage window
+  - [x] Verify auth/session/order representative flow after Redis recovery
+  - [x] Verify no stuck states remain based on explicit predicate (`TTL + 60s` non-terminal state breach = fail)
+- [x] Publish operations runbook and troubleshooting matrix (AC: 5, 6)
+  - [x] Document standard drill steps and expected outputs
+  - [x] Document failure signatures and remediation/escalation paths
+  - [x] Execute at least one rehearsal by following runbook-only instructions from clean-shell environment
 
 ## Dev Notes
 
@@ -115,12 +115,33 @@ GPT-5 Codex (Codex desktop)
 
 ### Debug Log References
 
-- Story drafted from PRD NFR-R3 recovery objective and Epic 0 infrastructure baseline sequence.
+- Implemented `scripts/redis-recovery/run-redis-recovery-drill.sh` with `simulate|live` modes, internal compose probe execution (`redis-recovery-probe`), outage/recovery probe contracts, stuck-state query guardrail (`TTL + 60s`), and indexed artifact emission.
+- Added `redis-recovery-probe` service in `docker-compose.yml` under `ops-drills` profile to enforce internal-network probe context.
+- Added `tests/redis-recovery/redis-recovery-baseline.test.js` and wired `package.json` scripts for regression/lint coverage.
+- Added and validated runbook `docs/ops/redis-recovery-runbook.md` plus runtime evidence indexing under `docs/ops/redis-recovery/<YYYYMMDD>/`.
+- Added tracked directory anchor `docs/ops/redis-recovery/README.md`; runtime evidence files (`*.json`, `*.log`) are intentionally not tracked by Git.
+- Validation executed: `npm run test:redis-recovery`, `npm test`, `npm run lint:collab-webhook`, `npm run lint:edge-gateway`, `npm run lint:vault`, `npm run lint:infra-bootstrap`, `npm run lint:db-ha`, `npm run lint:redis-recovery`.
 
 ### Completion Notes List
 
-- Created Story 0.12 as ready-for-dev with explicit Redis restart recovery SLO, drill automation, and runbook evidence requirements.
+- Implemented Redis recovery drill baseline script with explicit 60-second recovery SLO formula and 100% quorum gate.
+- Implemented deterministic outage + post-recovery verification probes and machine-readable summary output including recovery duration, thresholds, and verdict.
+- Implemented stuck-state predicate check with default `ORDER_SESSION_TTL_SECONDS=600` and fail threshold `TTL + 60s`.
+- Implemented indexed operations artifacts (`summary`, `latest-summary`, `drill log`, `index.json`) under `docs/ops/redis-recovery/<YYYYMMDD>/`.
+- Published runbook-only operability guidance with troubleshooting matrix and escalation path.
+- Executed simulation and live rehearsal; indexed evidence was generated at runtime under `docs/ops/redis-recovery/<YYYYMMDD>/` (non-tracked artifacts).
 
 ### File List
 
 - _bmad-output/implementation-artifacts/0-12-redis-recovery-and-self-healing-baseline.md
+- _bmad-output/implementation-artifacts/sprint-status.yaml
+- docker-compose.yml
+- package.json
+- scripts/redis-recovery/run-redis-recovery-drill.sh
+- tests/redis-recovery/redis-recovery-baseline.test.js
+- docs/ops/redis-recovery-runbook.md
+- docs/ops/redis-recovery/README.md
+
+### Change Log
+
+- 2026-03-03: Implemented Redis recovery drill automation, internal-network probe container/profile, story-aligned test coverage, runbook + troubleshooting matrix, and indexed evidence artifacts.
