@@ -1,0 +1,58 @@
+services:
+  mysql-primary:
+    image: mysql:8.4
+    container_name: mysql-primary
+    profiles: ["ha-db"]
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${MYSQL_HA_DATABASE:-channel_db}
+      MYSQL_USER: ${MYSQL_USER:-fix}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-fix}
+      MYSQL_REPLICATION_USER: ${MYSQL_REPLICATION_USER:-replicator}
+      MYSQL_REPLICATION_PASSWORD: ${MYSQL_REPLICATION_PASSWORD:-replica-pass}
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p${MYSQL_ROOT_PASSWORD:-root}"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - mysql-primary-data:/var/lib/mysql
+      - ./docker/mysql/ha/primary/my.cnf:/etc/mysql/conf.d/ha-primary.cnf:ro
+      - ./docker/mysql/ha/init-primary:/docker-entrypoint-initdb.d:ro
+    networks:
+      - fix-net
+
+  mysql-replica:
+    image: mysql:8.4
+    container_name: mysql-replica
+    profiles: ["ha-db"]
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${MYSQL_HA_DATABASE:-channel_db}
+      MYSQL_USER: ${MYSQL_USER:-fix}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-fix}
+      MYSQL_REPLICATION_USER: ${MYSQL_REPLICATION_USER:-replicator}
+      MYSQL_REPLICATION_PASSWORD: ${MYSQL_REPLICATION_PASSWORD:-replica-pass}
+    command:
+      - --read_only=ON
+    depends_on:
+      mysql-primary:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p${MYSQL_ROOT_PASSWORD:-root}"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - mysql-replica-data:/var/lib/mysql
+      - ./docker/mysql/ha/replica/my.cnf:/etc/mysql/conf.d/ha-replica.cnf:ro
+    networks:
+      - fix-net
+
+volumes:
+  mysql-primary-data:
+  mysql-replica-data:
+
+networks:
+  fix-net:
+    driver: bridge
