@@ -6,6 +6,35 @@ cd "${ROOT_DIR}"
 
 BASE_URL="${EDGE_BASE_URL:-https://localhost}"
 COMPOSE_FILE="${EDGE_COMPOSE_FILE:-docker-compose.yml}"
+TLS_HOST="${EDGE_TLS_HOST:-}"
+TLS_PORT="${EDGE_TLS_PORT:-}"
+TLS_SERVERNAME="${EDGE_TLS_SERVERNAME:-}"
+
+base_no_scheme="${BASE_URL#*://}"
+base_authority="${base_no_scheme%%/*}"
+
+if [[ -z "${TLS_HOST}" || -z "${TLS_PORT}" ]]; then
+  if [[ "${base_authority}" =~ ^\[(.*)\]:(.+)$ ]]; then
+    parsed_host="${BASH_REMATCH[1]}"
+    parsed_port="${BASH_REMATCH[2]}"
+  elif [[ "${base_authority}" =~ ^\[(.*)\]$ ]]; then
+    parsed_host="${BASH_REMATCH[1]}"
+    parsed_port="443"
+  elif [[ "${base_authority}" == *:* ]]; then
+    parsed_host="${base_authority%:*}"
+    parsed_port="${base_authority##*:}"
+  else
+    parsed_host="${base_authority}"
+    parsed_port="443"
+  fi
+
+  TLS_HOST="${TLS_HOST:-${parsed_host}}"
+  TLS_PORT="${TLS_PORT:-${parsed_port}}"
+fi
+
+if [[ -z "${TLS_SERVERNAME}" ]]; then
+  TLS_SERVERNAME="${TLS_HOST}"
+fi
 
 if [[ "${SKIP_COMPOSE_UP:-0}" != "1" ]]; then
   docker compose -f "${COMPOSE_FILE}" up -d edge-gateway
@@ -41,7 +70,11 @@ for header in \
 done
 
 # TLS certificate chain and expiry
-cert_dates="$(echo | openssl s_client -connect localhost:443 -servername localhost 2>/dev/null | openssl x509 -noout -dates)"
+cert_dates="$(
+  echo \
+    | openssl s_client -connect "${TLS_HOST}:${TLS_PORT}" -servername "${TLS_SERVERNAME}" 2>/dev/null \
+    | openssl x509 -noout -dates
+)"
 if ! grep -q "notAfter=" <<<"${cert_dates}"; then
   echo "TLS certificate inspection failed" >&2
   exit 1
