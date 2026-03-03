@@ -23,3 +23,7 @@ node_modules/
 
 # Local webhook validation artifacts
 docs/ops/webhook-validation/
+
+# Local QA outputs and runtime drill logs
+_bmad-output/implementation-artifacts/tests/
+docs/ops/evidence/*.log

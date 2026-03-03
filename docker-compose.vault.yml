@@ -1,0 +1,57 @@
+services:
+  vault:
+    image: hashicorp/vault:1.15
+    container_name: vault
+    cap_add:
+      - IPC_LOCK
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_DEV_ROOT_TOKEN_ID:?VAULT_DEV_ROOT_TOKEN_ID must be provided}
+    command:
+      - server
+      - -dev
+      - -dev-root-token-id=${VAULT_DEV_ROOT_TOKEN_ID:?VAULT_DEV_ROOT_TOKEN_ID must be provided}
+      - -dev-listen-address=0.0.0.0:8200
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN=${VAULT_DEV_ROOT_TOKEN_ID:?VAULT_DEV_ROOT_TOKEN_ID must be provided} vault status >/dev/null 2>&1
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - vault-data:/vault/file
+    networks:
+      - fix-net
+
+  vault-init:
+    image: hashicorp/vault:1.15
+    container_name: vault-init
+    depends_on:
+      vault:
+        condition: service_healthy
+    restart: "no"
+    environment:
+      VAULT_ADDR: ${VAULT_ADDR:-http://vault:8200}
+      VAULT_TOKEN: ${VAULT_DEV_ROOT_TOKEN_ID:?VAULT_DEV_ROOT_TOKEN_ID must be provided}
+      INTERNAL_SECRET_BOOTSTRAP: ${INTERNAL_SECRET_BOOTSTRAP:?INTERNAL_SECRET_BOOTSTRAP must be provided}
+      GITHUB_OIDC_DISCOVERY_URL: ${GITHUB_OIDC_DISCOVERY_URL:-https://token.actions.githubusercontent.com}
+      GITHUB_OIDC_ISSUER: ${GITHUB_OIDC_ISSUER:-https://token.actions.githubusercontent.com}
+      GITHUB_OIDC_AUDIENCE: ${GITHUB_OIDC_AUDIENCE:-https://github.com/DoYouLikeFIx}
+      GITHUB_REPOSITORY_BOUND: ${GITHUB_REPOSITORY_BOUND:-DoYouLikeFIx/FIXYZ}
+      GITHUB_JOB_WORKFLOW_REF_GLOB: ${GITHUB_JOB_WORKFLOW_REF_GLOB:-DoYouLikeFIx/FIXYZ/.github/workflows/docs-publish.yml@*}
+      VAULT_AUDIT_LOG_PATH: ${VAULT_AUDIT_LOG_PATH:-/vault/file/audit.log}
+      VAULT_RUNTIME_ROLE: ${VAULT_RUNTIME_ROLE:-runtime-core-services}
+      VAULT_ROTATION_ROLE: ${VAULT_ROTATION_ROLE:-ops-rotate-internal-secret}
+    entrypoint: ["/bin/sh", "/vault/bootstrap/init/vault-bootstrap.sh"]
+    volumes:
+      - vault-data:/vault/file
+      - ./docker/vault:/vault/bootstrap:ro
+    networks:
+      - fix-net
+
+volumes:
+  vault-data:
+
+networks:
+  fix-net:
+    driver: bridge

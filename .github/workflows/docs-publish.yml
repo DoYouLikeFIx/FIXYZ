@@ -7,10 +7,12 @@ on:
     paths:
       - 'BE'
       - 'BE/**'
+      - 'docker/vault/**'
       - '.github/workflows/docs-publish.yml'
 
 permissions:
   contents: write
+  id-token: write
 
 concurrency:
   group: gh-pages
@@ -30,6 +32,48 @@ jobs:
         with:
           java-version: '21'
           distribution: 'temurin'
+
+      - name: Install Vault CLI for OIDC login
+        if: ${{ !env.ACT && secrets.VAULT_ADDR != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          VAULT_VERSION="1.15.6"
+          curl -fsSLo vault.zip "https://releases.hashicorp.com/vault/${VAULT_VERSION}/vault_${VAULT_VERSION}_linux_amd64.zip"
+          curl -fsSLo vault_SHA256SUMS "https://releases.hashicorp.com/vault/${VAULT_VERSION}/vault_${VAULT_VERSION}_SHA256SUMS"
+          grep "vault_${VAULT_VERSION}_linux_amd64.zip" vault_SHA256SUMS > vault_SHA256SUMS_linux_amd64.txt
+          sha256sum -c vault_SHA256SUMS_linux_amd64.txt
+          unzip -q vault.zip
+          sudo install vault /usr/local/bin/vault
+          vault -version
+
+      - name: Resolve INTERNAL_SECRET from Vault using GitHub OIDC
+        if: ${{ !env.ACT && secrets.VAULT_ADDR != '' }}
+        shell: bash
+        env:
+          VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
+          VAULT_OIDC_AUDIENCE: ${{ vars.VAULT_OIDC_AUDIENCE || format('https://github.com/{0}', github.repository_owner) }}
+        run: |
+          set -euo pipefail
+          oidc_response="$(
+            curl -sSfL \
+              -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+              "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${VAULT_OIDC_AUDIENCE}"
+          )"
+          oidc_jwt="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<< "${oidc_response}")"
+          vault_token="$(vault write -field=token auth/jwt/login role=ci-docs-publish jwt="${oidc_jwt}")"
+          internal_secret="$(
+            VAULT_TOKEN="${vault_token}" \
+              vault kv get -field=value secret/fix/shared/core-services/internal-secret
+          )"
+          echo "::add-mask::${internal_secret}"
+          echo "INTERNAL_SECRET=${internal_secret}" >> "${GITHUB_ENV}"
+          echo "VAULT_SECRET_MODE=vault" >> "${GITHUB_ENV}"
+
+      - name: Mark controlled degraded mode when Vault is not configured
+        if: ${{ env.ACT || secrets.VAULT_ADDR == '' }}
+        run: |
+          echo "VAULT_SECRET_MODE=degraded" >> "${GITHUB_ENV}"
 
       - name: Restore Node PATH for act compatibility
         if: ${{ env.ACT }}
