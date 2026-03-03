@@ -21,6 +21,8 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    env:
+      VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -34,7 +36,7 @@ jobs:
           distribution: 'temurin'
 
       - name: Install Vault CLI for OIDC login
-        if: ${{ !env.ACT && secrets.VAULT_ADDR != '' }}
+        if: ${{ !env.ACT && env.VAULT_ADDR != '' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -48,10 +50,9 @@ jobs:
           vault -version
 
       - name: Resolve INTERNAL_SECRET from Vault using GitHub OIDC
-        if: ${{ !env.ACT && secrets.VAULT_ADDR != '' }}
+        if: ${{ !env.ACT && env.VAULT_ADDR != '' }}
         shell: bash
         env:
-          VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
           VAULT_OIDC_AUDIENCE: ${{ vars.VAULT_OIDC_AUDIENCE || format('https://github.com/{0}', github.repository_owner) }}
         run: |
           set -euo pipefail
@@ -71,7 +72,7 @@ jobs:
           echo "VAULT_SECRET_MODE=vault" >> "${GITHUB_ENV}"
 
       - name: Mark controlled degraded mode when Vault is not configured
-        if: ${{ env.ACT || secrets.VAULT_ADDR == '' }}
+        if: ${{ env.ACT || env.VAULT_ADDR == '' }}
         run: |
           echo "VAULT_SECRET_MODE=degraded" >> "${GITHUB_ENV}"
 
