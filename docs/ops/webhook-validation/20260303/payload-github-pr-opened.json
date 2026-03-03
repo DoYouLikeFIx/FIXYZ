@@ -1,0 +1,14 @@
+{
+  "text": "[GitHub] PR #15 opened in DoYouLikeFix/FIXYZ\nactor=yeongjae status=open\nhttps://github.com/DoYouLikeFix/FIXYZ/pull/15",
+  "props": {
+    "source": "github",
+    "source_project": "DoYouLikeFix/FIXYZ",
+    "target_channel": "fix-delivery",
+    "event_type": "pull_request.opened",
+    "entity_id": "15",
+    "target_status": "open",
+    "actor": "yeongjae",
+    "event_url": "https://github.com/DoYouLikeFix/FIXYZ/pull/15"
+  }
+}
+
