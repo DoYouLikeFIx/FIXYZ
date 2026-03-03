@@ -41,8 +41,8 @@ development_status:
   0-3-fe-frontend-foundation-scaffold: done
   0-4-mob-mobile-foundation-scaffold: done
   0-5-collaboration-webhook-notifications: review
-  0-6-multi-repo-collaboration-webhook-rollout: ready-for-dev
-  0-7-edge-gateway-baseline-nginx: ready-for-dev
+  0-6-multi-repo-collaboration-webhook-rollout: done
+  0-7-edge-gateway-baseline-nginx: done
   0-8-vault-secrets-foundation: ready-for-dev
   0-9-additional-infrastructure-bootstrap: ready-for-dev
   0-10-database-high-availability-and-replication-baseline: ready-for-dev
