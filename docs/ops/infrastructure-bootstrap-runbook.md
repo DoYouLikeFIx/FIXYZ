@@ -103,7 +103,7 @@ Behavior:
 - Rollback attempts removal in reverse order for resources created in the current run:
   - bootstrap-created containers (`vault`, `vault-init`)
   - bootstrap-created volumes/networks
-- Rollback failures are reported in `rollback_status` (`success` or `failed`) inside `bootstrap-report.json`.
+- Rollback outcome is reported in `rollback_status` (`success`, `failed`, or `skipped` when `BOOTSTRAP_AUTOROLLBACK=0`) inside `bootstrap-report.json`.
 
 ### Option B: deterministic re-run (recommended default)
 

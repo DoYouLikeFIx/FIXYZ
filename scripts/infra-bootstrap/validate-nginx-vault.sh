@@ -40,6 +40,23 @@ require_pattern() {
   fi
 }
 
+require_pattern_in_any_file() {
+  local pattern="$1"
+  local reason="$2"
+  shift 2
+  local file_path
+  local searched_files="$*"
+
+  for file_path in "$@"; do
+    if grep -Fq "${pattern}" "${file_path}"; then
+      return 0
+    fi
+  done
+
+  log "Missing expected pattern (${reason}) in any of [${searched_files}]: ${pattern}"
+  exit 1
+}
+
 resolve_validation_mode() {
   if [[ -n "${BOOTSTRAP_VALIDATION_MODE}" ]]; then
     case "${BOOTSTRAP_VALIDATION_MODE}" in
@@ -95,11 +112,16 @@ main() {
   require_file "${EDGE_VALIDATE_SCRIPT_PATH}"
   require_file "${MAIN_COMPOSE_FILE}"
   require_file "${VAULT_COMPOSE_FILE}"
+  require_file "${EDGE_COMPOSE_FILE}"
 
   require_pattern "${RUNTIME_POLICY_PATH}" 'capabilities = ["read"]' 'runtime least privilege'
   require_pattern "${CI_POLICY_PATH}" 'capabilities = ["read"]' 'ci least privilege'
-  require_pattern "${MAIN_COMPOSE_FILE}" 'edge-gateway:' 'edge service declared'
-  require_pattern "${MAIN_COMPOSE_FILE}" 'INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET must be provided from Vault}' 'fail-fast runtime secret'
+  require_pattern "${EDGE_COMPOSE_FILE}" 'edge-gateway:' 'edge service declared'
+  require_pattern_in_any_file \
+    'INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET must be provided from Vault}' \
+    'fail-fast runtime secret' \
+    "${MAIN_COMPOSE_FILE}" \
+    "${EDGE_COMPOSE_FILE}"
   require_pattern "${VAULT_COMPOSE_FILE}" 'vault-init:' 'vault bootstrap compose includes init'
 
   if [[ "${validation_mode}" == "static" ]]; then

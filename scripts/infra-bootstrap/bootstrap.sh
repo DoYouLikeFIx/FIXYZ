@@ -204,11 +204,15 @@ on_error() {
   OVERALL_STATUS="failed"
   log "Failure in step: ${CURRENT_STEP}"
 
-  if rollback_created_resources; then
-    ROLLBACK_STATUS="success"
+  if [[ "${BOOTSTRAP_AUTOROLLBACK}" != "1" ]]; then
+    ROLLBACK_STATUS="skipped"
   else
-    ROLLBACK_STATUS="failed"
-    OVERALL_STATUS="failed-with-rollback-errors"
+    if rollback_created_resources; then
+      ROLLBACK_STATUS="success"
+    else
+      ROLLBACK_STATUS="failed"
+      OVERALL_STATUS="failed-with-rollback-errors"
+    fi
   fi
 
   write_report
