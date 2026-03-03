@@ -1,0 +1,127 @@
+version: 1
+story: 0-9-additional-infrastructure-bootstrap
+last_updated: 2026-03-03
+
+environments:
+  - environment: dev
+    purpose: local reproducible bootstrap for onboarding and feature validation
+    components:
+      - component: fix-net
+        type: docker-network
+        bootstrap_required: true
+        owner: platform
+        depends_on: []
+      - component: mysql-data
+        type: docker-volume
+        bootstrap_required: true
+        owner: platform
+        depends_on: [fix-net]
+      - component: redis-data
+        type: docker-volume
+        bootstrap_required: true
+        owner: platform
+        depends_on: [fix-net]
+      - component: vault-data
+        type: docker-volume
+        bootstrap_required: true
+        owner: platform-security
+        depends_on: [fix-net]
+      - component: edge-certs
+        type: docker-volume
+        bootstrap_required: true
+        owner: platform-edge
+        depends_on: [fix-net]
+      - component: vault
+        type: compose-service
+        bootstrap_required: true
+        owner: platform-security
+        depends_on: [vault-data, fix-net]
+      - component: vault-init
+        type: compose-service
+        bootstrap_required: true
+        owner: platform-security
+        depends_on: [vault, vault-data]
+      - component: edge-gateway
+        type: compose-service
+        bootstrap_required: false
+        owner: platform-edge
+        depends_on: [fix-net, edge-certs]
+
+  - environment: staging
+    purpose: baseline parity for pre-production infrastructure contracts
+    components:
+      - component: fix-net
+        type: docker-network
+        bootstrap_required: true
+        owner: platform
+        depends_on: []
+      - component: mysql-data
+        type: docker-volume
+        bootstrap_required: true
+        owner: platform
+        depends_on: [fix-net]
+      - component: redis-data
+        type: docker-volume
+        bootstrap_required: true
+        owner: platform
+        depends_on: [fix-net]
+      - component: vault-data
+        type: docker-volume
+        bootstrap_required: true
+        owner: platform-security
+        depends_on: [fix-net]
+      - component: edge-certs
+        type: docker-volume
+        bootstrap_required: true
+        owner: platform-edge
+        depends_on: [fix-net]
+      - component: vault
+        type: compose-service
+        bootstrap_required: true
+        owner: platform-security
+        depends_on: [vault-data, fix-net]
+      - component: vault-init
+        type: compose-service
+        bootstrap_required: true
+        owner: platform-security
+        depends_on: [vault, vault-data]
+      - component: edge-gateway
+        type: compose-service
+        bootstrap_required: false
+        owner: platform-edge
+        depends_on: [fix-net, edge-certs]
+
+dependency_graph:
+  - component: vault-init
+    depends_on:
+      - vault
+      - vault-data
+      - fix-net
+  - component: corebank-service
+    depends_on:
+      - mysql
+      - redis
+      - vault-init
+  - component: fep-gateway
+    depends_on:
+      - corebank-service
+      - vault-init
+  - component: fep-simulator
+    depends_on:
+      - fep-gateway
+      - vault-init
+  - component: channel-service
+    depends_on:
+      - corebank-service
+      - fep-gateway
+      - fep-simulator
+      - mysql
+      - redis
+      - vault-init
+  - component: edge-gateway
+    depends_on:
+      - channel-service
+      - corebank-service
+      - fep-gateway
+      - fep-simulator
+      - edge-certs
