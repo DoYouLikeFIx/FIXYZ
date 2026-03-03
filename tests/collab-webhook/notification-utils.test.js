@@ -64,8 +64,9 @@ test("GitHub pull_request context falls back to normalized hash when source even
     context.windowBucket10m,
     Math.floor(new Date(updatedAt).getTime() / 1000 / SUPPRESSION_WINDOW_SECONDS),
   );
-  assert.match(context.payload.text, /PR #15 opened/);
-  assert.match(context.payload.text, /actor=yeongjae/);
+  assert.match(context.payload.text, /\[GitHub\] \*\*PR #15 · OPENED\*\*/);
+  assert.match(context.payload.text, /Actor: `yeongjae`/);
+  assert.match(context.payload.text, /Repo: `DoYouLikeFix\/FIXYZ`/);
 });
 
 test("GitHub workflow_run context prioritizes source event id when available", () => {
@@ -90,7 +91,9 @@ test("GitHub workflow_run context prioritizes source event id when available", (
   assert.equal(context.dedupeMode, "source_event_id");
   assert.equal(context.dedupeValue, "987654321");
   assert.equal(context.sourceEventId, "987654321");
-  assert.match(context.payload.text, /workflow "Publish API Docs to GitHub Pages" success/);
+  assert.match(context.payload.text, /\[GitHub\] \*\*Workflow · SUCCESS\*\*/);
+  assert.match(context.payload.text, /Workflow: `Publish API Docs to GitHub Pages`/);
+  assert.match(context.payload.text, /Run: `#91`/);
 });
 
 test("Jira transition context maps previous/new status and preserves dedupe contract", () => {
@@ -135,4 +138,3 @@ test("Jira transition context maps previous/new status and preserves dedupe cont
   assert.match(context.payload.text, /assignee=Dana Kim actor=Quinn QA/);
   assert.match(context.payload.text, /https:\/\/fixyz\.atlassian\.net\/browse\/FIX-25/);
 });
-

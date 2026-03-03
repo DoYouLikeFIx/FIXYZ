@@ -127,13 +127,19 @@ function resolveGitHubEventUrl(eventName, event, repository) {
 }
 
 function buildGitHubMessage(eventName, event, repository, actor, targetStatus, eventUrl) {
+  const normalizedRepository = normalizePart(repository);
+  const normalizedActor = normalizePart(actor);
+  const normalizedStatus = normalizePart(targetStatus);
+
   if (eventName === "pull_request") {
     const prNumber = normalizePart(event.pull_request && event.pull_request.number);
     const action = normalizePart(event.action);
     return [
-      `[GitHub] PR #${prNumber} ${action} in ${repository}`,
-      `actor=${actor} status=${targetStatus}`,
-      eventUrl,
+      `[GitHub] **PR #${prNumber} · ${action.toUpperCase()}**`,
+      `- Repo: \`${normalizedRepository}\``,
+      `- Actor: \`${normalizedActor}\``,
+      `- Status: \`${normalizedStatus}\``,
+      `- Link: ${eventUrl}`,
     ].join("\n");
   }
 
@@ -141,15 +147,22 @@ function buildGitHubMessage(eventName, event, repository, actor, targetStatus, e
     const workflowName = normalizePart(event.workflow_run && event.workflow_run.name);
     const runNumber = normalizePart(event.workflow_run && event.workflow_run.run_number);
     return [
-      `[GitHub] workflow "${workflowName}" ${targetStatus} in ${repository}`,
-      `actor=${actor} run_number=${runNumber}`,
-      eventUrl,
+      `[GitHub] **Workflow · ${normalizedStatus.toUpperCase()}**`,
+      `- Repo: \`${normalizedRepository}\``,
+      `- Workflow: \`${workflowName}\``,
+      `- Run: \`#${runNumber}\``,
+      `- Actor: \`${normalizedActor}\``,
+      `- Link: ${eventUrl}`,
     ].join("\n");
   }
 
-  return [`[GitHub] ${eventName} in ${repository}`, `actor=${actor} status=${targetStatus}`, eventUrl].join(
-    "\n",
-  );
+  return [
+    `[GitHub] **${normalizePart(eventName)}**`,
+    `- Repo: \`${normalizedRepository}\``,
+    `- Actor: \`${normalizedActor}\``,
+    `- Status: \`${normalizedStatus}\``,
+    `- Link: ${eventUrl}`,
+  ].join("\n");
 }
 
 function buildGitHubMattermostContext(input) {
@@ -360,4 +373,3 @@ module.exports = {
   buildGitHubMattermostContext,
   buildJiraMattermostContext,
 };
-
