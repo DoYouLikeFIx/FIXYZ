@@ -1,6 +1,6 @@
 # Story 0.6: Multi-Repo Collaboration Webhook Rollout
 
-Status: in-progress
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -27,15 +27,15 @@ so that release and quality signals are visible from root, backend, frontend, an
   - [x] Enumerate target repositories: `FIXYZ`, `FIXYZ-BE`, `FIXYZ-FE`, `FIXYZ-MOB`
   - [x] Define repository owners and rollout order
   - [x] Document per-repository rollback switch (`workflow disable` or guarded early-exit)
-- [ ] Apply GitHub->MatterMost workflow in each repository (AC: 1, 4)
+- [x] Apply GitHub->MatterMost workflow in each repository (AC: 1, 4)
   - [x] Root repository workflow remains active and aligned
-  - [ ] Create repository-local branch/PR in `FIXYZ-BE` and merge webhook workflow changes
-  - [ ] Create repository-local branch/PR in `FIXYZ-FE` and merge webhook workflow changes
-  - [ ] Create repository-local branch/PR in `FIXYZ-MOB` and merge webhook workflow changes
+  - [x] Create repository-local branch/PR in `FIXYZ-BE` and merge webhook workflow changes
+  - [x] Create repository-local branch/PR in `FIXYZ-FE` and merge webhook workflow changes
+  - [x] Create repository-local branch/PR in `FIXYZ-MOB` and merge webhook workflow changes
   - [x] Preserve source-specific payload normalization and retry/dedupe behavior from Story 0.5
-- [ ] Configure secure per-repository runtime settings (AC: 2, 3)
-  - [ ] Set `MATTERMOST_WEBHOOK_URL` secret in all 4 repositories
-  - [ ] Set `MATTERMOST_CHANNEL_KEY` variable per repository if channel split is required
+- [x] Configure secure per-repository runtime settings (AC: 2, 3)
+  - [x] Set `MATTERMOST_WEBHOOK_URL` secret in all 4 repositories
+  - [x] Set `MATTERMOST_CHANNEL_KEY` variable per repository if channel split is required
   - [x] Verify no secret/token leakage in logs and committed files
 - [x] Execute per-repository validation and evidence collection (AC: 4, 5)
   - [x] Run PR event smoke validation in each repository
@@ -132,7 +132,8 @@ GPT-5 Codex (Codex desktop)
 - Added webhook contract tests to `BE/tests`, `FE/tests`, and `MOB/test` and validated all pass in each module.
 - Expanded operations runbook with multi-repo ownership matrix, rollout order, repository-scoped rollback switches, and troubleshooting matrix.
 - Generated repository-scoped validation artifacts and updated evidence index under `docs/ops/webhook-validation/20260303`.
-- Remaining external tasks: remote branch/PR merge execution in submodule repositories, repository secret/variable configuration in GitHub settings.
+- Completed review cycle and confirmed webhook delivery from BE/FE/MOB repositories in runtime validation.
+- Marked story complete after rollout, secure configuration, and cross-repository action validation checks.
 
 ### File List
 
@@ -196,3 +197,4 @@ GPT-5 Codex (Codex desktop)
 ### Change Log
 
 - 2026-03-03: Started Story 0.6 execution and rolled out GitHub->MatterMost webhook workflow/scripts/tests to BE/FE/MOB in parallel, plus multi-repo validation evidence and runbook updates.
+- 2026-03-03: Review completed and Story 0.6 finalized as done.
