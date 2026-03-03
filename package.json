@@ -7,9 +7,11 @@
     "doc": "docs"
   },
   "scripts": {
-    "test": "npm run test:collab-webhook",
+    "test": "npm run test:collab-webhook && npm run test:edge-gateway",
     "test:collab-webhook": "node --test tests/collab-webhook/*.test.js",
+    "test:edge-gateway": "node --test tests/edge-gateway/*.test.js",
     "lint:collab-webhook": "node --check .github/scripts/collab-webhook/*.js",
+    "lint:edge-gateway": "bash -n docker/nginx/scripts/*.sh",
     "prepare": "husky"
   },
   "repository": {

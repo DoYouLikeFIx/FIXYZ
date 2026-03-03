@@ -9,12 +9,27 @@ This guide defines direct collaboration notifications from:
 
 No relay service is introduced in this story.
 
+## Multi-Repo Rollout Scope (Story 0.6)
+
+| Repository | Owner | Workflow Run Coverage | Rollout Order | Rollback Switch |
+| --- | --- | --- | --- | --- |
+| `DoYouLikeFIx/FIXYZ` | Delivery platform | `Publish API Docs to GitHub Pages` completion | 1 | Disable `.github/workflows/collaboration-webhook-notifications.yml` in root repo |
+| `DoYouLikeFIx/FIXYZ-BE` | BE platform | `ci-channel`, `ci-corebank`, `ci-fep-gateway`, `ci-fep-simulator` completion | 2 | Disable same workflow in BE repo only |
+| `DoYouLikeFIx/FIXYZ-FE` | FE platform | `ci-frontend` completion | 3 | Disable same workflow in FE repo only |
+| `DoYouLikeFIx/FIXYZ-MOB` | MOB platform | `ci-mobile` completion | 4 | Disable same workflow in MOB repo only |
+
+Notes:
+
+- Rollout is repository-scoped. One repository can be disabled without impacting the others.
+- Root repository workflow remains active and aligned to Story 0.5 contracts.
+
 ## Security Configuration
 
 ### GitHub
 
 - Secret required: `MATTERMOST_WEBHOOK_URL`
 - Optional variable: `MATTERMOST_CHANNEL_KEY` (defaults to `${{ github.repository }}`)
+- Configure both values independently in each repository (`FIXYZ`, `FIXYZ-BE`, `FIXYZ-FE`, `FIXYZ-MOB`).
 - Secrets are read at runtime only by workflow environment variables.
 - Workflow logs and persisted audit files never print `MATTERMOST_WEBHOOK_URL`.
 
@@ -96,3 +111,36 @@ Ordering guard:
 - GitHub validation artifacts are uploaded with `retention-days: 90`.
 - Jira audit export retention policy must be configured to keep artifacts for at least 90 days.
 
+## Repository Rollback Procedure
+
+### Disable notifications for one repository
+
+1. Open the target repository Actions tab.
+2. Open workflow `Collaboration Webhook Notifications`.
+3. Click `Disable workflow`.
+
+CLI alternative:
+
+```bash
+gh workflow disable collaboration-webhook-notifications.yml --repo DoYouLikeFIx/FIXYZ-BE
+```
+
+Re-enable:
+
+```bash
+gh workflow enable collaboration-webhook-notifications.yml --repo DoYouLikeFIx/FIXYZ-BE
+```
+
+### Optional guarded early-exit
+
+- Temporarily remove `MATTERMOST_WEBHOOK_URL` in the affected repository.
+- Workflow execution is preserved, but outbound post step is skipped and configuration-missing audit log is produced.
+
+## Repository-Scoped Troubleshooting Matrix
+
+| Symptom | Scope | Checks | Action |
+| --- | --- | --- | --- |
+| No MatterMost message for BE CI completion | `FIXYZ-BE` only | Verify workflow enabled, secret exists, `workflow_run` workflow name matches (`ci-*`) | Re-enable workflow or correct workflow names in BE workflow file |
+| Duplicate messages within 10 minutes | One repository | Inspect cache key `mm-dedupe-{dedupe_hash}-{window_bucket_10m}` and cache-hit status | Validate dedupe hash inputs (`target_channel`, `event_type`, `entity_id`, `actor`) |
+| Timeout / 429 retries not visible | One repository | Check `github-failure-*.log` and action logs for `mattermost_retry_wait` events | Confirm `max_attempts=3`, backoff `2s,5s` with jitter `±20%` |
+| Secret leakage concern | Any repository | Search logs/files for webhook URL patterns, verify only secret env usage | Rotate secret and re-run validation evidence collection |
