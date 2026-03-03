@@ -7,17 +7,19 @@
     "doc": "docs"
   },
   "scripts": {
-    "test": "npm run test:collab-webhook && npm run test:edge-gateway && npm run test:vault && npm run test:infra-bootstrap && npm run test:db-ha",
+    "test": "npm run test:collab-webhook && npm run test:edge-gateway && npm run test:vault && npm run test:infra-bootstrap && npm run test:db-ha && npm run test:redis-recovery",
     "test:collab-webhook": "node --test tests/collab-webhook/*.test.js",
     "test:edge-gateway": "node --test tests/edge-gateway/*.test.js",
     "test:vault": "node --test tests/vault/*.test.js",
     "test:infra-bootstrap": "node --test tests/infra-bootstrap/*.test.js",
     "test:db-ha": "node --test tests/db-ha/*.test.js",
+    "test:redis-recovery": "node --test tests/redis-recovery/*.test.js",
     "lint:collab-webhook": "node --check .github/scripts/collab-webhook/*.js",
     "lint:edge-gateway": "bash -n docker/nginx/scripts/*.sh",
     "lint:vault": "bash -n docker/vault/init/*.sh docker/vault/scripts/*.sh",
     "lint:infra-bootstrap": "bash -n scripts/infra-bootstrap/*.sh",
     "lint:db-ha": "bash -n docker/mysql/ha/scripts/*.sh",
+    "lint:redis-recovery": "bash -n scripts/redis-recovery/*.sh",
     "prepare": "husky"
   },
   "repository": {
