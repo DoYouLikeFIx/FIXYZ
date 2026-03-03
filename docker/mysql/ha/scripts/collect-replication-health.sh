@@ -7,11 +7,19 @@ cd "${ROOT_DIR}"
 REPLICATION_HEALTH_MODE="${REPLICATION_HEALTH_MODE:-simulate}"
 MAIN_COMPOSE_FILE="${MAIN_COMPOSE_FILE:-docker-compose.yml}"
 HA_COMPOSE_FILE="${HA_COMPOSE_FILE:-docker-compose.ha.yml}"
+MYSQL_ROOT_PASSWORD_INPUT="${MYSQL_ROOT_PASSWORD-}"
 MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-root}"
 REPLICATION_HEALTH_OUTPUT_FILE="${REPLICATION_HEALTH_OUTPUT_FILE:-}"
 
 log() {
   printf '[db-ha-health] %s\n' "$*" >&2
+}
+
+require_live_env_vars() {
+  if [[ -z "${MYSQL_ROOT_PASSWORD_INPUT}" ]]; then
+    log "Missing required live-mode env var: MYSQL_ROOT_PASSWORD"
+    exit 1
+  fi
 }
 
 json_escape() {
@@ -36,6 +44,8 @@ emit_json() {
 }
 
 collect_live() {
+  require_live_env_vars
+
   command -v docker >/dev/null 2>&1 || {
     log "docker command is required in live mode"
     exit 1

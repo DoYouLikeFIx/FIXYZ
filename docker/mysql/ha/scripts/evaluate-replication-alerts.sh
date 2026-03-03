@@ -61,8 +61,21 @@ const alerts = [];
 
 for (const line of lines) {
   const sample = JSON.parse(line);
-  const lag = Number(sample.lag_seconds || 0);
-  const running = sample.replication_running !== false;
+  const lagRaw = sample.lag_seconds;
+  const lagCandidate =
+    lagRaw === undefined || lagRaw === null || lagRaw === ""
+      ? 0
+      : Number(lagRaw);
+  const lag = Number.isFinite(lagCandidate) ? lagCandidate : 0;
+
+  const runningRaw = sample.replication_running;
+  const running =
+    runningRaw === undefined || runningRaw === null
+      ? true
+      : runningRaw === true ||
+        runningRaw === "true" ||
+        runningRaw === 1 ||
+        runningRaw === "1";
 
   if (lag >= warnThreshold) {
     warnCount += 1;

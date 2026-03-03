@@ -87,12 +87,37 @@ test("Replication bootstrap script supports MySQL 8.4 source status and legacy f
   const bootstrap = readText(bootstrapReplicationScript);
   mustInclude(bootstrap, "SHOW BINARY LOG STATUS");
   mustInclude(bootstrap, "SHOW MASTER STATUS");
+  mustInclude(bootstrap, "Missing required live-mode env vars");
+  mustInclude(bootstrap, "gtid-auto-position");
+  mustInclude(bootstrap, "source_coordinates_usage");
 });
 
 test("Replication health collector normalizes NULL lag when replication is stopped", () => {
   const health = readText(healthScript);
   mustInclude(health, 'if [[ "${lag_seconds}" == "NULL" ]]');
   mustInclude(health, 'lag_seconds="0"');
+  mustInclude(health, "Missing required live-mode env var: MYSQL_ROOT_PASSWORD");
+});
+
+test("Bootstrap replication live mode fails fast when required secrets are missing", () => {
+  const result = runBashScript(bootstrapReplicationScript, {
+    BOOTSTRAP_REPLICATION_MODE: "live",
+    MYSQL_ROOT_PASSWORD: "",
+    MYSQL_REPLICATION_PASSWORD: "",
+  });
+
+  assert.notEqual(result.status, 0, "bootstrap should fail when live secrets are missing");
+  assert.match(result.stdout + result.stderr, /Missing required live-mode env vars/);
+});
+
+test("Replication health live mode fails fast when MYSQL_ROOT_PASSWORD is missing", () => {
+  const result = runBashScript(healthScript, {
+    REPLICATION_HEALTH_MODE: "live",
+    MYSQL_ROOT_PASSWORD: "",
+  });
+
+  assert.notEqual(result.status, 0, "health collector should fail when root password is missing");
+  assert.match(result.stdout + result.stderr, /Missing required live-mode env var: MYSQL_ROOT_PASSWORD/);
 });
 
 test("Alert evaluator emits warn/critical signals with dedupe controls", () => {

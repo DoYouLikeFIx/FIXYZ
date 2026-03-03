@@ -7,13 +7,30 @@ cd "${ROOT_DIR}"
 BOOTSTRAP_REPLICATION_MODE="${BOOTSTRAP_REPLICATION_MODE:-simulate}"
 MAIN_COMPOSE_FILE="${MAIN_COMPOSE_FILE:-docker-compose.yml}"
 HA_COMPOSE_FILE="${HA_COMPOSE_FILE:-docker-compose.ha.yml}"
+MYSQL_ROOT_PASSWORD_INPUT="${MYSQL_ROOT_PASSWORD-}"
 MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-root}"
 MYSQL_REPLICATION_USER="${MYSQL_REPLICATION_USER:-replicator}"
+MYSQL_REPLICATION_PASSWORD_INPUT="${MYSQL_REPLICATION_PASSWORD-}"
 MYSQL_REPLICATION_PASSWORD="${MYSQL_REPLICATION_PASSWORD:-replica-pass}"
 REPLICATION_BOOTSTRAP_EVIDENCE_FILE="${REPLICATION_BOOTSTRAP_EVIDENCE_FILE:-docs/ops/evidence/database-ha-replication-bootstrap-latest.json}"
 
 log() {
   printf '[db-ha-bootstrap] %s\n' "$*"
+}
+
+require_live_env_vars() {
+  local missing_vars=()
+  if [[ -z "${MYSQL_ROOT_PASSWORD_INPUT}" ]]; then
+    missing_vars+=("MYSQL_ROOT_PASSWORD")
+  fi
+  if [[ -z "${MYSQL_REPLICATION_PASSWORD_INPUT}" ]]; then
+    missing_vars+=("MYSQL_REPLICATION_PASSWORD")
+  fi
+
+  if [[ "${#missing_vars[@]}" -gt 0 ]]; then
+    log "Missing required live-mode env vars: ${missing_vars[*]}"
+    exit 1
+  fi
 }
 
 json_escape() {
@@ -30,8 +47,10 @@ write_evidence() {
     printf '{\n'
     printf '  "generated_at": "%s",\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
     printf '  "mode": "%s",\n' "$(json_escape "${mode}")"
+    printf '  "replication_mode": "gtid-auto-position",\n'
     printf '  "primary_source_file": "%s",\n' "$(json_escape "${source_file}")"
     printf '  "primary_source_pos": %s,\n' "${source_pos}"
+    printf '  "source_coordinates_usage": "observed snapshot only (not applied while SOURCE_AUTO_POSITION=1)",\n'
     printf '  "replication_user": "%s",\n' "$(json_escape "${MYSQL_REPLICATION_USER}")"
     printf '  "result": "replication-bootstrap-complete"\n'
     printf '}\n'
@@ -41,6 +60,8 @@ write_evidence() {
 }
 
 bootstrap_live() {
+  require_live_env_vars
+
   command -v docker >/dev/null 2>&1 || {
     log "docker command is required in live mode"
     exit 1
