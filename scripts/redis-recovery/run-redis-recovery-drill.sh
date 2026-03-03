@@ -10,6 +10,7 @@ REDIS_RECOVERY_CONFIRM_LIVE="${REDIS_RECOVERY_CONFIRM_LIVE:-0}"
 ORDER_SESSION_TTL_SECONDS="${ORDER_SESSION_TTL_SECONDS:-600}"
 MYSQL_USER_VALUE="${MYSQL_USER:-fix}"
 MYSQL_PASSWORD_VALUE="${MYSQL_PASSWORD:-fix}"
+REDIS_RECOVERY_PROBE_SERVICE="${REDIS_RECOVERY_PROBE_SERVICE:-redis-recovery-probe}"
 
 RECOVERY_SECONDS_MAX=60
 SUCCESS_QUORUM_PERCENT=100
@@ -26,6 +27,7 @@ LATEST_SUMMARY_FILE="${REDIS_RECOVERY_OUTPUT_DIR}/latest-summary.json"
 LOG_FILE="${REDIS_RECOVERY_OUTPUT_DIR}/drill-${REDIS_RECOVERY_RUN_ID}.log"
 INDEX_FILE="${REDIS_RECOVERY_OUTPUT_DIR}/index.json"
 PROBE_RESULTS_FILE="$(mktemp)"
+PROBE_SERVICE_STARTED="false"
 
 REQUIRED_PROBE_NAMES=(
   "channel-health"
@@ -64,6 +66,9 @@ touch "${LOG_FILE}"
 
 cleanup() {
   rm -f "${PROBE_RESULTS_FILE}"
+  if [[ "${PROBE_SERVICE_STARTED}" == "true" ]]; then
+    cleanup_probe_service
+  fi
 }
 trap cleanup EXIT
 
@@ -140,13 +145,22 @@ probe_via_compose_network() {
   local response
 
   # Internal probe command contract:
-  # docker compose --profile ops-drills run --rm redis-recovery-probe
+  # docker compose --profile ops-drills up -d redis-recovery-probe
+  # docker compose --profile ops-drills exec -T redis-recovery-probe
   response="$(
-    docker compose -f "${REDIS_RECOVERY_COMPOSE_FILE}" --profile ops-drills run --rm redis-recovery-probe \
+    docker compose -f "${REDIS_RECOVERY_COMPOSE_FILE}" --profile ops-drills exec -T "${REDIS_RECOVERY_PROBE_SERVICE}" \
       sh -lc "status=\$(curl -sS -o /tmp/redis-recovery-body -w '%{http_code}' '${url}' || true); printf '%s\n' \"\${status}\"; cat /tmp/redis-recovery-body 2>/dev/null || true"
   )"
 
   printf '%s\n' "${response}"
+}
+
+ensure_probe_service_running() {
+  docker compose -f "${REDIS_RECOVERY_COMPOSE_FILE}" --profile ops-drills up -d "${REDIS_RECOVERY_PROBE_SERVICE}" >>"${LOG_FILE}" 2>&1
+}
+
+cleanup_probe_service() {
+  docker compose -f "${REDIS_RECOVERY_COMPOSE_FILE}" --profile ops-drills rm -fsv "${REDIS_RECOVERY_PROBE_SERVICE}" >>"${LOG_FILE}" 2>&1 || true
 }
 
 probe_expect_status() {
@@ -202,8 +216,8 @@ collect_stuck_state_breach_count_live() {
   query="SELECT COUNT(*) FROM order_session WHERE status IN ('PENDING','PROCESSING','EXECUTING','UNKNOWN','AUTH_PENDING','OTP_PENDING') AND TIMESTAMPDIFF(SECOND, created_at, UTC_TIMESTAMP()) > ${STUCK_STATE_THRESHOLD_SECONDS};"
 
   breach_count="$(
-    docker compose -f "${REDIS_RECOVERY_COMPOSE_FILE}" exec -T mysql \
-      sh -lc "mysql -N -u${MYSQL_USER_VALUE} -p${MYSQL_PASSWORD_VALUE} channel_db -e \"${query}\"" 2>/dev/null \
+    docker compose -f "${REDIS_RECOVERY_COMPOSE_FILE}" exec -T -e MYSQL_PWD="${MYSQL_PASSWORD_VALUE}" mysql \
+      mysql -N -u"${MYSQL_USER_VALUE}" channel_db -e "${query}" 2>/dev/null \
       | tr -d '\r'
   )"
 
@@ -216,16 +230,8 @@ collect_stuck_state_breach_count_live() {
 }
 
 required_probes_json() {
-  node - <<'NODE'
-const probes = [
-  "channel-health",
-  "corebank-health",
-  "fep-gateway-health",
-  "fep-simulator-health",
-  "auth-smoke",
-  "session-smoke",
-  "order-smoke",
-];
+  node - "$@" <<'NODE'
+const probes = process.argv.slice(2);
 console.log(JSON.stringify(probes));
 NODE
 }
@@ -264,7 +270,7 @@ write_summary() {
     pass_overall="true"
   fi
 
-  REQUIRED_PROBES_JSON="$(required_probes_json)"
+  REQUIRED_PROBES_JSON="$(required_probes_json "${REQUIRED_PROBE_NAMES[@]}")"
 
   MODE="${mode}" \
   RUN_ID="${REDIS_RECOVERY_RUN_ID}" \
@@ -448,7 +454,7 @@ run_simulation() {
 run_live() {
   local restart_start_ts all_green_ts outage_start_ts outage_end_ts recovery_seconds
   local required_probe_total required_probe_passes success_quorum_actual stuck_breach_count
-  local attempt deadline_epoch now_epoch all_green outage_pass
+  local attempt deadline_epoch now_epoch all_green outage_pass local_all_green
 
   if [[ "${REDIS_RECOVERY_CONFIRM_LIVE}" != "1" ]]; then
     log "ERROR: live mode requires REDIS_RECOVERY_CONFIRM_LIVE=1 to avoid accidental restarts."
@@ -462,6 +468,9 @@ run_live() {
     log "ERROR: compose file not found: ${REDIS_RECOVERY_COMPOSE_FILE}"
     exit 1
   fi
+
+  ensure_probe_service_running
+  PROBE_SERVICE_STARTED="true"
 
   log "Restarting redis using compose file: ${REDIS_RECOVERY_COMPOSE_FILE}"
   restart_start_ts="$(iso_now)"
@@ -539,6 +548,8 @@ run_live() {
 }
 
 main() {
+  require_command node
+
   case "${REDIS_RECOVERY_MODE}" in
     simulate)
       run_simulation

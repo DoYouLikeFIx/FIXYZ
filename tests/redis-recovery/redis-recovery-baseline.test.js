@@ -18,6 +18,7 @@ const drillScriptPath = path.join(
 );
 const runbookPath = path.join(repoRoot, "docs", "ops", "redis-recovery-runbook.md");
 const recoveryDocsRoot = path.join(repoRoot, "docs", "ops", "redis-recovery");
+const recoveryDocsReadmePath = path.join(recoveryDocsRoot, "README.md");
 
 function readText(filePath) {
   return fs.readFileSync(filePath, "utf8");
@@ -42,7 +43,13 @@ function makeTempDir(prefix) {
 }
 
 test("Redis recovery baseline assets exist for script + docs + indexed evidence root", () => {
-  for (const filePath of [composePath, drillScriptPath, runbookPath, recoveryDocsRoot]) {
+  for (const filePath of [
+    composePath,
+    drillScriptPath,
+    runbookPath,
+    recoveryDocsRoot,
+    recoveryDocsReadmePath,
+  ]) {
     assert.ok(fs.existsSync(filePath), `missing redis recovery asset: ${filePath}`);
   }
 });
@@ -72,7 +79,8 @@ test("Redis recovery drill script encodes NFR-R3 formulas, quorum, and stuck-sta
   mustInclude(script, "auth-smoke");
   mustInclude(script, "session-smoke");
   mustInclude(script, "order-smoke");
-  mustInclude(script, "docker compose --profile ops-drills run --rm redis-recovery-probe");
+  mustInclude(script, "docker compose --profile ops-drills up -d redis-recovery-probe");
+  mustInclude(script, "docker compose --profile ops-drills exec -T redis-recovery-probe");
   mustInclude(script, "REDIS_RECOVERY_CONFIRM_LIVE");
 });
 

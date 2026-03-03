@@ -118,7 +118,8 @@ GPT-5 Codex (Codex desktop)
 - Implemented `scripts/redis-recovery/run-redis-recovery-drill.sh` with `simulate|live` modes, internal compose probe execution (`redis-recovery-probe`), outage/recovery probe contracts, stuck-state query guardrail (`TTL + 60s`), and indexed artifact emission.
 - Added `redis-recovery-probe` service in `docker-compose.yml` under `ops-drills` profile to enforce internal-network probe context.
 - Added `tests/redis-recovery/redis-recovery-baseline.test.js` and wired `package.json` scripts for regression/lint coverage.
-- Added and validated runbook `docs/ops/redis-recovery-runbook.md` plus dated evidence artifacts under `docs/ops/redis-recovery/20260303/`.
+- Added and validated runbook `docs/ops/redis-recovery-runbook.md` plus runtime evidence indexing under `docs/ops/redis-recovery/<YYYYMMDD>/`.
+- Added tracked directory anchor `docs/ops/redis-recovery/README.md`; runtime evidence files (`*.json`, `*.log`) are intentionally not tracked by Git.
 - Validation executed: `npm run test:redis-recovery`, `npm test`, `npm run lint:collab-webhook`, `npm run lint:edge-gateway`, `npm run lint:vault`, `npm run lint:infra-bootstrap`, `npm run lint:db-ha`, `npm run lint:redis-recovery`.
 
 ### Completion Notes List
@@ -128,7 +129,7 @@ GPT-5 Codex (Codex desktop)
 - Implemented stuck-state predicate check with default `ORDER_SESSION_TTL_SECONDS=600` and fail threshold `TTL + 60s`.
 - Implemented indexed operations artifacts (`summary`, `latest-summary`, `drill log`, `index.json`) under `docs/ops/redis-recovery/<YYYYMMDD>/`.
 - Published runbook-only operability guidance with troubleshooting matrix and escalation path.
-- Executed simulation rehearsal and generated indexed evidence in `docs/ops/redis-recovery/20260303/`.
+- Executed simulation and live rehearsal; indexed evidence was generated at runtime under `docs/ops/redis-recovery/<YYYYMMDD>/` (non-tracked artifacts).
 
 ### File List
 
@@ -139,14 +140,7 @@ GPT-5 Codex (Codex desktop)
 - scripts/redis-recovery/run-redis-recovery-drill.sh
 - tests/redis-recovery/redis-recovery-baseline.test.js
 - docs/ops/redis-recovery-runbook.md
-- docs/ops/redis-recovery/20260303/index.json
-- docs/ops/redis-recovery/20260303/latest-summary.json
-- docs/ops/redis-recovery/20260303/summary-20260303T133122Z.json
-- docs/ops/redis-recovery/20260303/drill-20260303T133050Z.log
-- docs/ops/redis-recovery/20260303/drill-20260303T133104Z.log
-- docs/ops/redis-recovery/20260303/drill-20260303T133112Z.log
-- docs/ops/redis-recovery/20260303/drill-20260303T133122Z.log
-- docs/ops/redis-recovery/20260303/drill-20260303T133212Z.log
+- docs/ops/redis-recovery/README.md
 
 ### Change Log
 
