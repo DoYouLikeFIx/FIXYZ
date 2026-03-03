@@ -31,3 +31,4 @@ docs/ops/evidence/*.log
 # Local infra bootstrap runtime artifacts
 scripts/infra-bootstrap/output/
 docs/ops/evidence/*.json
+docs/ops/evidence/*.jsonl
