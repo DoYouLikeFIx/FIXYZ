@@ -58,9 +58,9 @@ So that invalid state progression cannot occur.
 
 | 현재 상태 | 시도한 전이 | 예상 결과 |
 |---|---|---|
-| `PENDING` | OTP없이 바로 execute | HTTP 409 `ORD-009` |
-| `PENDING` | 주문 준비 없이 execute 직접 호출 (`PENDING`에서 마논 단계 생략) | HTTP 409 `ORD-009` |
-| `PENDING` | 동일 `PENDING` 유지 요청 | HTTP 409 `ORD-009` |
+| `PENDING_NEW` | OTP없이 바로 execute | HTTP 409 `ORD-009` |
+| `PENDING_NEW` | 주문 준비 없이 execute 직접 호출 (`PENDING_NEW` 단계 생략) | HTTP 409 `ORD-009` |
+| `PENDING_NEW` | 동일 `PENDING_NEW` 유지 요청 | HTTP 409 `ORD-009` |
 | `AUTHED` | 다시 OTP 호출 | HTTP 409 `ORD-009` |
 | `EXECUTING` | execute 재호출 | HTTP 409 `ORD-009` (상태 전이 불가) 또는 `ORD-010` (락 충돌) — 순서 아래 참고 |
 | `COMPLETED` | OTP 또는 execute | HTTP 409 `ORD-009` |
@@ -70,7 +70,7 @@ So that invalid state progression cannot occur.
 - **판단 순서 (CRITICAL)**: 상태 검증(`ORD-009`)이 Redis SETNX 락 획득(`ORD-010`)보다 **항상 먼저** 실행된다.  
   따라서 `EXECUTING` 상태에서 execute 재호출 시: 상태 검증 선행 → `ORD-009` 반환 (락 획득 시도 안 함).  
   `AUTHED` 상태에서 동시 2개 요청 경쟁 시에만 `ORD-010` 발생 가능.
-- NOTE 허용 전이만 열거: `PENDING→AUTHED(OTP성공)`, `AUTHED→EXECUTING(execute)`, `EXECUTING→COMPLETED/FAILED(FEP응답)`, 참고: `channels/api-spec.md` §2.3
+- NOTE 허용 전이만 열거: `PENDING_NEW→AUTHED(OTP성공)`, `AUTHED→EXECUTING(execute)`, `EXECUTING→REQUERYING/COMPLETED/FAILED/CANCELED`, `REQUERYING→COMPLETED/CANCELED/ESCALATED`, `ESCALATED→COMPLETED/FAILED/CANCELED` (Admin Replay), 참고: `channels/api-spec.md` §2.3/§4.2
 
 - Status set to `ready-for-dev`.
 - Completion note: Epic 4 story context prepared from canonical planning artifact.

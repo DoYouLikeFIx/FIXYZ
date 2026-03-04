@@ -103,8 +103,11 @@ stateDiagram-v2
 | `PENDING_NEW` | OTP 인증 대기 |
 | `AUTHED` | OTP 검증 완료, 실행 승인 |
 | `EXECUTING` | 코어 주문 실행 중 |
+| `REQUERYING` | timeout/불확실 상태 재조회 중 |
+| `ESCALATED` | 자동 복구 한계 초과, 수동 처리 대기 |
 | `COMPLETED` | 정상 완료 |
 | `FAILED` | 명확한 실패 |
+| `CANCELED` | 주문 취소 완료(완전/부분 취소 포함) |
 | `EXPIRED` | 세션 만료 |
 
 ## 3.2 전이 규칙
@@ -114,16 +117,27 @@ stateDiagram-v2
     [*] --> PENDING_NEW
     
     PENDING_NEW --> AUTHED: OTP Verified
+    PENDING_NEW --> FAILED: OTP Exhausted
     PENDING_NEW --> EXPIRED: Timeout
     
     AUTHED --> EXECUTING: Order Submit
     AUTHED --> EXPIRED: Timeout
     
     EXECUTING --> COMPLETED: Core OK
-    EXECUTING --> FAILED: Core FAIL / Timeout
+    EXECUTING --> FAILED: Core Definitive FAIL
+    EXECUTING --> CANCELED: Cancel Approved
+    EXECUTING --> REQUERYING: Timeout / Unknown
+    REQUERYING --> COMPLETED: Requery Filled
+    REQUERYING --> ESCALATED: Requery Rejected
+    REQUERYING --> CANCELED: Requery Canceled
+    REQUERYING --> ESCALATED: Max Retry Exceeded
+    ESCALATED --> COMPLETED: Admin APPROVE Replay
+    ESCALATED --> FAILED: Admin REJECT Replay
+    ESCALATED --> CANCELED: Admin APPROVE + CANCELED Race
     
     COMPLETED --> [*]
     FAILED --> [*]
+    CANCELED --> [*]
     EXPIRED --> [*]
 ```
 
@@ -132,11 +146,17 @@ stateDiagram-v2
 | 전이 | 조건 | 부작용 |
 | --- | --- | --- |
 | `PENDING_NEW → AUTHED` | `OTP_VERIFICATIONS.status = VERIFIED` 확인 (4.11 원자적 트랜잭션) | AUDIT_LOGS 기록(`OTP_VERIFIED`) |
+| `PENDING_NEW → FAILED` | OTP 시도 횟수 초과(`EXHAUSTED`) | `failure_reason_code='OTP_EXCEEDED'`, NOTIFICATIONS(`ORDER_REJECTED`), AUDIT_LOGS(`ORDER_FAILED`) |
 | `PENDING_NEW → EXPIRED` | `expires_at < NOW()` | NOTIFICATIONS 생성(`SESSION_EXPIRY`) |
 | `AUTHED → EXECUTING` | 주문 실행 API 진입 | AUDIT_LOGS 기록(`ORDER_SUBMITTED`), `executing_started_at` 기록 |
 | `AUTHED → EXPIRED` | `expires_at < NOW()` (배치 수행) | NOTIFICATIONS 생성(`SESSION_EXPIRY`) |
 | `EXECUTING → COMPLETED` | 코어 성공 응답 수신 | `ledger_uuid` 저장, `post_execution_balance` 스냅샷, NOTIFICATIONS 생성(`ORDER_FILLED`), AUDIT_LOGS(`ORDER_EXECUTED`) |
-| `EXECUTING → FAILED` | 코어 명확한 실패 응답 또는 timeout 판정 | `failure_reason_code` 저장, NOTIFICATIONS 생성(`ORDER_REJECTED`), AUDIT_LOGS(`ORDER_FAILED`) |
+| `EXECUTING → FAILED` | 코어 명확한 실패 응답(잔액/포지션/검증 거절 등) | `failure_reason_code` 저장, NOTIFICATIONS 생성(`ORDER_REJECTED`), AUDIT_LOGS(`ORDER_FAILED`) |
+| `EXECUTING → REQUERYING` | `executing_started_at` 기준 timeout 초과 | 복구 스케줄러 Requery 경로 진입 |
+| `REQUERYING → COMPLETED` | Requery 결과 FILLED/PARTIAL_FILL | 체결 스냅샷 확정, NOTIFICATIONS(`ORDER_FILLED`) |
+| `REQUERYING → ESCALATED` | Requery 결과 REJECTED 또는 max retry 초과 | `failure_reason_code='ESCALATED_MANUAL_REVIEW'`, AUDIT_LOGS(`ORDER_ESCALATED`) |
+| `REQUERYING → CANCELED` | Requery 결과 CANCELED (완전/부분취소) | `executionResult` 기록, NOTIFICATIONS(`ORDER_CANCELED` 또는 `ORDER_PARTIAL_FILL_CANCEL`) |
+| `ESCALATED → COMPLETED/FAILED/CANCELED` | Admin Replay 결정 | 최종 상태 확정 + 대응 알림 발행 |
 
 ## 3.4 멱등(Idempotency) — 채널 레이어
 
@@ -149,13 +169,16 @@ stateDiagram-v2
 | order_session.status | otp_verifications.status | 의미 | 허용 여부 |
 | --- | --- | --- | --- |
 | PENDING_NEW | PENDING | 정상 — OTP 입력 대기 중 | ✅ 관리 대상 |
-| PENDING_NEW | EXHAUSTED | 비정상 — OTP 소진, 세션 EXPIRED 전이 필요 | ⚠️ 즉시 처리 |
+| PENDING_NEW | EXHAUSTED | 비정상 — OTP 소진, 세션 FAILED(`OTP_EXCEEDED`) 전이 필요 | ⚠️ 즉시 처리 |
 | PENDING_NEW | EXPIRED | 비정상 — OTP 만료, 세션도 EXPIRED 전이 | ⚠️ 즉시 처리 |
 | AUTHED | VERIFIED | 정상 — 실행 가능 상태 | ✅ |
 | AUTHED | VERIFIED | 만료 배치 진입 시 EXPIRED 전이 대상 | ⚠️ 만료 배치 대상 |
 | EXECUTING | VERIFIED | 정상 — 실행 중 | ✅ |
+| REQUERYING | VERIFIED | 복구 재조회 진행 중 | ⚠️ 배치 대상 |
+| ESCALATED | VERIFIED | 자동 복구 한계 초과, 수동 처리 대기 | ⚠️ 운영자 처리 |
 | COMPLETED | VERIFIED | 정상 완료 | ✅ |
 | FAILED | VERIFIED | 실행 후 실패 | ✅ |
+| CANCELED | VERIFIED | 취소 종결 | ✅ |
 | EXPIRED | PENDING\|EXHAUSTED\|EXPIRED | 세션 만료 | ✅ |
 | EXECUTING | \* | **timeout 위험 상태** — `executing_started_at` 기준 30초 초과 시 복구 스캔 대상 | ⚠️ 배치 대상 |
 
@@ -277,8 +300,9 @@ stateDiagram-v2
     → attempt_count++
     → N번째: OTP_VERIFICATIONS(PENDING → EXHAUSTED)
               SECURITY_EVENTS 생성(OTP_MAX_ATTEMPTS, OPEN, HIGH)
-              ORDER_SESSIONS(PENDING_NEW → EXPIRED)
-              NOTIFICATIONS 생성(SESSION_EXPIRY, UNREAD)
+              ORDER_SESSIONS(PENDING_NEW → FAILED, failure_reason_code='OTP_EXCEEDED')
+              NOTIFICATIONS 생성(ORDER_REJECTED, UNREAD)
+              AUDIT_LOGS(ORDER_FAILED)
 ```
 
 ## 6.3 세션 만료 시나리오
@@ -296,7 +320,7 @@ stateDiagram-v2
 ```
 [3] POST /orders/execute
     → ORDER_SESSIONS(AUTHED → EXECUTING), executing_started_at 기록
-    → [Core API 호출 실패]
+    → [Core API 호출 명확한 실패 응답]
     → ORDER_SESSIONS(EXECUTING → FAILED)
        failure_reason_code 저장
        NOTIFICATIONS 생성(ORDER_REJECTED, UNREAD)
@@ -309,9 +333,12 @@ stateDiagram-v2
 [복구 대시보드/스케줄러]
     → ORDER_SESSIONS WHERE status='EXECUTING'
          AND executing_started_at < NOW()-30s
-    → 채넓 서비스: Core API 재조회 (ledger_uuid 또는 실패 확인)
-    → 성공 확인: ORDER_SESSIONS(EXECUTING → COMPLETED) + 스냅샷
-    → 실패/연결 단절: ORDER_SESSIONS(EXECUTING → FAILED, failure_reason_code='EXECUTION_TIMEOUT')
+    → 채널 서비스: ORDER_SESSIONS(EXECUTING → REQUERYING)
+    → Core/FEP Requery 호출로 외부 상태 확인
+    → FILLED/PARTIAL_FILL: ORDER_SESSIONS(REQUERYING → COMPLETED) + 스냅샷
+    → REJECTED: ORDER_SESSIONS(REQUERYING → ESCALATED, failure_reason_code='ESCALATED_MANUAL_REVIEW')
+    → CANCELED: ORDER_SESSIONS(REQUERYING → CANCELED)
+    → UNKNOWN 지속 & maxRetryCount 초과: ORDER_SESSIONS(REQUERYING → ESCALATED, failure_reason_code='ESCALATED_MANUAL_REVIEW')
 ```
 
 ---
@@ -327,15 +354,19 @@ stateDiagram-v2
 | `PENDING_NEW` | (없음) | (없음) | 채널 내부 인증 단계 |
 | `AUTHED` | (없음) | (없음) | 인증 완료, Core 호출 전 |
 | `EXECUTING` | (없음) or `PENDING` | (없음) or `PENDING` | Core 호출 중 / 처리 중 |
+| `REQUERYING` | `PENDING` / `POSTED` / `CANCELED` / 불확실 | `EXECUTING` / `COMPLETED` / `CANCELED` / `ESCALATED` | 복구 재조회 중 |
+| `ESCALATED` | `PENDING` 또는 불확실 | `ESCALATED` | 자동 복구 한계 초과, 수동 조치 |
 | `COMPLETED` | `POSTED` | `COMPLETED` | **최종 성공 동기화** |
 | `FAILED` | `FAILED` | `FAILED` | **최종 실패 동기화** |
+| `CANCELED` | `CANCELED` | `CANCELED` | **최종 취소 동기화** |
 
 ## 7.2 불일치 해소 (Reconciliation)
 
 *   **상황**: Channel은 `EXECUTING`인데, Core 응답을 못 받음 (Timeout).
 *   **전략**:
-    *   Channel은 `client_request_id`로 Core `GetOrder` API 조회.
-    *   **Case 1 (Core 성공)**: Core가 `POSTED`라면 Channel도 `COMPLETED`로 전이.
-    *   **Case 2 (Core 실패)**: Core가 `FAILED`라면 Channel도 `FAILED`로 전이.
-    *   **Case 3 (Core 없음)**: Core에 기록조차 없다면 (네트워크 유실), Channel은 `FAILED` 처리 (또는 안전한 재시도 정책 적용).
-
+    *   Channel은 timeout 감지 시 먼저 `REQUERYING`으로 전이한다.
+    *   `client_request_id`로 Core `GetOrder`/FEP Requery를 수행해 상태를 수렴시킨다.
+    *   **Case 1 (Core 성공)**: Core가 `POSTED`라면 Channel `COMPLETED`.
+    *   **Case 2 (Core 거절)**: Core/FEP가 명확한 거절이면 Channel `FAILED`.
+    *   **Case 3 (Core 취소)**: Core/FEP가 `CANCELED`면 Channel `CANCELED`.
+    *   **Case 4 (불확실 지속)**: 재시도 한도 초과 시 Channel `ESCALATED` (수동 Replay 대상).

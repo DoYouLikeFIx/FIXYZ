@@ -20,12 +20,12 @@ Proposed:
 ### 2.2. Responsibility Boundaries
 | Feature | **FEP Gateway (Internal)** | **FEP Simulator (External)** |
 | :--- | :--- | :--- |
-| **Role** | Client / Initiator | Server / Responder |
+| **Role** | Market-data ingestion + virtual execution orchestrator + Client/Initiator | Server / Responder |
 | **Protocol** | Converts Internal JSON -> FIX 4.2/TCP | Parses FIX 4.2/TCP -> Internal Logic |
 | **Connection** | Manages QuickFIX/J Session Pool, Keep-Alive | Accepts FIX Sessions, Heartbeat Response |
 | **Security** | TLS_CERT/LOGON_PASSWORD (PKI/CA) | Validates FIX Logon credentials |
 | **Routing** | Decides FIX Session based on SecurityExchange | N/A (It *is* the endpoint) |
-| **Data Scope** | Canonical Order Record, Audit Log | Mock Accounts, Chaos Rules |
+| **Data Scope** | Quote Snapshot (`LIVE/DELAYED/REPLAY`), Virtual Fill Governance, Audit Log | Mock Accounts, Chaos Rules, Replay-able market events |
 
 ## 3. Schema Design (Amelia - Dev)
 

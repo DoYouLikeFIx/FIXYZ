@@ -227,7 +227,7 @@ MySQL InnoDB는 트랜잭션이 ACID 모델을 따르며(row-level locking, cons
 
 - 기본(권장): FIX 4.2 over TCP (QuickFIX/J)
   - `NewOrderSingle` (MsgType=D) 전송 → `ExecutionReport` (MsgType=8) 수신
-  - 응답 ExecType: `FILL`(체결), `REJECTED`(거부), `ORDER_CANCELLED`(취소)
+  - 응답 ExecType: `FILL`(체결), `REJECTED`(거부), `ORDER_CANCELED`(취소)
 - 옵션(심화): REST 폴백
   - `POST /fep/v1/orders/new` — QuickFIX/J 연결 불가 시 fallback
 

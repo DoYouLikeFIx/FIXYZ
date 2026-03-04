@@ -252,14 +252,14 @@ WHERE cl_ord_id = ?;
 INSERT INTO orders (
   public_id, cl_ord_id, member_id, account_id,
   symbol, side, ord_type, price, ord_qty,
-  status, cum_qty, avg_px, leaves_qty,
+  status, external_sync_status, cum_qty, avg_px, leaves_qty,
   fep_reference_id, failure_reason,
   executing_started_at, completed_at,
   created_at, updated_at
 ) VALUES (
   ?, ?, ?, ?,
   ?, ?, ?, ?, ?,
-  'NEW', 0, NULL, ?,
+  'NEW', NULL, 0, NULL, ?,
   NULL, NULL,
   NULL, NULL,
   NOW(6), NOW(6)
@@ -278,6 +278,7 @@ INSERT INTO orders (
 ```sql
 UPDATE orders
 SET status = ?,
+    external_sync_status = ?,
     cum_qty = ?,
     leaves_qty = ?,
     avg_px = ?,
@@ -286,7 +287,7 @@ SET status = ?,
 WHERE id = ?;
 ```
 
-- `? = 1`은 “최종 상태 도달 여부”(FILLED/CANCELLED/REJECTED 등)를 호출자가 판단
+- `? = 1`은 “최종 상태 도달 여부”(FILLED/CANCELED/REJECTED 등)를 호출자가 판단
 
 ---
 
@@ -307,9 +308,29 @@ WHERE account_id = ?
 
 ---
 
-### 4.2 매도 과매도 방지: 포지션 락(SELECT … FOR UPDATE)
+### 4.2 주문 실행 직렬화: 포지션 락(SELECT … FOR UPDATE)
 
-용도: 동시 매도 직렬화
+용도: 동일 `(account_id, symbol)` 주문 직렬화 (BUY/SELL 공통)
+
+```sql
+SELECT id, quantity, available_qty, avg_cost
+FROM positions
+WHERE account_id = ?
+  AND symbol = ?
+FOR UPDATE;
+```
+
+---
+
+### 4.2b 최초 매수(행 부재) bootstrap
+
+용도: BUY 시 포지션 행이 없을 때 락 타깃을 먼저 생성
+
+```sql
+INSERT INTO positions (account_id, symbol, quantity, available_qty, avg_cost, created_at, updated_at)
+VALUES (?, ?, 0, 0, NULL, NOW(6), NOW(6))
+ON DUPLICATE KEY UPDATE id = id;
+```
 
 ```sql
 SELECT id, quantity, available_qty, avg_cost
@@ -336,11 +357,11 @@ WHERE id = ?;
 
 ---
 
-## 5) executions (체결 이력, ExecID 멱등, append-only)
+## 5) executions (체결 이력, 로컬 canonical 멱등, append-only)
 
 ### 5.1 멱등 가드: exec_id로 기존 체결 조회
 
-용도: ExecutionReport 중복 수신 방지
+용도: 로컬 매칭 체결 멱등 보장
 
 ```sql
 SELECT id, public_id, exec_id, order_id, exec_type, ord_status, created_at
@@ -354,18 +375,18 @@ WHERE exec_id = ?;
 
 ### 5.2 체결 이벤트 Insert(append-only)
 
-용도: ExecutionReport 수신 시 영속화(UPDATE 금지)
+용도: 로컬 매칭 체결 영속화(UPDATE 금지). 외부 확인값은 `external_exec_id`로 선택 저장
 
 ```sql
 INSERT INTO executions (
-  public_id, exec_id, order_id, cl_ord_id,
+  public_id, exec_id, external_exec_id, order_id, cl_ord_id,
   exec_type, ord_status,
   symbol, side,
-  last_qty, last_px, cum_qty, leaves_qty,
+  executed_qty, executed_price, cum_qty, leaves_qty,
   fep_reference_id,
   created_at
 ) VALUES (
-  ?, ?, ?, ?,
+  ?, ?, ?, ?, ?,
   ?, ?,
   ?, ?,
   ?, ?, ?, ?,
@@ -382,8 +403,8 @@ INSERT INTO executions (
 
 ```sql
 SELECT
-  SUM(CASE WHEN side = 'BUY' AND exec_type = 'TRADE' THEN last_qty ELSE 0 END)
-  - SUM(CASE WHEN side = 'SELL' AND exec_type = 'TRADE' THEN last_qty ELSE 0 END) AS expected_qty
+  SUM(CASE WHEN side = 'BUY' AND exec_type = 'TRADE' THEN executed_qty ELSE 0 END)
+  - SUM(CASE WHEN side = 'SELL' AND exec_type = 'TRADE' THEN executed_qty ELSE 0 END) AS expected_qty
 FROM executions
 WHERE symbol = ?
   AND order_id IN (SELECT id FROM orders WHERE account_id = ?);
@@ -547,7 +568,7 @@ WHERE account_id = ?
   AND id > ?
   AND created_at >= ?
   AND created_at <  ?
-FOR UPDATE; -- optional (accounts lock을 이미 잡았다면 생략 가능)
+FOR UPDATE; -- optional (외부 트랜잭션에서 동일 account/symbol 락을 이미 보유한 경우 생략 가능)
 ```
 
 - `id > ?` : `accounts.last_synced_ledger_ref`
@@ -560,16 +581,16 @@ FOR UPDATE; -- optional (accounts lock을 이미 잡았다면 생략 가능)
 
 1. `order_records` 멱등 조회 (`client_request_id`)
 2. 없으면 `order_records` INSERT (`status='NEW'`)
-3. `accounts` Lock (`SELECT ... FOR UPDATE`)
-4. (DEFERRED면) `ledger_entries` Read-Repair 수행 → `accounts.balance`/`last_synced_ledger_ref` 갱신
-5. `ledger_entries` 당일 DEBIT SUM으로 한도 검증
-6. (매도면) `positions` Lock (`SELECT ... FOR UPDATE`) → `available_qty` 검증
+3. `positions` Lock (`SELECT ... FOR UPDATE WHERE account_id=? AND symbol=?`) → BUY는 필요 시 bootstrap 후 잠금, SELL은 `available_qty` 검증
+4. (현금 갱신 필요 구간에서만) `accounts` Lock (`SELECT ... FOR UPDATE`)
+5. (DEFERRED면) `ledger_entries` Read-Repair 수행 → `accounts.balance`/`last_synced_ledger_ref` 갱신
+6. `ledger_entries` 당일 DEBIT SUM으로 한도 검증
 7. `orders` 멱등 조회(`cl_ord_id`) → 없으면 INSERT
 8. `journal_entries` 멱등 조회(`client_request_id`) → 없으면 INSERT(PENDING)
 9. `ledger_entries` INSERT (DEBIT/CREDIT 라인)
     - 필요 시 `ledger_entry_refs` INSERT
 10. `journal_entries` POSTED 확정
 11. `accounts` 잔액 업데이트(EAGER 또는 정산 후)
-12. `executions` Insert(ExecutionReport 수신 시, `exec_id` 멱등)
+12. `executions` Insert(로컬 매칭 체결 시 `exec_id` 멱등, 필요 시 `external_exec_id` 저장)
 13. `orders`/`positions` 갱신(체결 반영)
-14. `order_records` 최종 상태 확정(FILLED/REJECTED/COMPENSATED 등) + 스냅샷 저장
+14. `order_records` 최종 상태 확정(FILLED/REJECTED/ESCALATED 등) + 스냅샷 저장

@@ -141,7 +141,7 @@ DB 레벨 목표:
 | member_id | BIGINT UNSIGNED | N | FK | members.id 참조 |
 | correlation_uuid | CHAR(36) | N | | 분산 트레이싱 ID |
 | client_request_id | VARCHAR(64) | N | UK | 클라이언트 멱등 키 (FIX Tag 11 ClOrdID 소스) |
-| status | VARCHAR(20) | N | CHECK | PENDING_NEW\|AUTHED\|EXECUTING\|COMPLETED\|FAILED\|EXPIRED |
+| status | VARCHAR(20) | N | CHECK | PENDING_NEW\|AUTHED\|EXECUTING\|REQUERYING\|ESCALATED\|COMPLETED\|FAILED\|CANCELED\|EXPIRED |
 | from_account_id | BIGINT UNSIGNED | N | | core_db.accounts.id (논리 참조) |
 | from_account_number | VARCHAR(14) | Y | CHECK | 실행 계좌번호 스냅샷(조회 응답용) |
 | symbol | VARCHAR(20) | N | | 종목코드 (FIX Tag 55). 예: 005930(삼성전자) |
@@ -175,7 +175,7 @@ DB 레벨 목표:
 | notification_uuid | CHAR(36) | N | UK | 공개 알림 참조 |
 | member_id | BIGINT UNSIGNED | N | FK | 수신 회원 |
 | order_session_id | BIGINT UNSIGNED | Y | FK | 관련 주문 세션(선택) |
-| type | VARCHAR(50) | N | CHECK | ORDER_FILLED\|ORDER_REJECTED\|ORDER_CANCELLED\|SESSION_EXPIRY\|SECURITY_ALERT\|ACCOUNT_LOCKED\|POSITION_UPDATED |
+| type | VARCHAR(50) | N | CHECK | ORDER_FILLED\|ORDER_REJECTED\|ORDER_CANCELED\|SESSION_EXPIRY\|SECURITY_ALERT\|ACCOUNT_LOCKED\|POSITION_UPDATE |
 | status | VARCHAR(20) | N | CHECK | UNREAD\|READ\|EXPIRED |
 | title | VARCHAR(100) | N | | 알림 요약 |
 | message | TEXT | N | | 알림 본문 |
@@ -196,7 +196,7 @@ DB 레벨 목표:
 | audit_uuid | CHAR(36) | N | UK | 컴플라이언스 참조 ID |
 | member_id | BIGINT UNSIGNED | Y | IDX | 행위자(NULL=시스템) |
 | order_session_id | BIGINT UNSIGNED | Y | IDX | 관련 주문 세션 |
-| action | VARCHAR(50) | N | CHECK | LOGIN_SUCCESS\|LOGIN_FAILURE\|LOGOUT\|OTP_VERIFIED\|ACCOUNT_LOCKED\|ACCOUNT_UNLOCKED\|TOTP_ENROLLED\|PASSWORD_CHANGED\|ORDER_SUBMITTED\|ORDER_EXECUTED\|ORDER_FAILED\|ORDER_COMPENSATED\|ORDER_FILLED\|ORDER_REJECTED\|ORDER_CANCELLED |
+| action | VARCHAR(50) | N | CHECK | LOGIN_SUCCESS\|LOGIN_FAILURE\|LOGOUT\|OTP_VERIFIED\|ACCOUNT_LOCKED\|ACCOUNT_UNLOCKED\|TOTP_ENROLLED\|PASSWORD_CHANGED\|ORDER_SUBMITTED\|ORDER_EXECUTED\|ORDER_FAILED\|ORDER_ESCALATED\|ORDER_FILLED\|ORDER_REJECTED\|ORDER_CANCELED |
 | target_type | VARCHAR(50) | Y | | 대상 엔티티 타입 |
 | target_id | VARCHAR(100) | Y | | 대상 엔티티 ID |
 | ip_address | VARCHAR(45) | Y | | 클라이언트 IP |

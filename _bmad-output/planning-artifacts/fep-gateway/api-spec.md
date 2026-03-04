@@ -120,6 +120,10 @@ POST /fep/v1/orders
   "orderType": "LIMIT",
   "qty": 10,
   "price": 72000,
+  "quoteSnapshotId": "qsnap-20260301-001122",
+  "quoteAsOf": "2026-03-01T10:00:00Z",
+  "quoteSourceMode": "DELAYED",
+  "preTradePrice": 72000,
   "currency": "KRW",
   "referenceId": "ref-uuid-xxxx"
 }
@@ -135,6 +139,10 @@ POST /fep/v1/orders
   "side": "BUY",
   "orderType": "MARKET",
   "qty": 10,
+  "quoteSnapshotId": "qsnap-20260301-001122",
+  "quoteAsOf": "2026-03-01T10:00:00Z",
+  "quoteSourceMode": "DELAYED",
+  "preTradePrice": 72000,
   "currency": "KRW",
   "referenceId": "ref-uuid-xxxx"
 }
@@ -152,6 +160,10 @@ POST /fep/v1/orders
 | `orderType` | Enum | Tag 40 | ✅ | `LIMIT`(2) \| `MARKET`(1) |
 | `qty` | Integer | Tag 38 | ✅ | 주문 수량 |
 | `price` | Long | Tag 44 | LIMIT만 ✅ | 지정 가격 (KRW, 소수점 없음) |
+| `quoteSnapshotId` | String | — | MARKET 시 ✅ | 사전검증/체결근거 snapshot 식별자 |
+| `quoteAsOf` | String(ISO-8601) | — | MARKET 시 ✅ | snapshot 기준 시각 |
+| `quoteSourceMode` | Enum | — | MARKET 시 ✅ | `LIVE` \| `DELAYED` \| `REPLAY` |
+| `preTradePrice` | Long | — | MARKET 시 ✅ | 사전 검증에 사용된 기준 가격 |
 | `currency` | String | Tag 15 | ✅ | `KRW` |
 | `referenceId` | String | Tag 58 (`Text`, 비표준 삽입) | ✅ | 내부 트레이스 참조 ID |
 
@@ -216,6 +228,9 @@ POST /fep/v1/orders
 | `9401` | `AUTH_FAILED` — `X-Internal-Secret` 헤더 누락 또는 일치 실패 | 401 | ❌ |
 | `9999` | `UNKNOWN_ERROR` — 내부 오류 | 500 | ❌ |
 | — | `VALIDATION-001` — 입력값 유효성 실패 (`clOrdId`/`X-ClOrdID` 불일치, MARKET주문 `price` 필드 없이 `null` 전송 등 채널계 전반 검증에도 사용되는 코드) | 422 | ❌ |
+| — | `VALIDATION-002` — Virtual Fill 가격 편차 초과 | 422 | ❌ |
+| — | `VALIDATION-003` — `STALE_QUOTE` (MARKET quote snapshot staleness 또는 quote 전달 필드 누락) | 422 | ❌ |
+| — | `VALIDATION-004` — 수동재처리 dual-control/evidence/reason 규칙 위반 | 422 | ❌ |
 | `9008` | `ORDER_NOT_FOUND` — Replay 대상 `clOrdId` 없음 (§10.2 전용) | 404 | ❌ |
 | `9009` | `INVALID_SESSION_STATUS` — Replay 대상 세션이 `ESCALATED` 아님 (§10.2 전용) | 409 | ❌ |
 | `9010` | `SESSION_ALREADY_LOGGED_ON` — FIX 세션이 이미 `LOGGED_ON` 상태 (§8.1 전용) | 409 | ❌ |
@@ -256,7 +271,7 @@ POST /fep/v1/orders
 > **CB OPEN 선제 차단**: `CIRCUIT_OPEN`인 경우 `@Transactional`을 시작하지 않고, 주문 레코드 생성 없이, 포지션 변경 없이 즉시 반환한다.
 
 > **`referenceId` FIX 전송 방식**: `referenceId`는 FIX Tag 58(`Text`) 필드에 `REF:{referenceId}` 포맷으로 삽입된다. FEP Simulator는 Tag 58 값을 파싱하지 않고 무시한다(패스스루). 추가 커스텀 FIX 태그는 사용하지 않으며, 표준 FIX 4.2 파싱에 영향을 주지 않는다. 감사 트레이싱 목적으로만 사용된다.
-> **`MARKET` 주문 사전 잔액 검증**: `corebank-service`는 `MARKET` 주문 수신 시 해당 종목의 직전 체결가(또는 BBO 정보가 없으면 현재 호가 조회 API)를 기준으로 `qty × 추정가` 금액을 사전 체크한다. 슬리피지로 실제 체결 금액이 추정가를 초과하면 FEP Simulator가 `ORDER_REJECTED(ExecType=8)`를 반환하며 클라이언트는 `FEP-003`을 수신한다. 사전 잔액 검증은 best-effort이며 슬리피지로 인한 초과 체결은 완전히 방지할 수 없음을 클라이언트에게 UX로 안내해야 한다.
+> **`MARKET` 주문 사전 잔액 검증/시세 모드**: `corebank-service`는 `MARKET` 주문 수신 시 quote snapshot(`quoteSnapshotId`, `quoteAsOf`, `quoteSourceMode`) 기준으로 `qty × 추정가` 금액을 사전 체크한다. `quoteSourceMode`는 `LIVE` / `DELAYED` / `REPLAY`를 지원하며, `quoteAsOf`가 staleness 임계치(`maxQuoteAgeMs`)를 초과하거나 quote 필드가 누락되면 `VALIDATION-003 422 (STALE_QUOTE)`로 거절한다. 슬리피지로 실제 체결 금액이 추정가를 초과하면 FEP Simulator가 `ORDER_REJECTED(ExecType=8)`를 반환하며 클라이언트는 `FEP-003`을 수신한다. 사전 잔액 검증은 best-effort이며 슬리피지 초과 체결을 완전히 방지하지 못함을 UX에 고지해야 한다.
 
 > **§3.1 동기 블로킹 정책**: `POST /fep/v1/orders` 요청은 **FIX ExecutionReport를 수신할 때까지 HTTP 응답을 블로킹**하는 동기 패턴이다. `corebank-service`의 `FeignClient` `readTimeout=28s` 설정에 따라 최대 28초 대기 후 타임아웃 시 `9004 TIMEOUT` 응답이 반환된다. FIX Simulator가 `ExecType=0(NEW)` → `ExecType=2(FILL)` 순서로 두 번 ExecutionReport를 전송할 경우, fep-gateway는 `ExecType=0`을 수신하면 계속 대기하고 **`ExecType=2(FILL)` 또는 기타 종결 응답을 수신할 때**만 HTTP 응답을 반환한다. `ExecType=0(NEW)` 단독 수신 후 28초 경과 시 `9004 TIMEOUT`를 반환하며, 이 주문은 복구 스케줄러에 의해 Requery 처리된다.
 ---
@@ -383,7 +398,7 @@ GET /fep/v1/orders/{clOrdId}/status
 
 > **`fepOrderId` nullable 정책 (REJECTED)**: `ExecType=8(REJECTED)` 시 FIX Simulator가 `Tag 37 (OrderID)`를 반환하지 않을 수 있다. Simulator 구현에 따라 빈 문자열 또는 미포함 상태로 올 수 있으며, fep-gateway는 빈 문자열과 미포함 모두 `null`로 정규화하여 반환한다. 클라이언트는 REJECTED 응답에서 `fepOrderId: null` 분기를 반드시 처리해야 한다. FILLED/PARTIAL_FILL 응답에서는 `fepOrderId`가 항상 non-null임이 보장된다.
 
-> **Requery REJECTED 복구 동작**: `ordStatus: "REJECTED"` 수신 시 복구 스케줄러는 OrderSession을 `FAILED`로 전환하고 사전 차감된 포지션/잔액의 보상 트랜잭션을 `corebank-service`에서 실행한다. `rejectReason`은 `fep_transaction_journal.failure_reason`에 기록된다.
+> **Requery REJECTED 복구 동작**: `ordStatus: "REJECTED"` 수신 시 복구 스케줄러는 OrderSession을 `FAILED` 또는 `ESCALATED` 정책으로 전환하고(`corebank-service` 복구 정책 기준), `rejectReason`은 `fep_transaction_journal.failure_reason`에 기록된다. 자동 포지션 역분개는 수행하지 않는다.
 
 > **`rejectReason` FIX 태그 매핑**: `rejectReason` 값은 ExecutionReport의 `Tag 103 (OrdRejReason)`을 문자열로 변환한 값이다. `Tag 58 (Text)`에 추가 사유가 있으면 `failure_reason` 컬럼에 함께 병합(`"TAG103:{value};TEXT:{tag58}"`). 가능한 열거값:
 > | `rejectReason` 값 | Tag 103 코드 | 설명 |
@@ -481,7 +496,7 @@ GET /fep/v1/orders/{clOrdId}/status
 POST /fep/v1/orders/{clOrdId}/cancel
 ```
 
-**호출자**: `corebank-service` (보상 트랜잭션 시)
+**호출자**: `corebank-service` (취소/복구 처리 시)
 
 **경로 파라미터**
 | 파라미터 | 설명 |
@@ -495,7 +510,7 @@ POST /fep/v1/orders/{clOrdId}/cancel
   "symbol": "005930",
   "side": "BUY",
   "cancelQty": 10,
-  "reason": "COMPENSATION"
+  "reason": "RECOVERY"
 }
 ```
 
@@ -505,7 +520,7 @@ POST /fep/v1/orders/{clOrdId}/cancel
 | `symbol` | Tag 55 | 종목코드 |
 | `side` | Tag 54 | 원주문과 동일 |
 | `cancelQty` | Tag 38 | 취소 수량 |
-| `reason` | — | `COMPENSATION` \| `EXPIRED` \| `ADMIN` |
+| `reason` | — | `RECOVERY` \| `EXPIRED` \| `ADMIN` |
 
 > **`cancelClOrdId` 생성 주체**: 취소 요청의 FIX Tag 11(`ClOrdID`)은 **`fep-gateway`가 UUID v4를 auto-generate**하여 FIX OrderCancelRequest에 삽입한다. 요청 바디에 취소 요청용 ClOrdID 필드를 포함하지 않으면 된다. 응답의 `cancelClOrdId`가 이 auto-generated UUID이며, 감사 로그에 `fep_transaction_journal.tx_id`와 함께 기록된다.
 
@@ -548,7 +563,7 @@ POST /fep/v1/orders/{clOrdId}/cancel
 
 > **PARTIAL_FILL_CANCEL 정책**: 거래소가 `PARTIAL_FILL` 상태(일부 체결 후 잔량 취소)로 응답할 때의 처리.  
 > - `executedQty` 분은 체결 확정 → `corebank-service`가 해당 수량만큼 포지션 반영 + `OrderSession.status = CANCELED`, `executionResult = "PARTIAL_FILL_CANCEL"`.  
-> - `canceledQty` 분은 보상 없이 잔량 해제 → 사전 차감 금액 중 `canceledQty × order.price`(원주문 지정가, LIMIT 주문 기준) 분만 환원. MARKET 주문에서는 사전 차감이 추정가 기준으로 이루어졌으므로 `canceledQty × 주문 시점 추정가`분을 환원한다.  
+> - `canceledQty` 분은 추가 역분개 없이 잔량 해제 → 사전 차감 금액 중 `canceledQty × order.price`(원주문 지정가, LIMIT 주문 기준) 분만 환원. MARKET 주문에서는 사전 차감이 추정가 기준으로 이루어졌으므로 `canceledQty × 주문 시점 추정가`분을 환원한다.  
 > - **`executedAt`**: FIX ExecutionReport TransactTime(Tag 60) 기준 거래소 체결 확정 시각 (ISO-8601 UTC). channel-service SSE `ORDER_PARTIAL_FILL_CANCEL` 이벤트의 `executedAt` 필드에 매핑된다.  
 > - **`canceledAt`**: FIX ExecutionReport TransactTime(Tag 60) 기준 거래소 취소 확정 시각 (ISO-8601 UTC). 동일 FIX 메시지에서 두 시각이 함께 반환되므로 체결·취소 순서는 `executedAt ≤ canceledAt`이 보장된다. channel-service 주문 세션 상태 조회 응답(`GET /api/v1/orders/sessions/{id}`)의 `canceledAt` 필드에 포함된다.  
 > 취소가 불가한 상태에서 취소 요청 시 RC `9006` → HTTP 409 리턴 (`CHANNEL-010`).
@@ -1067,7 +1082,7 @@ POST /fep/v1/admin/reconnect
 | `duration_ms` | INT | 요청~응답 소요 시간 (ms) |
 | `failure_reason` | VARCHAR(100) | 실패 사유 (nullable) |
 | `needs_reconciliation` | TINYINT(1) | 수기 재처리 필요 여부 |
-| `reversal_ref_tx_id` | CHAR(36) | 보상 트랜잭션 참조 (nullable) |
+| `reversal_ref_tx_id` | CHAR(36) | 정정/복구 트랜잭션 참조 (nullable) |
 
 **데이터 보존 정책**: 전자금융거래법 제22조 — **최소 5년** 보존 의무.
 
@@ -1082,17 +1097,17 @@ POST /fep/v1/admin/reconnect
 
 `OrderSessionRecoveryService` (channel-service, `@Scheduled(fixedDelay=60s)`)
 
-> **`order_session` 테이블 소유권**: `order_sessions` 테이블은 `channel_db` (channel-service 소유)에 있다. `channel-service`가 직접 상태를 `EXECUTING → REQUERYING → COMPLETED/FAILED/CANCELED/ESCALATED`로 업데이트한다. `corebank-service`는 `core_db.order_history`를 별도 관리하며 `channel_db.order_sessions`에 직접 쓰지 않는다. 상태 전환은 `channel-service`가 `corebank-service` Requery API를 호출한 다음 반환 결과를 바탕으로 `channel_db`를 업데이트한다.
+> **`order_session` 테이블 소유권**: `order_sessions` 테이블은 `channel_db` (channel-service 소유)에 있다. `channel-service`가 직접 상태를 `EXECUTING → REQUERYING → COMPLETED/CANCELED/ESCALATED`로 업데이트한다. `ESCALATED` 이후 운영자 Replay 결정으로 `COMPLETED/FAILED/CANCELED` 종결이 가능하다. `corebank-service`는 `core_db.order_history`를 별도 관리하며 `channel_db.order_sessions`에 직접 쓰지 않는다. 상태 전환은 `channel-service`가 `corebank-service` Requery API를 호출한 다음 반환 결과를 바탕으로 `channel_db`를 업데이트한다.
 
 ```
-1. EXECUTING 상태 + updated_at < NOW() − staleThresholdMinutes분인 OrderSession 스캔  
-   > **스캔 기준 컬럼**: `created_at`(세션 생성 시각)이 아닌 **`updated_at`**(EXECUTING 상태 전환 시각) 기준으로 스테일 여부를 판단한다. `created_at` 기준이면 PENDING_NEW → AUTHED 단계에서 소요된 시간이 포함돼 EXECUTING 이후 실제 경과 시간을 과대 계산한다.
+1. EXECUTING 상태 + `executing_started_at < NOW() − INTERVAL staleThresholdSeconds SECOND`인 OrderSession 스캔  
+   > **스캔 기준 컬럼**: `created_at`(세션 생성 시각)이나 일반 `updated_at`이 아닌 **`executing_started_at`**(EXECUTING 상태 전환 시각) 기준으로 스테일 여부를 판단한다. `created_at` 기준이면 PENDING_NEW → AUTHED 단계에서 소요된 시간이 포함돼 EXECUTING 이후 실제 경과 시간을 과대 계산할 수 있다.
 2. `channel-service` → `corebank-service` → `GET /fep/v1/orders/{clOrdId}/status` 호출  
    > **호출 경로**: `channel-service`는 `corebank-service`를 경유하여 상태를 조회한다. `fep-gateway`를 직접 호출하지 않는다.  
    > **구현 노트**: `corebank-service`는 `FepStatusQueryService#requery(clOrdId)` 내부 서비스 메서드(또는 `FeignClient` 프록시 빈)를 통해 `fep-gateway`의 Requery 엔드포인트를 중계한다. `channel-service`→`fep-gateway` 직접 의존 없이 아키텍처 레이어드 원칙을 유지한다.
-3. FILLED  → COMPLETED 전환 + 포지션 확정
-4. PARTIALLY_FILLED(≈ `ordStatus: "PARTIALLY_FILLED"`) → 실제 체결 수량만 포지션 반영 + OrderSession `COMPLETED`. 잔여 수량에 대한 추가 세션은 없으며 잔여 재주문은 새 세션(Step A)에서 수행한다. SSE `ORDER_FILLED` 이벤트(`executionResult: "PARTIAL_FILL"`, `executedQty`, `executedPrice`, `leavesQty`, `executedAt` 포함)로 클라이언트에 부분체결 결과를 전달한다. `ORDER_PARTIAL_FILL_CANCEL`은 취소 요청에 대한 응답 케이스이므로 이 흐름에서 사용하지 않는다.
-5. REJECTED → FAILED 전환 + 보상 포지션 해제
+3. FILLED  → COMPLETED 전환 + 포지션 추가 반영 없음(로컬 canonical fill 이미 커밋됨, 외부 확인 상태만 확정)
+4. PARTIALLY_FILLED(≈ `ordStatus: "PARTIALLY_FILLED"`) → OrderSession `COMPLETED` + 포지션 추가 반영 없음(로컬 canonical partial fill 이미 반영됨). 잔여 수량 재주문은 새 세션(Step A)에서 수행한다. SSE `ORDER_FILLED` 이벤트(`executionResult: "PARTIAL_FILL"`, `executedQty`, `executedPrice`, `leavesQty`, `executedAt` 포함)로 결과를 전달한다. `ORDER_PARTIAL_FILL_CANCEL`은 취소 요청 응답 케이스이므로 이 흐름에서 사용하지 않는다.
+5. REJECTED → ESCALATED 전환 (자동 포지션 역분개 없음, 수동 Replay/Requery 대상)
 6. CANCELED(≈ `ordStatus: "CANCELED"`) → OrderSession `CANCELED` 전환 + 포지션 해제. **완전 취소(전량 미체결)**인 경우: SSE `ORDER_CANCELED` 이벤트(`canceledQty`, `canceledAt` 포함)로 클라이언트에 전달. **부분 체결 후 잔량 취소**인 경우: `executionResult: "PARTIAL_FILL_CANCEL"`, SSE `ORDER_PARTIAL_FILL_CANCEL` 이벤트(`executedQty`, `canceledQty`, `executedPrice`, `executedAt` 포함)로 클라이언트에 전달 (§3.1 독립 이벤트 타입). 두 케이스 모두 `tx_status = CANCELED` 또는 `PARTIAL_FILL_CANCEL`로 저널 기록.
 7. UNKNOWN 또는 PENDING 또는 MALFORMED → 재조회 카운터 증가 (PENDING은 FIX 전송 완료 후 ExecutionReport 미수신 임시상태로 UNKNOWN과 동일 처리 — §3.2 PENDING Requery 정책 참조. MALFORMED는 FIX 파싱 오류로 응답 판정 불가한 상태로 UNKNOWN과 동일 처리 — §3.2 MALFORMED Requery 정책 및 §9 MALFORMED 저널 기록 정책 참조)
 8. 재조회 횟수 `maxRetryCount`를 초과하면 `order_session.status = ESCALATED` 업데이트 + 수동 처리 에스컬레이션 트리거
@@ -1103,17 +1118,17 @@ POST /fep/v1/admin/reconnect
 |---|---|---|---|
 | `maxRetryCount` | `recovery.max-retry-count` | **5** | UNKNOWN 상태 최대 재조회 횟수 |
 | `scanInterval` | `recovery.scan-interval-ms` | **60000** | 스케줄러 주기 (ms) |
-| `staleThresholdMinutes` | `recovery.stale-threshold-minutes` | **10** | EXECUTING 상태 스테일(stale) 판단 기준 (min) |
+| `staleThresholdSeconds` | `recovery.stale-threshold-seconds` | **30** | EXECUTING 상태 스테일(stale) 판단 기준 (sec) |
 
 **UNKNOWN 복구 흐름 다이어그램**
 
 ```mermaid
 stateDiagram-v2
     [*] --> EXECUTING : 주문 전송 완료
-    EXECUTING --> REQUERYING : 스케줄러 (체결지연 > 10분)
+    EXECUTING --> REQUERYING : 스케줄러 (체결지연 > 30초)
     REQUERYING --> COMPLETED : Requery 응답 FILLED
     REQUERYING --> COMPLETED : Requery 응답 PARTIALLY_FILLED
-    REQUERYING --> FAILED : Requery 응답 REJECTED
+    REQUERYING --> ESCALATED : Requery 응답 REJECTED
     REQUERYING --> CANCELED : Requery 응답 CANCELED
     REQUERYING --> REQUERYING : Requery 응답 UNKNOWN (count < maxRetryCount)
     REQUERYING --> REQUERYING : Requery 응답 PENDING (count < maxRetryCount, UNKNOWN 동일 처리)
@@ -1140,11 +1155,14 @@ POST /fep/v1/orders/{clOrdId}/replay
 > **`operatorId` 주입 주체**: 요청 바디의 `operatorId`는 **`channel-service`가 Spring Security `SecurityContext`에서 추출한 관리자 `memberUuid`를 자동 주입**하는 값이다. 직접적인 클라이언트(브라우저) 입력값이 아니며, fep-gateway는 이 값을 신뢰하고 감사 로그에 기록한다. fep-gateway 구현 시 이 필드를 요청자가 임의로 위조 가능한 값으로 취급해서는 안 된다(`X-Internal-Secret` 인증이 선행됨).
 
 > **`operatorId` nullable 정책**: `operatorId` 필드는 요청 바디에서 **필수**이다. `null` 또는 빈 문자열인 경우 fep-gateway는 `VALIDATION-001 422`를 반환한다. 내부 테스트·스크립트가 직접 이 엔드포인트를 호출하는 경우에도 `operatorId`를 반드시 포함해야 하며, 테스트용 고정값(예: `"system-test-operator"`)을 사용한다. 감사 로그에 null `operatorId`가 기록되는 것을 방지하기 위한 강제 규칙이다.
+> **dual-control 정책**: `approvedBy`는 필수이며 `operatorId`와 같으면 `VALIDATION-004 422`를 반환한다.
 **요청 바디**
 ```json
 {
   "manualDecision": "APPROVE",
   "operatorId": "admin-uuid",
+  "approvedBy": "admin-uuid-second",
+  "evidenceRef": "OPS-INC-20260301-17",
   "reason": "KRX 시스템 장애 후 수동 체결 확인",
   "executionPrice": null
 }
@@ -1154,13 +1172,15 @@ POST /fep/v1/orders/{clOrdId}/replay
 |---|---|---|---|
 | `manualDecision` | String | ✅ | `APPROVE` 또는 `REJECT` |
 | `operatorId` | String(UUID) | ✅ | 운영자 UUID (channel-service가 주입) |
+| `approvedBy` | String(UUID) | ✅ | 2차 승인자 UUID (dual-control, `operatorId`와 달라야 함) |
+| `evidenceRef` | String | ✅ | 근거 레퍼런스 ID (운영 티켓/거래소 공시 ID 등) |
 | `reason` | String | ✅ | 처리 사유 (감사 로그 기록) |
 | `executionPrice` | Long | ❌ (MARKET+UNKNOWN/PENDING/MALFORMED 시 ✅ 필수) | Virtual Fill 시 사용할 실체결 가격(KRW 단위, 원화 정수). MARKET 주문에서 FEP 상태가 `UNKNOWN`, `PENDING`, 또는 `MALFORMED`인 채로 `APPROVE`하는 경우 필수. `null`이거나 0 이하인 경우 `VALIDATION-001 422` 반환. LIMIT 주문 또는 `REJECT` 처리 시에는 무시된다. |
 
 | manualDecision | 동작 |
 |---|---|
 | `APPROVE` | Requery 결과 `FILLED` 또는 `PARTIALLY_FILLED`이면 해당 체결 데이터로 포지션 확정, OrderSession COMPLETED. Requery가 여전히 `UNKNOWN` 또는 `PENDING`(FIX 전송 완료·ExecutionReport 미수신 상태) 또는 `MALFORMED`(FIX 파싱 오류·응답 판정 불가)이면 **UNKNOWN과 동일하게 Virtual Fill** (채널계 §4.2 정책 적용 — PENDING · MALFORMED 모두 거래소 응답 미확인 상태이므로 UNKNOWN 동일 기준). Requery 결과 `CANCELED`(Race condition)이면 `CumQty = 0`(완전 취소)인 경우 OrderSession CANCELED(SSE `ORDER_CANCELED`) + 포지션 전량 해제, `CumQty > 0`(부분 체결 후 잔량 취소)인 경우 OrderSession CANCELED(`executionResult = "PARTIAL_FILL_CANCEL"`, SSE `ORDER_PARTIAL_FILL_CANCEL`) + 실체결 수량 포지션 확정 + 잔량 환원. |
-| `REJECT` | REJECTED 처리 — 보상 포지션 해제, OrderSession FAILED |
+| `REJECT` | REJECTED 처리 — OrderSession FAILED (자동 포지션 역분개 없음) |
 
 **응답 200 OK** (APPROVE 결정 — `finalStatus: "COMPLETED"`)
 ```json
@@ -1221,7 +1241,7 @@ POST /fep/v1/orders/{clOrdId}/replay
 }
 ```
 
-> **VIRTUAL_FILL 체결**: Requery가 여전히 `UNKNOWN` 또는 `PENDING`(ExecutionReport 미수신) 또는 `MALFORMED`(FIX 파싱 오류) 상태인 채로 APPROVE 처리 시 `executionSource: "VIRTUAL_FILL"`로 반환된다. LIMIT 주문은 지정가(`executedPrice = 요청 price`), MARKET 주문은 관리자가 `executionPrice` 필드로 명시한 가격이 `executedPrice`로 기록된다. `externalOrderId`는 교환소 미확인으로 `null`이다. `corebank-service`는 이 응답을 기준으로 포지션을 확정한다.
+> **VIRTUAL_FILL 체결**: Requery가 여전히 `UNKNOWN` 또는 `PENDING`(ExecutionReport 미수신) 또는 `MALFORMED`(FIX 파싱 오류) 상태인 채로 APPROVE 처리 시 `executionSource: "VIRTUAL_FILL"`로 반환된다. LIMIT 주문은 지정가(`executedPrice = 요청 price`), MARKET 주문은 관리자가 `executionPrice` 필드로 명시한 가격이 `executedPrice`로 기록된다. `externalOrderId`는 교환소 미확인으로 `null`이다. `corebank-service`는 이 응답을 기준으로 포지션을 확정한다. 운영 통제로 `operatorId + approvedBy` dual-control 기록, `maxVirtualFillDeviationBps` 편차 검증, 근거 레퍼런스(ticket/exchange note) 저장이 필수다.
 
 **응답 200 OK** (REJECT 결정 — `finalStatus: "FAILED"`)
 ```json
@@ -1288,6 +1308,8 @@ POST /fep/v1/orders/{clOrdId}/replay
 |---|---|---|
 | `9401` | 401 | `X-Internal-Secret` 누락 또는 불일치 |
 | `VALIDATION-001` | 422 | `manualDecision` 누락 또는 잘못된 값, `operatorId` 누락/빈 문자열, MARKET+UNKNOWN/PENDING/MALFORMED 시 `executionPrice` 누락/0 이하, `reason` 누락 |
+| `VALIDATION-002` | 422 | Virtual Fill 가격 편차 초과 (`executionPrice`가 `maxVirtualFillDeviationBps` 허용 범위 밖) |
+| `VALIDATION-004` | 422 | 수동재처리 거버넌스 필드 위반 (`approvedBy` 누락/`operatorId`와 동일, `evidenceRef` 누락, `reason` 길이 미달) |
 | `9008` | 404 | `clOrdId`에 해당하는 주문 없음 |
 | `9009` | 409 | 세션 상태가 `ESCALATED`가 아님 |
 | `9999` | 500 | 내부 서버 오류 (`SYS-001`) |
@@ -1316,4 +1338,7 @@ POST /fep/v1/orders/{clOrdId}/replay
 | `9401` | — | 401 | ❌ | 인증 실패. **두 가지 케이스**: ① 내부 서비스 호출(§3.1·§3.2·§3.3·§4.x·§10.x) 시 `X-Internal-Secret` 헤더 누락 또는 불일치 — 채널계까지 전파되지 않음. ② Admin API(§8.1) Bearer 토큰 누락 또는 `ROLE_ADMIN` 권한 없는 토큰 |
 | `9422` | — | 422 | ❌ | Chaos API 요청 필드 유효성 실패 — `action` 미인식 열거값, `probability` 범위 초과, `ttlSeconds` 0 이하 등 (§4.1 전용) |
 | — | `VALIDATION-001` | 422 | ❌ | 입력값 유효성 실패 (§3.1 `clOrdId`/`X-ClOrdID` 불일치, §3.3 `origClOrdId`/`symbol`/`side`/`cancelQty`/`reason` 누락, §10.2 `manualDecision`·`operatorId`·`reason` 누락, MARKET+UNKNOWN/PENDING/MALFORMED `executionPrice` 누락/0 이하, §8.1 등 전반 유효성 실패) |
+| — | `VALIDATION-002` | 422 | ❌ | Virtual Fill 가격 편차 초과 (`executionPrice`가 `maxVirtualFillDeviationBps` 허용 범위 밖) |
+| — | `VALIDATION-003` | 422 | ❌ | `STALE_QUOTE` (MARKET quote snapshot staleness/누락) |
+| — | `VALIDATION-004` | 422 | ❌ | 수동재처리 dual-control/evidence/reason 규칙 위반 |
 | `9999` | `SYS-001` | 500 | ❌ | 알 수 없는 오류 |

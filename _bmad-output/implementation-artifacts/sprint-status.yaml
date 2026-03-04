@@ -145,3 +145,11 @@ development_status:
   10-5-web-release-readiness-pack: ready-for-dev
   10-6-mobile-release-readiness-pack: ready-for-dev
   epic-10-retrospective: optional
+
+  epic-11: backlog
+  11-1-market-data-source-adapter-live-delayed-replay: ready-for-dev
+  11-2-quote-snapshot-freshness-guard: ready-for-dev
+  11-3-replay-timeline-controller: ready-for-dev
+  11-4-market-order-sweep-matching-validation: ready-for-dev
+  11-5-web-mob-quote-freshness-and-source-visibility-ux: ready-for-dev
+  epic-11-retrospective: optional

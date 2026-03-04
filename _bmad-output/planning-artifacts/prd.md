@@ -84,7 +84,7 @@ _Complete Product Requirements Document for FIX. Audience: human stakeholders an
 
 FIX is the gap between "I know Spring Boot" and "I understand why a 은행계 증권사's systems are separated the way they are."
 
-**Visible Architecture:** Four-deployable structure (`channel-service:8080`, `corebank-service:8081`, `fep-gateway:8083`, `fep-simulator:8082`) makes the architectural separation literal — 채널계(session/auth/order intake) / 계정계(Order Book + position management) / 대외계(FIX 4.2 KRX routing). The Gradle multi-module layout makes bounded contexts scannable from the GitHub file tree.
+**Visible Architecture:** Four-deployable structure (`channel-service:8080`, `corebank-service:8081`, `fep-gateway:8083`, `fep-simulator:8082`) makes the architectural separation literal — 채널계(session/auth/order intake) / 계정계(Order Book + position management) / 대외계(**market data ingestion + virtual execution engine + FIX adapter**). The Gradle multi-module layout makes bounded contexts scannable from the GitHub file tree.
 
 **Production Data Access Pattern:** Data access layers use JPA + QueryDSL — the combination found in production Korean securities systems — with `@Lock(PESSIMISTIC_WRITE)` annotations providing explicit `SELECT FOR UPDATE` semantics for concurrent position mutation safety (같은 종목 동시 매도 방어).
 
@@ -104,6 +104,7 @@ FIX is the gap between "I know Spring Boot" and "I understand why a 은행계 �
 | **Compliance Boundary** | Simulator only — no real KRX/KSD/금융투자협회 integration                          |
 | **Data Access**         | JPA + `@Query` annotations + QueryDSL                                              |
 | **FIX Protocol**        | FIX 4.2 via QuickFIX/J — FEP Gateway ↔ FEP Simulator segment only                 |
+| **Market Data Modes**   | LIVE / DELAYED / REPLAY (deterministic seed + timestamped quote snapshots)         |
 | **Frontend**            | React Web MVP (5 screens); React Native Phase 2                                    |
 | **Keycloak**            | Out of MVP scope                                                                   |
 
@@ -228,11 +229,11 @@ curl -X POST https://fix-channel/api/v1/admin/sessions/force-invalidate \
   -d '{"userId": "jisu-001", "reason": "suspicious_concurrent_login"}'
 ```
 
-**Climax:** The channel service calls `redisTemplate.delete("spring:session:jisu-001:*")` — all Redis session keys for that user are atomically purged. Any in-flight request using her session immediately receives `401 Unauthorized`. Pending orders in `PENDING_NEW` state are automatically cancelled by CoreBanking compensation logic.
+**Climax:** The channel service calls `redisTemplate.delete("spring:session:jisu-001:*")` — all Redis session keys for that user are atomically purged. Any in-flight request using her session immediately receives `401 Unauthorized`. Pending orders in `PENDING_NEW` state are automatically cancelled by CoreBanking session-expiry cleanup logic.
 
 **Resolution:** The audit log records: `ADMIN_FORCE_LOGOUT | userId: jisu-001 | adminId: hyunseok | reason: suspicious_concurrent_login | timestamp: 2026-02-25T14:32:11Z`. 지수's next page load redirects to the login screen with message "보안을 위해 로그아웃되었습니다."
 
-**Capabilities Revealed:** Admin role endpoint, Redis session bulk invalidation, audit log with admin actor, 401 propagation on invalidated session, pending order compensation on forced logout.
+**Capabilities Revealed:** Admin role endpoint, Redis session bulk invalidation, audit log with admin actor, 401 propagation on invalidated session, pending order cleanup on forced logout.
 
 ---
 
@@ -241,7 +242,7 @@ curl -X POST https://fix-channel/api/v1/admin/sessions/force-invalidate \
 > ⚠️ _Non-standard journey type unique to the portfolio nature of this project. Maps how technical evaluators experience FIX as a portfolio artifact._
 
 **은행계 증권사 Interviewer Lens (KB증권/신한투자증권 senior engineer):**
-Opens GitHub repo → scans module structure (`channel-auth`, `channel-order`, `channel-common`) → opens `AuditLogService.java`, sees PII masking on account numbers → opens `OrderExecutionService.java`, sees `@Lock(PESSIMISTIC_WRITE)` on the position query → opens `V1__init.sql`, sees `positions` + `order_executions` schema → opens `FIX42SessionAdapter.java`, sees `NewOrderSingle` → `ExecutionReport` mapping → opens README Security section, finds OWASP Logging Cheat Sheet reference.
+Opens GitHub repo → scans module structure (`channel-auth`, `channel-order`, `channel-common`) → opens `AuditLogService.java`, sees PII masking on account numbers → opens `OrderExecutionService.java`, sees `@Lock(PESSIMISTIC_WRITE)` on the position query → opens `V1__init.sql`, sees `positions` + `executions` schema → opens `FIX42SessionAdapter.java`, sees `NewOrderSingle` → `ExecutionReport` mapping → opens README Security section, finds OWASP Logging Cheat Sheet reference.
 **Assessment:** _"This candidate understands why we separate 채널계 and 계정계, and why we use FIX 4.2 to talk to KRX."_
 
 **FinTech Interviewer Lens (토스증권/키움증권 backend engineer):**
@@ -258,7 +259,7 @@ Opens GitHub repo → clicks CI badge → sees Testcontainers concurrent sell-or
 | ------------------------------------------------------- | ------------------- |
 | Session management (Redis externalization)              | J1, J3, J4          |
 | TOTP step-up OTP                                        | J1, J2              |
-| Order state machine (PENDING_NEW→AUTHED→EXECUTING→COMPLETED/FAILED/EXPIRED)   | J1, J2              |
+| Order state machine (PENDING_NEW→AUTHED→EXECUTING→REQUERYING/ESCALATED 포함 종결 흐름)   | J1, J2              |
 | Order Book price-time priority matching                 | J1                  |
 | FIX 4.2 NewOrderSingle / ExecutionReport exchange       | J1, J2              |
 | FEP exchange routing + timeout                          | J2                  |
@@ -337,9 +338,9 @@ Phase 3 — Execute
   → Order placed into Order Book; matching runs synchronously within @Transactional
   → FEP Gateway called with FIX 4.2 NewOrderSingle(35=D)
   → Order Status: NEW → FILLED / PARTIALLY_FILLED (unmatched orders remain NEW in Order Book)
-  → FEP failure (post-commit): FILLED → FAILED, sub_status=COMPENSATED
+  → FEP failure (post-commit): canonical FILLED 유지 + external sync state → FAILED/ESCALATED
   → On success: session status → COMPLETED
-  → On failure (FEP/DB error + compensation): session status → FAILED
+  → On external sync failure: session status → ESCALATED (manual replay/requery flow)
 ```
 
 TOTP replaces a real HSM-backed token device. The TOTP interface contract (RFC 6238, 6-digit, 30s window) is faithful to production HTS OTP patterns. Secret replaceability is documented: production delta is a Vault secret injection strategy change, not an API contract change.
@@ -356,31 +357,73 @@ TOTP replaces a real HSM-backed token device. The TOTP interface contract (RFC 6
 | Trace propagation           | `traceparent` + `X-Correlation-Id` headers on all inter-service calls                               |
 | QueryDSL                    | Required for position aggregate queries (daily sell qty sum); not replaceable with plain JPQL in MVP |
 | FIX 4.2 (QuickFIX/J)        | FEP Gateway ↔ FEP Simulator segment only; internal JSON/HTTP used for Channel → CoreBanking → FEP Gateway |
+| Market data freshness       | Quote snapshot must include `quoteAsOf` timestamp; stale quote rejection when age exceeds configured threshold |
+
+---
+
+### Market Data Strategy (Paper Trading)
+
+For this simulator, external-layer responsibility is **not real institution settlement**. It is:
+
+1. Receive market data (quote/tick/BBO)
+2. Build deterministic quote snapshots for pre-trade validation and valuation
+3. Feed virtual execution engine for paper-trading fills
+
+**Supported data modes:**
+
+- `LIVE`: real-time provider stream (WebSocket/streaming API) mapped into normalized quote events
+- `DELAYED`: delayed provider feed (configured delay in seconds)
+- `REPLAY`: historical event replay with deterministic clock control for tests/demo
+
+**Contract requirements:**
+
+- Every quote snapshot includes `symbol`, `bestBid`, `bestAsk`, `lastTrade`, `quoteAsOf`, `quoteSourceMode`
+- `MARKET` pre-check and valuation must use the same `quoteSnapshotId`
+- If quote age exceeds `maxQuoteAgeMs`, order prepare fails with validation error (stale quote)
+- Replay mode must be reproducible from seed + event index for CI
 
 ---
 
 ### Domain Patterns
 
-**Position Ledger:** Every execution produces an `order_executions` record plus a `position` row mutation within the same `@Transactional` boundary. Position balance is always derivable as `SUM(BUY executed_qty) − SUM(SELL executed_qty)` per symbol. No position mutation without a corresponding execution record.
+**Position Ledger (Canonical Source of Truth):** Local CoreBanking Order Book matching is the canonical execution source for paper trading. Every canonical match produces an `executions` record plus a `position` row mutation within the same `@Transactional` boundary. Position balance is always derivable as `SUM(BUY executed_qty) − SUM(SELL executed_qty)` per symbol. No position mutation without a corresponding execution record. External FEP `ExecutionReport` is a confirmation/recovery signal, not the primary source of position truth in simulator mode.
 
 **Order State Machine:**
 
 ```
 OrderSession (Channel/Redis, TTL 10 min)
   PENDING_NEW → AUTHED → EXECUTING → COMPLETED
-                                     → FAILED (FEP/DB error + compensation)
+                                     → ESCALATED (FEP post-commit sync failure)
+                                     → FAILED (validation/DB/internal failure)
   EXPIRED (TTL 600s 만료 시 Redis 키 삭제, DB status → EXPIRED by RecoveryService)
                          ↑
                   Order (CoreBanking/MySQL)
                   NEW → FILLED
-                      → PARTIALLY_FILLED → FILLED / CANCELLED
+                      → PARTIALLY_FILLED → FILLED / CANCELED
                       → FAILED (Recovery: unmatched NEW — FEP never reached; no position change)
-                  FILLED → FAILED, sub_status=COMPENSATED (FEP post-commit failure — timeout/5xx/REJECTED; compensating reversal applied)
+                  FILLED (+ external_sync_status=FAILED/ESCALATED) (FEP post-commit failure — position truth is preserved; replay/requery로 외부 확인 복구)
 ```
 
 > **Note:** Validation failures (ORD-001/002/003) occur before Order INSERT — no Order record is created. CB OPEN preemptive fallback also creates no Order record (no `@Transactional` started).
 
-**Order Book (price-time priority):** MVP implements limit orders with price-time priority matching. Buy orders match against the lowest available ask; sell orders match against the highest available bid. Matching runs synchronously within CoreBanking `@Transactional` for the MVP; async matching is Phase 2.
+**Order Book (price-time priority):** MVP implements limit + market matching with price-time priority.
+
+- `LIMIT`: buy sorted by price DESC then time ASC, sell sorted by price ASC then time ASC
+- `MARKET`: sweeps opposite book levels from best price outward until qty is exhausted
+- Partial fill is allowed when book liquidity is insufficient (`PARTIALLY_FILLED`, `leavesQty > 0`)
+- Empty opposite book on MARKET produces deterministic no-liquidity reject contract
+
+Matching runs synchronously within CoreBanking `@Transactional` for MVP; async matching is Phase 2.
+
+**Average Cost Method (MVP fixed):** weighted-average cost basis.
+
+- BUY fill: `newAvg = ((oldQty * oldAvg) + (fillQty * fillPrice)) / (oldQty + fillQty)`
+- SELL fill: `avg_cost` is preserved (quantity decreases only)
+
+**PnL Model (MVP):**
+
+- Unrealized PnL = `(markPrice - avg_cost) * quantity`
+- Realized PnL (trade-level) = `(sellPrice - avg_cost) * soldQty` (fees/taxes excluded in MVP, explicit assumption)
 
 **ClOrdID Idempotency:** `ClOrdID` (UUID v4, client-generated, FIX Tag 11) stored as `UNIQUE INDEX` on `orders`. Duplicate submission returns the original result with HTTP 200 — no double fill.
 
@@ -393,23 +436,29 @@ OrderSession (Channel/Redis, TTL 10 min)
 ```
 BEGIN TRANSACTION
   1. SELECT position WHERE symbol=X AND accountId=Y FOR UPDATE  -- (SELL: validates available_qty)
-  2. Validate: available_qty >= order_qty (SELL) / cash >= qty × price (BUY)
+  2. Validate: available_qty >= order_qty (SELL) / cash >= qty × preTradePrice (BUY)
+     - LIMIT: preTradePrice = order.price
+     - MARKET: preTradePrice = quote snapshot (bestAsk / policy fallback)
   3. INSERT orders (status=NEW, ClOrdID=...)
-  4. Run Order Book matching — INSERT order_executions (executed_qty, executed_price, side, symbol, account_id, created_at)
-  5. UPDATE positions SET quantity = quantity +/- executed_qty, avg_price recalculated
+  4. Run Order Book matching — INSERT executions (executed_qty, executed_price, side, symbol, account_id, created_at)
+  5. UPDATE positions SET quantity = quantity +/- executed_qty, avg_cost recalculated (weighted-average policy)
   6. UPDATE orders SET status=FILLED / PARTIALLY_FILLED
 COMMIT
 ```
 
-If Order Book matching finds no counterpart (no match), order remains `NEW` and sits in the book. FEP leg is called after local match.
+If Order Book matching finds no counterpart (no match):
+
+- `LIMIT`: order remains `NEW` and rests in the book
+- `MARKET`: deterministic no-liquidity reject contract applies (no `executions` insert, no position mutation)
+
+FEP leg is called only after local canonical match/partial-fill state is established.
 
 **FEP exchange failure (Saga pattern):**
 
-- **CB OPEN (preemptive):** If Resilience4j CB state = `OPEN` when execute is called, fallback fires immediately — no `@Transactional` started, no order inserted, no position change → `OrderSession FAILED` (FEP-003)
-- **FEP timeout / HTTP 5xx / REJECTED (post-commit):** CoreBanking atomically commits order as `FILLED` (positions updated, `order_executions` inserted within `@Transactional`) → FEP Gateway call fails after commit → compensating position reversal in new `@Transactional` (reverse position delta, unlock position)
-- Compensating reversal has its own idempotency key
-- Order record: `NEW → FILLED → FAILED` with sub-status `COMPENSATED`
-- FEP simulator triggers failure configurable % of calls to make compensation path demonstrable
+- **CB OPEN (preemptive):** If Resilience4j CB state = `OPEN` when execute is called, fallback fires immediately — no `@Transactional` started, no order inserted, no position change → `OrderSession FAILED` (`FEP-001`)
+- **FEP timeout / HTTP 5xx / REJECTED (post-commit):** CoreBanking canonical fill (`executions` + `positions`) remains committed and is **not reversed** in simulator mode. Instead, order keeps canonical fill state while external sync state is marked `FAILED/ESCALATED` for recovery workflow.
+- Recovery/replay uses its own idempotency key and updates external confirmation state only.
+- FEP simulator triggers failure configurable % of calls to make recovery path demonstrable.
 
 ---
 
@@ -498,9 +547,9 @@ Long todaySold = query
 
 | Code      | Meaning                              |
 | --------- | ------------------------------------ |
-| `FEP-001` | Exchange connectivity timeout        |
-| `FEP-002` | Exchange rejected order (MsgType=j)  |
-| `FEP-003` | Circuit breaker OPEN (RC=9098)       |
+| `FEP-001` | Exchange service unavailable (CB OPEN / pool / logon / key state) |
+| `FEP-002` | Exchange connectivity timeout        |
+| `FEP-003` | Exchange rejected order (MsgType=j)  |
 | `FEP-004` | Invalid FIX session state            |
 
 ---
@@ -540,7 +589,7 @@ Long todaySold = query
 ### Database Index Decisions
 
 ```sql
--- order_executions (core_db)
+-- executions (core_db)
 -- Covers QueryDSL daily-limit query: account_id + side + date range
 INDEX idx_order_exec_account_date (account_id, side, created_at);
 
@@ -626,9 +675,9 @@ An interviewer can trigger circuit breaker state transitions on demand during a 
 
 **3. Order Book Matching Engine + Position Ledger as Architectural Vocabulary**
 
-Every execution produces an `order_executions` record and mutates the `positions` row within the same `@Transactional` boundary. Any position is always derivable as `SUM(BUY executed_qty) − SUM(SELL executed_qty)`. The portfolio signals: "I know why securities systems don't store position as a simple counter update, and I implemented both Order Book matching and position integrity correctly."
+Every execution produced by the **local canonical matcher** writes `executions` and mutates `positions` in the same `@Transactional` boundary. Any position is always derivable as `SUM(BUY executed_qty) − SUM(SELL executed_qty)`. The portfolio signals: "I know why securities systems don't store position as a simple counter update, and I implemented both Order Book matching and position integrity correctly."
 
-The Order Book uses price-time priority: buy orders are sorted by price DESC then timestamp ASC; sell orders by price ASC then timestamp ASC. Matching runs as a synchronous in-process scan of open orders for MVP — optimized to a persistent sorted data structure (skip list / sorted set) in Phase 2.
+The Order Book uses price-time priority: buy orders are sorted by price DESC then timestamp ASC; sell orders by price ASC then timestamp ASC. `MARKET` orders sweep opposite-side levels in that same priority sequence. Matching runs as a synchronous in-process scan of open orders for MVP — optimized to a persistent sorted data structure (skip list / sorted set) in Phase 2.
 
 Validated by `PositionIntegrityIntegrationTest`: `SUM(BUY executed_qty) − SUM(SELL executed_qty) == positions.quantity` after N executions, InnoDB-verified via Testcontainers.
 
@@ -674,7 +723,7 @@ FinTech Interviewer path:
 | Gap in Existing Korean Portfolios          | How FIX Addresses It                                                                                 |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
 | Monolith — no service separation            | Four deployable services; 채널계/계정계/대외계 scannable from GitHub file tree without reading code |
-| Position = running counter (fragile)        | `positions` + `order_executions` — position derivable from SUM; Order Book matching demonstrated     |
+| Position = running counter (fragile)        | `positions` + `executions` — position derivable from SUM; Order Book matching demonstrated     |
 | No concurrency tests                        | `TC-ORD-08` + `PositionIntegrityIntegrationTest` — CI green, InnoDB-verified                                   |
 | Auth = JWT only (no step-up)               | Spring Session Redis + OTP step-up at order execution — 증권사 실보 HTS OTP 패턴                    |
 | No resilience pattern demonstrated          | Resilience4j circuit breaker — OPEN state live-observable in Actuator                               |
@@ -706,7 +755,7 @@ FinTech Interviewer path:
 
 **`PositionIntegrityIntegrationTest` — 7th Acceptance Scenario:**
 After N sequential sell orders across multiple symbols:
-`positions.quantity >= 0` invariant holds; `SUM(order_executions.executed_qty WHERE side='BUY') − SUM(order_executions.executed_qty WHERE side='SELL') == positions.quantity` per symbol
+`positions.quantity >= 0` invariant holds; `SUM(executions.executed_qty WHERE side='BUY') − SUM(executions.executed_qty WHERE side='SELL') == positions.quantity` per symbol
 No orphan executions, no oversell state — proves pessimistic lock + position update is atomically maintained.
 
 ---
@@ -809,7 +858,7 @@ GET    /fep-internal/health
 ```
 # FIX 4.2 TCP session (QuickFIX/J SocketAcceptor)
 FIX    [NewOrderSingle 35=D]                         → responds with ExecutionReport 35=8
-FIX    [OrderCancelRequest 35=F]                     → responds with ExecutionReport (CANCELLED)
+FIX    [OrderCancelRequest 35=F]                     → responds with ExecutionReport (CANCELED)
 
 # Chaos control (HTTP)
 GET    /fep-internal/health
@@ -866,7 +915,7 @@ services:
 | `audit_logs`        | MySQL   | id, user_id, action, target, masked_account, ip, created_at  |
 | `security_events`   | MySQL   | id, user_id, event_type, detail, ip, created_at              |
 | `notifications`     | MySQL   | id, user_id, message, type, read, created_at                 |
-| `order_sessions`    | MySQL   | id, session_id (UUID UNIQUE), user_id (FK→users.id), account_id (cross-DB ref→core_db.accounts.id; no InnoDB FK — same-schema FK not possible across `channel_db`/`core_db`), symbol, side (BUY/SELL), qty, price, cl_ord_id, status (ENUM: PENDING_NEW/AUTHED/EXECUTING/COMPLETED/FAILED/EXPIRED), execution_snapshot (JSON nullable — orderId/executedQty/executedPrice/positionQty after completion), created_at, updated_at |
+| `order_sessions`    | MySQL   | id, session_id (UUID UNIQUE), user_id (FK→users.id), account_id (cross-DB ref→core_db.accounts.id; no InnoDB FK — same-schema FK not possible across `channel_db`/`core_db`), symbol, side (BUY/SELL), qty, price, cl_ord_id, status (ENUM: PENDING_NEW/AUTHED/EXECUTING/REQUERYING/ESCALATED/COMPLETED/FAILED/CANCELED/EXPIRED), execution_snapshot (JSON nullable — orderId/executedQty/executedPrice/positionQty after completion), created_at, updated_at |
 | `sessions`          | Redis   | Spring Session — JSESSIONID, TTL 30 min                      |
 | `totp_keys`         | Redis   | key: `ch:totp-used:{memberId}:{windowIndex}:{code}`, TTL 60s (replay prevention) |
 | `otp_attempts`      | Redis   | key: `ch:otp-attempts:{sessionId}`, TTL 600s (attempt counter, init=3) |
@@ -880,10 +929,11 @@ services:
 | Table                         | Storage | Notes                                                                                                    |
 | ----------------------------- | ------- | -------------------------------------------------------------------------------------------------------- |
 | `accounts`                    | MySQL   | id, user_id, account_number, balance, daily_sell_limit (default: env DAILY_SELL_LIMIT_DEFAULT=500), status(ACTIVE/FROZEN/CLOSED), update_mode(EAGER/DEFERRED) |
-| `positions`                   | MySQL   | id, account_id, symbol, quantity, avg_price, updated_at                                                   |
-| `orders`                      | MySQL   | id, clOrdID(**UNIQUE**), account_id, symbol, side, qty, price, status(NEW/FILLED/PARTIALLY_FILLED/FAILED), sub_status(COMPENSATED nullable), created_at, updated_at |
-| `order_executions`            | MySQL   | id, order_id (FK → orders.id), account_id, symbol, side, **executed_qty**, **executed_price**, created_at |
-| `order_execution_diagnostics` | MySQL   | order_execution_id, detail (TEXT) — long error messages/stack traces separated to optimize row size       |
+| `positions`                   | MySQL   | id, account_id, symbol, quantity, avg_cost, updated_at                                                   |
+| `orders`                      | MySQL   | id, clOrdID(**UNIQUE**), account_id, symbol, side, qty, price, status(NEW/PENDING_NEW/EXECUTING/PARTIALLY_FILLED/FILLED/CANCELED/REJECTED), external_sync_status(CONFIRMED/FAILED/ESCALATED, pre-sync NULL), created_at, updated_at |
+| `executions`                  | MySQL   | id, order_id (FK → orders.id), account_id, symbol, side, **executed_qty**, **executed_price**, created_at |
+| `position_pnl_snapshots`      | MySQL   | id, account_id, symbol, mark_price, unrealized_pnl, realized_pnl_daily, as_of, source_mode(LIVE/DELAYED/REPLAY) |
+| `order_record_diagnostics`    | MySQL   | order_record_id, detail (TEXT) — long error messages/stack traces separated to optimize row size       |
 
 ---
 
@@ -1110,7 +1160,7 @@ All seven must pass in CI before MVP is complete:
 
 - [ ] `PositionConcurrencyIntegrationTest.java` 라인 단위 설명 가능
 - [ ] "왜 pessimistic lock?" 15초 이내 답변
-- [ ] "order_executions 스키마를 왜 이렇게 설계했나?" 30초 이내 답변
+- [ ] "executions 스키마를 왜 이렇게 설계했나?" 30초 이내 답변
 - [ ] FEP chaos endpoint 라이브 데모 (스크린셰어 중 30초 이내 CB OPEN)
 - [ ] "Kafka 안 쓴 이유?" — README Architecture Decisions에 문서화
 
@@ -1224,14 +1274,16 @@ jobs:
 ### Order Execution & Position
 
 - **FR-19:** System can execute an order and update the corresponding position atomically
-- **FR-20:** System can route an order to an external exchange via the FEP interface
+- **FR-20:** System can route an order to simulator external-layer service that combines market-data-driven virtual execution and FIX protocol adaptation
 - **FR-21:** System can record every order execution as a position update entry
 - **FR-22:** System can reject a duplicate order submission and return the original result unchanged
-- **FR-23:** System can compensate a failed FEP order by reverting the position change on the source account
+- **FR-23:** System can reconcile failed FEP confirmation without violating canonical local fill/position truth in simulator mode (external sync state tracked separately)
 - **FR-24:** System can track an order through discrete status states from initiation to completion or failure
 - **FR-25:** System can provide a unique order reference number for every completed or failed order
-- **FR-43:** System can protect concurrent position modifications for the same account such that the final position reflects exactly the sum of successful operations and no modification succeeds that would result in a negative position quantity (no oversell)
+- **FR-43:** System can protect concurrent position modifications at `(account_id, symbol)` scope such that different symbols do not block each other while no modification can result in negative position quantity (no oversell)
 - **FR-44:** System can guarantee that position updates for a single order are recorded atomically — either both the fill record and position update exist or neither exists
+- **FR-55:** System can compute and expose unrealized and realized PnL per symbol using documented formulas and timestamped market data snapshots
+- **FR-56:** System can reject order-prepare or valuation requests when quote snapshot freshness exceeds configured staleness threshold
 
 ### Fault Tolerance & Resilience
 
@@ -1400,6 +1452,9 @@ jobs:
   assertThat(sumBuyQty.subtract(sumSellQty)).isEqualByComparingTo(positions.getQuantity());
   // sumBuyQty = SUM(executed_qty WHERE side='BUY'), sumSellQty = SUM(executed_qty WHERE side='SELL')
   ```
+
+- **NFR-D2:** Market-data-backed valuation and MARKET pre-check must use quote snapshots with bounded staleness.
+  _Measurement: stale snapshot (`now - quoteAsOf > maxQuoteAgeMs`) causes deterministic validation failure; replay mode generates deterministic `quoteAsOf` values in CI._
 
 ### UX
 
