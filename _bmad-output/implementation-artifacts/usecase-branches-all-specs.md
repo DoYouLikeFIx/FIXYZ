@@ -962,11 +962,11 @@
 - BR-5.2-01
   - Given: authorized order execution  
   - When: execution occurs  
-  - Then: position deduction and OrderHistory record are committed atomically.
+  - Then: position deduction and orders/executions records are committed atomically.
 - BR-5.2-02
   - Given: execution failure mid-transaction  
   - When: transaction aborts  
-  - Then: neither partial position update nor OrderHistory record persists.
+  - Then: neither partial position update nor orders/executions record persists.
 - BR-5.2-03
   - Given: insufficient position quantity condition  
   - When: availability pre-check fails  

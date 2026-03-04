@@ -66,7 +66,7 @@ Six capability domains, all implemented in `channel-service` unless noted:
 | NFR Category                | Requirement                                                                              | Architectural Impact                                                                                 |
 | --------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | Concurrency                 | `SELECT FOR UPDATE` on `(account_id, symbol)` position writes                            | Pessimistic lock on position entity (EAGER mode); cross-symbol isolation must hold (005930 and 000660 can execute in parallel) |
-| Concurrent session race     | `AUTHED→EXECUTING` state transition must be atomic                                       | Redis `SET ch:txn-lock:{sessionId} NX EX 30` before CoreBanking call; `NX` failure → `CORE-003`      |
+| Concurrent session race     | `AUTHED→EXECUTING` state transition must be atomic                                       | Redis `SET ch:txn-lock:{sessionId} NX EX 30` before CoreBanking call; `NX` failure → `ORD-010`      |
 | Security                    | HttpOnly + Secure + SameSite cookie, CSRF Double Submit Cookie, PII masking, step-up OTP | Spring Security + `CookieCsrfTokenRepository` (`XSRF-TOKEN` → `X-XSRF-TOKEN`) + `AccountNumber.masked()` in `channel-common`  |
 | Resilience                  | Circuit breaker OPEN after 3 FEP timeouts (Resilience4j `slidingWindowSize=3`); post-commit failure escalates external sync state | **단일 CB 레이어**: Resilience4j `@CircuitBreaker(name="fep")` on `FepClient` in **corebank-service** — `slidingWindowSize=3`, `failureRateThreshold=100`, `waitDurationInOpenState=10s`. CB OPEN preemptive: no `@Transactional`, no order record, no position change. Post-commit FEP failure: canonical fill 유지 + `external_sync_status=FAILED/ESCALATED`, `OrderSession=ESCALATED` for replay/requery recovery. CB state: `localhost:8081/actuator/circuitbreakers` |
 | Idempotency                 | `ClOrdID` UNIQUE at DB level                                                             | `UNIQUE INDEX idx_clordid (cl_ord_id)` in `core_db.orders`                                          |
@@ -148,12 +148,26 @@ _Primary framing device for interviewer objections. Each boundary documented as:
 | Real Component          | FIX Simulator                                        | Interface Contract                                                            | Production Delta                                                | Talking Point                                              |
 | ----------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------- |
 | SMS OTP delivery gateway | TOTP via Google Authenticator (RFC 6238); secret in Vault `secret/fix/member/{memberId}/totp-secret` | `OtpService.generateSecret()` / `OtpService.confirmEnrollment()` / `OtpService.verify()` | Add SMS gateway if required; TOTP secret optionally from HSM; Vault stays | "I chose TOTP: stronger 2FA, zero telephony cost, Vault key management" |
-| KRX FEP gateway (FIX 4.2)  | **FEP Gateway** (`fep-gateway:8083`) + **FEP Simulator** (`fep-simulator:8082`) — Gateway는 시세 수신(LIVE/DELAYED/REPLAY)과 가상 체결 엔진 연계를 담당하고, FIX 4.2 변환·라우팅·키 관리도 담당; Simulator는 가상 거래소로 QuickFIX/J SocketAcceptor 역할 + Chaos 주입 | `POST /fep/v1/orders` (JSON/HTTP, CoreBanking→Gateway) + quote snapshot contract (`quoteSnapshotId`, `quoteAsOf`, `quoteSourceMode`) → Gateway가 FIX 4.2 `NewOrderSingle(35=D)` 변환/전송 → Simulator 응답 `ExecutionReport(35=8)` | FEP Gateway의 `fep_institutions.host/port`를 실제 KRX 기관 IP로 교체; 시장데이터 공급원만 실거래소 벤더로 교체하면 상위 도메인 계약 유지 | "모의투자에서는 대외계 핵심이 시세 + 가상체결이다. 실거래 연계로 바꿔도 인터페이스 계약은 유지된다" |
+| KRX FEP gateway (FIX 4.2)  | **FEP Gateway** (`fep-gateway:8083`) + **FEP Simulator** (`fep-simulator:8082`) — Gateway는 시세 수신(LIVE/DELAYED/REPLAY)과 가상 체결 엔진 연계를 담당하고, FIX 4.2 변환·라우팅·키 관리도 담당; LIVE 시세 공급자는 KIS Open API WebSocket(`H0STCNT0`)을 사용하고, approval-key 발급(`/oauth2/Approval`) + `encFlag|trId|count|payload` 프레임 파서를 가진다 | `POST /fep/v1/orders` (JSON/HTTP, CoreBanking→Gateway) + quote snapshot contract (`quoteSnapshotId`, `quoteAsOf`, `quoteSourceMode`) → Gateway가 FIX 4.2 `NewOrderSingle(35=D)` 변환/전송 → Simulator 응답 `ExecutionReport(35=8)` | FEP Gateway의 `fep_institutions.host/port`를 실제 KRX 기관 IP로 교체; 시장데이터 공급원만 실거래소 벤더로 교체하면 상위 도메인 계약 유지 | "모의투자에서는 대외계 핵심이 시세 + 가상체결이다. 실거래 연계로 바꿔도 인터페이스 계약은 유지된다" |
 | KSD (예탁결제원) settlement | Not implemented                                      | Documented boundary in README                                                 | Add `SettlementService` at post-execution step                          | "Settlement boundary is explicit and documented"           |
 | 공인인증서 (공동인증서) | Spring Security session cookie                       | `AuthenticationProvider` interface                                            | Swap `AuthenticationProvider` implementation for PKI provider           | "Spring Security abstracts the trust anchor"               |
 | Real PII (주민등록번호) | Faker-generated test data                            | `AccountNumber.masked()` utility                                              | No change to masking logic; swap seed data                              | "Masking pattern is production-correct; data is synthetic" |
 
 ---
+
+### KIS WebSocket Provider Contract (LIVE)
+
+`LIVE` 시장데이터 모드는 한국투자 Open API WebSocket `H0STCNT0`를 기준으로 구현한다.
+
+- 실전/모의 endpoint: `ws://ops.koreainvestment.com:21000` / `ws://ops.koreainvestment.com:31000`
+- 구독 요청: header(`approval_key`, `custtype`, `tr_type`, `content-type=utf-8`) + body(`tr_id`, `tr_key`)
+- 해제 요청: `tr_type=2` 고정 (`1` 등록)
+- 실시간 프레임: `encFlag|trId|count|payload` (`^` field delimiter)
+- `count` 기준 멀티레코드 분리 파싱 + `encFlag=1` 시 AES key/iv 복호화
+- ETN 심볼은 `^Q\\d{6}$` 형식까지 허용
+
+Provider-specific parsing/ops details are documented in:
+`_bmad-output/planning-artifacts/fep-gateway/kis-websocket-h0stcnt0-spec.md`
 
 ## Starter Template Evaluation
 
@@ -686,7 +700,7 @@ public class FepClient {
 
 Validated in `OrderService.prepare()` before any CoreBanking call:
 
-- Format: `^\d{6}$` (symbol code — KRX 6자리 숫자) → fail with `ORD-004 SYMBOL_INVALID`
+- Format: `^\d{6}$` 또는 `^Q\d{6}$` (국내주식/ETN symbol code) → fail with `ORD-004 SYMBOL_INVALID`
 - Qty range guard: `qty < 1 || qty > availableQty` → `ORD-004`
   > ⚠️ P-C3: 종목 코드 검증은 `SymbolValidator` 유틸리티로 분리 — 서비스 내 하드코딩 금지
 
@@ -2315,7 +2329,7 @@ fix/                                          # 모노레포 루트
 │       ├── main/java/com/fix/corebank/domain/
 │       │   ├── entity/
 │       │   │   ├── Account.java               # @ToString.Exclude (RULE-033)
-│       │   │   └── OrderHistory.java
+│       │   │   └── OrderRecord.java
 │       │   ├── repository/
 │       │   │   ├── AccountRepository.java     # @Lock(PESSIMISTIC_WRITE)
 │       │   │   ├── AccountRepositoryCustom.java
@@ -2362,7 +2376,7 @@ fix/                                          # 모노레포 루트
 │       │           ├── migration/
 │       │           │   ├── V1__create_member_table.sql
 │       │           │   ├── V2__create_account_table.sql
-│       │           │   └── V3__create_order_history_table.sql
+│       │           │   └── V3__create_orders_table.sql
 │       │           └── seed/
 │       │               └── R__seed_data.sql   # Repeatable (R2/R4)
 │       └── test/
@@ -2867,7 +2881,7 @@ logback-spring.xml 패턴: [%X{correlationId}] 포함
 올바른 순서:
   1. @Transactional 시작
   2. Position 보유수량 검증 (@Lock PESSIMISTIC_WRITE)
-  3. 수량 차감 + OrderHistory PENDING 기록
+  3. 수량 차감 + orders/executions PENDING 기록
   4. @Transactional 커밋 (DB Lock 해제)
   5. @Transactional 외부에서 FepClient.call() 호출
   6. FEP 응답에 따라 새 @Transactional로 주문 상태 업데이트 — FEP 성공: orders.status=FILLED, OrderSession=COMPLETED;

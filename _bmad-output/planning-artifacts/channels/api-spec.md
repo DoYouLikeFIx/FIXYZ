@@ -277,8 +277,9 @@ sequenceDiagram
 
     C->>CH: POST /orders/sessions/{id}/execute
     CH->>CH: Redis SET txn-lock 1 NX EX 30
-    CH->>CB: POST /internal/v1/orders/execute
+    CH->>CB: POST /internal/v1/orders
     CB->>CB: SELECT FOR UPDATE (position)
+    CB->>CB: local canonical match + commit
     CB->>FEP: POST /fep/v1/orders (FepClient @CircuitBreaker)
     FEP-->>CB: {execType:FILL, executedQty, executedPrice}
     CB-->>CH: OrderExecuteResponse
@@ -333,7 +334,7 @@ POST /api/v1/orders/sessions
 | 필드 | 타입 | 필수 | 제약 |
 |---|---|---|---|
 | `accountId` | String | ✅ | 본인 소유 계좌 |
-| `symbol` | String | ✅ | KRX 6자리 숫자 (`^\d{6}$`). `channel-service`가 내부 종목 매핑 테이블(`symbol_exchange_map`)로 `securityExchange`를 자동 결정한다 (코드베이스 라우팅 규칙: 005930~068270 → KRX, 미매핑 종목 코드 요청 시 `ORD-004 422`). 클라이언트는 `securityExchange`를 직접 지정하지 않는다. |
+| `symbol` | String | ✅ | 국내주식/ETN 종목코드 (`^\d{6}$` 또는 `^Q\d{6}$`). `channel-service`가 내부 종목 매핑 테이블(`symbol_exchange_map`)로 `securityExchange`를 자동 결정한다 (미매핑 종목 코드 요청 시 `ORD-004 422`). 클라이언트는 `securityExchange`를 직접 지정하지 않는다. |
 | `side` | Enum | ✅ | `BUY` \| `SELL` |
 
 > **Step A에서의 TOTP 등록 여부 검증 정책**: `POST /orders/sessions` (Step A)는 TOTP 등록 여부를 서버 측에서 검증하지 않는다. TOTP 미등록 사용자도 주문 세션 **생성은 가능**하다. TOTP 검증(`ORD-011`)은 Step B(OTP 검증 엔드포인트) 호출 시점에만 발생한다. 클라이언트는 서버 차단을 기다리지 않고, 로그인 응답(`totpEnrolled: false`) 수신 즉시 UX 레이어에서 Step A 버튼을 비활성화하여 불필요한 세션 생성을 방지해야 한다.
@@ -580,7 +581,7 @@ POST /api/v1/orders/sessions/{orderSessionId}/execute
 
 > **PARTIAL_FILL 처리 정책**: 부분 체결 시 OrderSession 상태는 `COMPLETED`로 종결된다. 잔여 수량(`leavesQty`)에 대한 추가 세션은 생성되지 않는다. 잔여 수량 재주문은 사용자가 새 세션(Step A)을 시작해야 한다. SSE `ORDER_FILLED` 이벤트에도 `executedQty`, `executedPrice`, `leavesQty`, `executedAt`이 포함된다.
 
-> **`externalOrderId` 매핑**: FIX `Tag 37 (OrderID)` — FEP Simulator가 부여한 체결 ID. `core_db.order_history.external_order_id` 컬럼에 저장. 수동 재처리·감사 로그 조회 시 사용.  
+> **`externalOrderId` 매핑**: FIX `Tag 37 (OrderID)` — FEP Simulator가 부여한 체결 ID. `core_db.orders.fep_reference_id` 컬럼에 저장. 수동 재처리·감사 로그 조회 시 사용.  
 > **`externalOrderId`는 nullable이다.** 거래소 `NEW` 확인(ExecType=0) 시점에는 Tag 37이 아직 발급 전이므로 `null`이 반환된다. `FILLED` · `PARTIAL_FILL` ExecutionReport 수신 이후에만 값이 보장된다. 클라이언트 및 `corebank-service` 구현 시 null 분기를 반드시 처리해야 한다.
 
 > **`executedAt` 타임스탬프**: 모든 타임스탬프는 **UTC (`Z` 접미사)**로 반환된다. `executedAt`은 FIX `TransactTime(Tag 60)` 값을 UTC ISO-8601로 변환한 것이며 FEP Gateway가 KST 변환 없이 직접 UTC를 전달한다. 클라이언트는 표시 시 KST 변환을 수행해야 한다 (UTC+09:00).
@@ -594,7 +595,7 @@ POST /api/v1/orders/sessions/{orderSessionId}/execute
 | `ORD-010` | 409 | 동시 실행 중 (Redis 락 충돌) | — |
 | `CORE-003` | 409 | CoreBanking 동시성 충돌 (position lock) | — |
 
-> **`CORE-003` → `failureReason: "POSITION_LOCK"` 연결 정책**: `CORE-003 409`가 반환되는 경우는 두 가지다. ① `corebank-service`가 Execute 시 사전 잔액·포지션 상한 검증을 실패하여 주문을 거절할 때, ② FEP 전송 전 DB 레벨 동시성 락 충돌이 발생할 때. ① 시나리오에서 `corebank-service`는 주문을 거절하고 `channel-service`는 OrderSession을 `FAILED`로 전환하며 `failureReason: "POSITION_LOCK"`을 설정한다. ② 시나리오는 동시 요청 충돌이므로 클라이언트는 재시도가 가능하지만 짧은 지연 후 1회만 재시도해야 한다. 두 케이스 모두 `CORE-003 409`로 응답되므로 클라이언트는 응답 수신 시 재시도 1회 후 실패 처리한다.
+> **`CORE-003` → `failureReason: "POSITION_LOCK"` 연결 정책**: `CORE-003 409`는 **포지션 락 경합**에만 사용한다. 사전 잔액/포지션/한도 검증 실패는 `ORD-001/ORD-002/ORD-003` 또는 `CORE-002`로 반환한다. `CORE-003` 수신 시 채널계는 `failureReason: "POSITION_LOCK"`로 저장하고 짧은 지연 후 1회 재시도할 수 있다.
 
 | `FEP-001` | 503 | FEP 서비스 불가 — 아래 4가지 RC가 모두 `FEP-001`로 통합 반환됨: **RC=9098 CIRCUIT_OPEN** (차단기 열림, `Retry-After: 10`), **RC=9002 POOL_EXHAUSTED** (SIGNED_ON FIX 세션 없음), **RC=9003 NOT_LOGGED_ON** (선택 세션 미로그인), **RC=9005 KEY_EXPIRED** (키 만료, 긴급 갱신 필요, 재시도 불가). `Retry-After: 10`은 CIRCUIT_OPEN 전용. 9002·9003·9005는 `retryAfterSeconds: null` | CIRCUIT_OPEN: 10 / 나머지: — |
 | `FEP-002` | 504 | FEP 타임아웃 — canonical fill 유지. 세션은 즉시 종결하지 않고 `EXECUTING` 유지 후 복구 워커에 의해 `REQUERYING`으로 진입, `COMPLETED`/`CANCELED` 또는 `ESCALATED`로 수렴 (`ESCALATED` 이후 운영자 Replay 결과로 `FAILED` 가능) | — |

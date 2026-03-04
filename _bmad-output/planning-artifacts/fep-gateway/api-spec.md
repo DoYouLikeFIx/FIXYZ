@@ -89,6 +89,41 @@
 | `9` | OrderCancelReject | Simulator → Gateway (취소 거절 응답 — §5.4 별도 명세) |
 | `5` | Logout | 양방향 (세션 종료) |
 
+### 2.3 Market Data Upstream — KIS WebSocket (`H0STCNT0`)
+
+`LIVE` quote ingestion은 한국투자 Open API WebSocket 계약을 따른다.
+
+| 항목 | 값 |
+|---|---|
+| 실전 Domain | `ws://ops.koreainvestment.com:21000` |
+| 모의 Domain | `ws://ops.koreainvestment.com:31000` |
+| TR ID | `H0STCNT0` (실전/모의 동일) |
+| Format | JSON + 실시간 본문(`|`/`^` 구분 문자열) |
+| Content-Type | `text/plain` (`utf-8`) |
+
+**구독 요청 헤더/바디**
+
+- Header: `approval_key`, `custtype(P|B)`, `tr_type(1=등록,2=해제)`, `content-type=utf-8`
+- Body: `tr_id=H0STCNT0`, `tr_key`(6자리 종목코드, ETN `Q` prefix 허용)
+
+**등록 응답(JSON)**
+
+- `body.msg1 = "SUBSCRIBE SUCCESS"`이면 구독 성공
+- `body.output.key`, `body.output.iv`는 암호화 payload 복호화(AES256)용
+
+**실시간 응답(문자열 프레임)**
+
+```text
+0|H0STCNT0|004|005930^123929^73100^5^...
+```
+
+- `encFlag`: `0`(평문), `1`(암호화)
+- `count`: payload 내 레코드 건수
+- payload는 `^` 구분 필드 스트림이며 `count` 기반으로 멀티레코드 분리 파싱해야 한다
+
+> Provider-level parsing, reconnect, gap-fill, and key lifecycle rules are defined in  
+> `_bmad-output/planning-artifacts/fep-gateway/kis-websocket-h0stcnt0-spec.md`.
+
 ---
 
 ## 3. FEP Gateway API — 계정계가 호출하는 엔드포인트
@@ -188,7 +223,7 @@ POST /fep/v1/orders
 ```
 
 > **`fepOrderId` 매핑**: FIX `Tag 37 (OrderID)` — FEP Simulator(KRX/KOSDAQ)가 부여한 주문 ID.
-> `corebank-service`는 이 값을 `core_db.order_history.external_order_id VARCHAR(50)` 컬럼에 저장한다.
+> `corebank-service`는 이 값을 `core_db.orders.fep_reference_id VARCHAR(64)` 컬럼에 저장한다.
 > `channel-service`에는 `externalOrderId`로 노출된다. 체결 확인·회계감사·수동 재처리 시 참조 키로 사용.
 
 **응답 200 OK** (부분 체결 — `ExecType=PARTIAL_FILL`)
@@ -861,10 +896,10 @@ DELETE /fep-internal/rules
 **ExecType 판정 로직 (FEP Gateway)**
 
 ```
-ExecType = '2' (FILL)         → ORDER_FILLED                                    (RC=0000, tx_status=APPROVED)
-ExecType = '1' (PARTIAL_FILL) → ORDER_FILLED (executionResult: "PARTIAL_FILL")  (RC=0000, tx_status=PARTIAL_FILL)
-ExecType = '8' (REJECTED)     → ORDER_REJECTED                                  (RC=9097, tx_status=DECLINED)
-ExecType = '4' (CANCELED)     → ORDER_CANCELED — §3.3 취소 요청 또는 §3.2 Requery에서 OrdStatus=4 수신 시 (Race condition 포함)  (RC=0000, tx_status=CANCELED (CumQty=0) 또는 PARTIAL_FILL_CANCEL (CumQty>0))
+ExecType = '2' (FILL)         → ORDER_FILLED                                    (RC=0000, tx_status=COMPLETED, execution_result=APPROVED)
+ExecType = '1' (PARTIAL_FILL) → ORDER_FILLED (executionResult: "PARTIAL_FILL")  (RC=0000, tx_status=COMPLETED, execution_result=PARTIAL_FILL)
+ExecType = '8' (REJECTED)     → ORDER_REJECTED                                  (RC=9097, tx_status=COMPLETED, execution_result=DECLINED)
+ExecType = '4' (CANCELED)     → ORDER_CANCELED — §3.3 취소 요청 또는 §3.2 Requery에서 OrdStatus=4 수신 시 (Race condition 포함)  (RC=0000, tx_status=COMPLETED, execution_result=CANCELED (CumQty=0) 또는 PARTIAL_FILL_CANCEL (CumQty>0))
 ExecType = '0' (NEW)          → ORDER_ACCEPTED (미체결, 대기 상태)               (RC=0000, tx_status=PENDING 유지 — 터미널 ExecutionReport 수신 전까지 UPDATE 없음, 채널계에 별도 에러 응답 없음)
 파싱 실패 / 미인식 FIX 메시지  → tx_status=MALFORMED, failure_reason="PARSE_ERROR:{message}", needs_reconciliation=1 — 복구 스케줄러 Requery 대상 (§9 MALFORMED 저널 기록 정책 참조), 주문은 UNKNOWN 상태로 유지
 ```
@@ -1047,30 +1082,30 @@ POST /fep/v1/admin/reconnect
 | 필드 | 타입 | 설명 |
 |---|---|---|
 | `tx_id` | CHAR(36) | 트랜잭션 UUID. **내부 감사 전용** — 외부 API 응답에 직접 노출되지 않는다. 감사 조회(`GET /api/v1/admin/audit-logs`)에서 `description` 필드에 참조 ID로 기록된다. 클라이언트가 직접 참조하는 식별자는 `externalOrderId`(FIX Tag 37) 또는 `clOrdId`(FIX Tag 11)이다. |
-| `stan` | VARCHAR(6) | System Trace Audit Number — `fep_stan_sequence` 테이블의 일자별 DB Sequence로 생성. `000001`~`999999` 범위, 자정(KST 00:00) 기준 재시작. `(stan_date, stan)` 복합 UNIQUE 제약으로 중복 방지. |
-| `stan_date` | DATE NOT NULL | STAN 일자 파티션 키. `(stan_date, stan)` 복합 UNIQUE 인덱스 구성에 필수. 일자별 재시작 시 `stan_date`가 변경되어 동일 `stan` 값을 다른 날짜와 구분한다. |
+| `msg_seq_num` | INT UNSIGNED | FIX MsgSeqNum(Tag 34). QuickFIX/J 세션 시퀀스이며 세션 재시작 시 1부터 재시작될 수 있다. 단독 유일키로 사용하지 않고 `(org_code, DATE(req_timestamp), msg_seq_num)` 조합으로 감사 추적한다. |
 | `org_code` | VARCHAR(10) | 기관 코드 |
-| `pan_masked` | VARCHAR(25) | PII 마스킹된 계좌번호 |
-| `tx_status` | VARCHAR(20) | `PENDING` \| `APPROVED` \| `PARTIAL_FILL` \| `PARTIAL_FILL_CANCEL` \| `CANCELED` \| `DECLINED` \| `TIMEOUT` \| `UNKNOWN` \| `MALFORMED` |
+| `cl_ord_id` | VARCHAR(64) | FIX ClOrdID(Tag 11). 주문 상관관계 추적 키 (`core_ref_id`와 함께 멱등성 보조 키로 사용). |
+| `tx_status` | VARCHAR(20) | `PENDING` \| `COMPLETED` \| `TIMEOUT` \| `REVERSED` \| `MALFORMED` \| `UNKNOWN` \| `CIRCUIT_REJECTED` |
+| `execution_result` | VARCHAR(32) NULL | `APPROVED` \| `PARTIAL_FILL` \| `PARTIAL_FILL_CANCEL` \| `CANCELED` \| `DECLINED` \| `UNKNOWN` (거래소 실행 결과 상세). |
 
-> **`CANCELED` 저널 기록 정책**: §3.3 주문 취소 요청(`POST /fep/v1/orders/{clOrdId}/cancel`)이 성공하여 거래소로부터 `OrderCancelAck(FIX Execution Report, ExecType=4, OrdStatus=4)`를 수신한 경우 `tx_status = CANCELED`로 기록된다. `PARTIAL_FILL_CANCEL`은 취소 요청에 대해 일부 체결 후 잔량 취소로 응답한 경우이므로 완전 취소(`CANCELED`)와 별도 코드로 구분된다.
+> **`CANCELED` 저널 기록 정책**: §3.3 주문 취소 요청(`POST /fep/v1/orders/{clOrdId}/cancel`)이 성공하여 거래소로부터 `OrderCancelAck(FIX Execution Report, ExecType=4, OrdStatus=4)`를 수신한 경우 `tx_status = COMPLETED`, `execution_result = CANCELED`로 기록된다. `PARTIAL_FILL_CANCEL`은 취소 요청에 대해 일부 체결 후 잔량 취소로 응답한 경우이므로 `execution_result = PARTIAL_FILL_CANCEL`로 구분된다.
 
-> **`DECLINED` 저널 기록 정책**: `tx_status = DECLINED`는 두 케이스를 통합한다. ① 실제 거래소(KRX/Simulator)가 `ExecutionReport(ExecType=8, OrdStatus=8)`로 주문을 거절한 경우. ② Chaos API `DECLINE` 액션이 활성화된 상태에서 FEP Simulator가 거절 응답을 반환한 경우. 두 케이스 모두 동일한 FIX `ExecType=8` 메시지로 수신되므로 `DECLINED`로 통합 기록되며, 케이스 구분이 필요한 경우 `failure_reason` 컬럼의 `rejectReason` 값(FIX Tag 103)으로 판별한다.
+> **`DECLINED` 저널 기록 정책**: 거래소(KRX/Simulator) 거절(`ExecType=8, OrdStatus=8`) 또는 Chaos `DECLINE` 응답은 `tx_status = COMPLETED`, `execution_result = DECLINED`로 통합 기록한다. 상세 거절 사유는 `failure_reason`(`rejectReason`, FIX Tag 103)로 구분한다.
 
-> **`CIRCUIT_REJECTED` 제외 근거**: CB OPEN 시 `corebank-service FepClient`가 `@CircuitBreaker` 수준에서 이미 차단하여 `FEP-001`을 즉시 반환하므로 FIX 메시지가 `fep-gateway`까지 도달하지 않는다. 따라서 `fep_transaction_journal` INSERT 자체가 발생하지 않으므로 `CIRCUIT_REJECTED` 사태는 기록 불가하다. 해당 사태는 `corebank-service`의 CB 내부 메커니즘으로만 유지되므로 Journal에 별도 코드가 필요 없다.
+> **`CIRCUIT_REJECTED` 기록 경계**: corebank-service CB에서 선차단된 요청은 FEP까지 도달하지 않으므로 저널 INSERT가 없다. 반면 요청이 fep-gateway에 도달한 뒤 gateway 내부 CB 정책으로 fast-fail된 경우에는 `tx_status = CIRCUIT_REJECTED`로 저널에 기록한다.
 
-> **`PARTIAL_FILL` / `PARTIAL_FILL_CANCEL` 저널 정책**: 일부 체결 시 `tx_status = PARTIAL_FILL`로 기록. 일부 체결 후 잔량 취소 시 `tx_status = PARTIAL_FILL_CANCEL`로 기록. 두 코드 모두 `needs_reconciliation = 0`(정상 마감), `reversal_ref_tx_id = null`로 처리.
+> **`PARTIAL_FILL` / `PARTIAL_FILL_CANCEL` 저널 정책**: 일부 체결은 `tx_status = COMPLETED`, `execution_result = PARTIAL_FILL`. 일부 체결 후 잔량 취소는 `tx_status = COMPLETED`, `execution_result = PARTIAL_FILL_CANCEL`. 두 케이스 모두 `needs_reconciliation = 0`, `reversal_ref_tx_id = null`로 처리한다.
 
 > **`MALFORMED` 저널 기록 정책**: Chaos API `MALFORMED_RESP` 액션 활성화 상태에서 FEP Simulator가 잘못된 FIX 메시지를 반환하여 fep-gateway가 ExecutionReport 파싱에 실패할 때 `tx_status = MALFORMED`로 기록된다. `failure_reason` 컬럼에 파싱 오류 상세(`"PARSE_ERROR:{message}"` 형식)가 기록되고 `needs_reconciliation = 1`로 설정되어 수동 검토 대상이 된다. MALFORMED 레코드는 복구 스케줄러에서 `UNKNOWN`/`PENDING`과 동일하게 Requery 처리 대상으로 분류된다.
 
 > **`UNKNOWN` 저널 기록 정책**: FIX Simulator가 Requery(OrderStatusRequest)에 응답했으나 해당 주문 정보를 확인할 수 없다고 반환한 경우 `tx_status = UNKNOWN`으로 업데이트된다. `failure_reason` 컬럼에 Simulator 반환 메시지가 기록되고 `needs_reconciliation = 1`로 설정된다. UNKNOWN 레코드는 복구 스케줄러에서 `PENDING`/`MALFORMED`와 동일하게 재조회 처리 대상으로 분류되며, `maxRetryCount` 초과 시 `ESCALATED`로 에스컬레이션된다 (§3.2 UNKNOWN Requery 정책 및 §10.1 step 7 참조).
 
 > **`tx_status` vs `order_session.status` 레이어 구분**: `fep_transaction_journal.tx_status`는 **FIX 트랜잭션 레벨** 결과(FEP ↔ Simulator 간 프로토콜 상태)를 반영한다. `channel_db.order_sessions.status`는 **비즈니스 세션 레벨** 상태(채널계)이다. 두 값은 별개이며 항상 일치하지 않는다. 예: ExecutionReport 수신 전(FEP 처리 중)에는 `tx_status = PENDING`이지만 `order_session.status = EXECUTING`일 수 있다. 저널 레코드 기록 시점(`FEP가 ExecutionReport를 수신한 시점`)과 채널 상태 전환 시점이 다를 수 있으며, 구현 시 두 값을 혼용하지 않아야 한다.
-| `message_type` | VARCHAR(4) | FIX MsgType |
+| `msg_type` | VARCHAR(2) | FIX MsgType(Tag 35). 예: `D`, `8`, `F`, `G`, `9`, `H` |
 | `amount` | DECIMAL(20, 0) | 주문 금액 (qty × 주문 단가). KRW는 소수점 없으므로 `DECIMAL(20, 0)` 사용. **외화 지원 확장 시 `DECIMAL(20, 4)`로 콜럼 정의를 변경해야 한다** — 사전 마이그레이션 계획 수립 필수. MARKET 주문에서는 주문 시점 추정가 기준으로 기록한다. |
 | `execution_amount` | DECIMAL(20, 0) NULL | 실제 체결 금액 (executedQty × executedPrice). `APPROVED`(전량 체결) · `PARTIAL_FILL` 이후에만 값이 설정된다. 미체결(대기 중) 또는 `DECLINED`(거절) 시 `NULL`. MARKET 주문의 슬리피지 분석 기준 수치. |
 
-> **`execution_amount` INSERT/UPDATE 정책**: 저널 레코드는 FIX NewOrderSingle 전송 시점에 `tx_status = PENDING`, `execution_amount = NULL`로 **최초 INSERT**된다. FIX ExecutionReport 수신 시 해당 레코드를 `UPDATE`하여 `execution_amount`와 `tx_status`를 갱신한다 (`ExecType=FILL` → `tx_status = APPROVED`, `ExecType=PARTIAL_FILL` → `tx_status = PARTIAL_FILL`). INSERT-then-UPDATE 방식이므로 ExecutionReport 수신 전 트랜잭션 롤백(예: DB 장애)이 발생하면 `execution_amount = NULL`인 PENDING 레코드가 잔류할 수 있다. 이 경우 `needs_reconciliation`을 1로 설정하는 별도 배치 스캔으로 감지한다 (`stale_threshold = created_at < NOW() − 30분 AND tx_status = PENDING`).
+> **`execution_amount` INSERT/UPDATE 정책**: 저널 레코드는 FIX NewOrderSingle 전송 시점에 `tx_status = PENDING`, `execution_amount = NULL`로 **최초 INSERT**된다. FIX ExecutionReport 수신 시 해당 레코드를 `UPDATE`하여 `execution_amount`와 상태를 갱신한다 (`ExecType=FILL` → `tx_status = COMPLETED`, `execution_result = APPROVED`; `ExecType=PARTIAL_FILL` → `tx_status = COMPLETED`, `execution_result = PARTIAL_FILL`). INSERT-then-UPDATE 방식이므로 ExecutionReport 수신 전 트랜잭션 롤백(예: DB 장애)이 발생하면 `execution_amount = NULL`인 PENDING 레코드가 잔류할 수 있다. 이 경우 `needs_reconciliation`을 1로 설정하는 별도 배치 스캔으로 감지한다 (`stale_threshold = created_at < NOW() − 30분 AND tx_status = PENDING`).
 
 > **stale PENDING 감지 후 처리 행동**: 배치 스캔이 `tx_status = PENDING AND created_at < NOW() − 30분` 레코드를 발견하면 다음 순서로 처리한다:
 > 1. `tx_status = TIMEOUT`으로 UPDATE (최종 상태 마킹)
@@ -1086,9 +1121,9 @@ POST /fep/v1/admin/reconnect
 
 **데이터 보존 정책**: 전자금융거래법 제22조 — **최소 5년** 보존 의무.
 
-> **`stan_date` INSERT 정책**: 애플리케이션이 FIX 메시지 수신/전송 시점에 KST `LocalDate.now(ZoneId.of("Asia/Seoul"))`를 명시적으로 계산하여 주입한다. DB 서버의 `NOW()` 또는 기본 타임존에 의존하지 않는다. UTC 15:00(= KST 00:00) 전후 거래가 UTC 날짜와 KST 날짜가 달라지는 시간대 경계 문제를 방지하기 위해 애플리케이션 레이어에서 KST LocalDate를 계산한다. 서버 JVM 타임존 및 DB `time_zone` 설정이 Asia/Seoul로 고정되어 있더라도 이 정책을 명시적으로 적용한다.
+> **MsgSeqNum 감사 조회 정책**: FIX 세션 재로그온 시 `msg_seq_num`이 재시작되므로 단독 조회를 금지한다. 운영 감사 쿼리는 `(org_code, DATE(req_timestamp), msg_seq_num)` 조합을 기본 키로 사용한다.
 
-> **STAN 오버플로우 정책**: 동일 일자 내 `999999` 도달 시 `000001`로 wrap-around하며 해당 저널 레코드에 `needs_reconciliation = 1`을 설정하고 `failure_reason = "STAN_OVERFLOW"`를 기록하여 수동 조사 대상으로 분류한다. 해당 거래 자체는 정상 체결이더라도 `needs_reconciliation = 1`이 감사자에게 STAN 고유성 경계를 알린다. 정상적인 일일 거래량에서는 발생하지 않는 엣지 케이스이나 감사 무결성을 위해 명시한다.
+> **MsgSeqNum 재시작 정책**: QuickFIX/J 세션 재시작/재동기화에 따른 `msg_seq_num` 리셋은 정상 동작이다. 이를 오류(overflow)로 처리하지 않으며, 주문 상관관계 1차 키는 `cl_ord_id`를 우선 사용한다.
 ---
 
 ## 10. 복구 흐름 (Recovery)
@@ -1097,7 +1132,7 @@ POST /fep/v1/admin/reconnect
 
 `OrderSessionRecoveryService` (channel-service, `@Scheduled(fixedDelay=60s)`)
 
-> **`order_session` 테이블 소유권**: `order_sessions` 테이블은 `channel_db` (channel-service 소유)에 있다. `channel-service`가 직접 상태를 `EXECUTING → REQUERYING → COMPLETED/CANCELED/ESCALATED`로 업데이트한다. `ESCALATED` 이후 운영자 Replay 결정으로 `COMPLETED/FAILED/CANCELED` 종결이 가능하다. `corebank-service`는 `core_db.order_history`를 별도 관리하며 `channel_db.order_sessions`에 직접 쓰지 않는다. 상태 전환은 `channel-service`가 `corebank-service` Requery API를 호출한 다음 반환 결과를 바탕으로 `channel_db`를 업데이트한다.
+> **`order_session` 테이블 소유권**: `order_sessions` 테이블은 `channel_db` (channel-service 소유)에 있다. `channel-service`가 직접 상태를 `EXECUTING → REQUERYING → COMPLETED/CANCELED/ESCALATED`로 업데이트한다. `ESCALATED` 이후 운영자 Replay 결정으로 `COMPLETED/FAILED/CANCELED` 종결이 가능하다. `corebank-service`는 `core_db.orders`/`core_db.executions`를 별도 관리하며 `channel_db.order_sessions`에 직접 쓰지 않는다. 상태 전환은 `channel-service`가 `corebank-service` Requery API를 호출한 다음 반환 결과를 바탕으로 `channel_db`를 업데이트한다.
 
 ```
 1. EXECUTING 상태 + `executing_started_at < NOW() − INTERVAL staleThresholdSeconds SECOND`인 OrderSession 스캔  
@@ -1108,7 +1143,7 @@ POST /fep/v1/admin/reconnect
 3. FILLED  → COMPLETED 전환 + 포지션 추가 반영 없음(로컬 canonical fill 이미 커밋됨, 외부 확인 상태만 확정)
 4. PARTIALLY_FILLED(≈ `ordStatus: "PARTIALLY_FILLED"`) → OrderSession `COMPLETED` + 포지션 추가 반영 없음(로컬 canonical partial fill 이미 반영됨). 잔여 수량 재주문은 새 세션(Step A)에서 수행한다. SSE `ORDER_FILLED` 이벤트(`executionResult: "PARTIAL_FILL"`, `executedQty`, `executedPrice`, `leavesQty`, `executedAt` 포함)로 결과를 전달한다. `ORDER_PARTIAL_FILL_CANCEL`은 취소 요청 응답 케이스이므로 이 흐름에서 사용하지 않는다.
 5. REJECTED → ESCALATED 전환 (자동 포지션 역분개 없음, 수동 Replay/Requery 대상)
-6. CANCELED(≈ `ordStatus: "CANCELED"`) → OrderSession `CANCELED` 전환 + 포지션 해제. **완전 취소(전량 미체결)**인 경우: SSE `ORDER_CANCELED` 이벤트(`canceledQty`, `canceledAt` 포함)로 클라이언트에 전달. **부분 체결 후 잔량 취소**인 경우: `executionResult: "PARTIAL_FILL_CANCEL"`, SSE `ORDER_PARTIAL_FILL_CANCEL` 이벤트(`executedQty`, `canceledQty`, `executedPrice`, `executedAt` 포함)로 클라이언트에 전달 (§3.1 독립 이벤트 타입). 두 케이스 모두 `tx_status = CANCELED` 또는 `PARTIAL_FILL_CANCEL`로 저널 기록.
+6. CANCELED(≈ `ordStatus: "CANCELED"`) → OrderSession `CANCELED` 전환 + 포지션 해제. **완전 취소(전량 미체결)**인 경우: SSE `ORDER_CANCELED` 이벤트(`canceledQty`, `canceledAt` 포함)로 클라이언트에 전달. **부분 체결 후 잔량 취소**인 경우: `executionResult: "PARTIAL_FILL_CANCEL"`, SSE `ORDER_PARTIAL_FILL_CANCEL` 이벤트(`executedQty`, `canceledQty`, `executedPrice`, `executedAt` 포함)로 클라이언트에 전달 (§3.1 독립 이벤트 타입). 두 케이스 모두 저널은 `tx_status = COMPLETED`로 기록하고 상세 결과를 `execution_result`(`CANCELED` 또는 `PARTIAL_FILL_CANCEL`)로 구분한다.
 7. UNKNOWN 또는 PENDING 또는 MALFORMED → 재조회 카운터 증가 (PENDING은 FIX 전송 완료 후 ExecutionReport 미수신 임시상태로 UNKNOWN과 동일 처리 — §3.2 PENDING Requery 정책 참조. MALFORMED는 FIX 파싱 오류로 응답 판정 불가한 상태로 UNKNOWN과 동일 처리 — §3.2 MALFORMED Requery 정책 및 §9 MALFORMED 저널 기록 정책 참조)
 8. 재조회 횟수 `maxRetryCount`를 초과하면 `order_session.status = ESCALATED` 업데이트 + 수동 처리 에스컬레이션 트리거
 
@@ -1201,7 +1236,7 @@ POST /fep/v1/orders/{clOrdId}/replay
 }
 ```
 
-> **`executionSource` 값**: `"FILLED"` = Requery 실체결 데이터 사용. `"VIRTUAL_FILL"` = Requery `UNKNOWN` 또는 `PENDING`(ExecutionReport 미수신) 또는 `MALFORMED`(FIX 파싱 오류) 유지로 관리자 입력가 또는 지정가 사용 — PENDING · MALFORMED 모두 UNKNOWN과 동일하게 Virtual Fill 대상. REJECT 결정 시: `executionSource: null`, `executedQty: null`, `executedPrice: null`, `finalStatus: "FAILED"`. APPROVE + Requery=CANCELED Race condition(완전 취소, `CumQty = 0`) 시: `executionSource: null`, `executedQty: null`, `executedPrice: null`, `finalStatus: "CANCELED"`. APPROVE + Requery=CANCELED Race condition(부분 체결 후 잔량 취소, `CumQty > 0`) 시: `executionSource: null`, `executedQty`(실체결 수량)·`executedPrice` non-null, `finalStatus: "CANCELED"`, `executionResult: "PARTIAL_FILL_CANCEL"`. `corebank-service`는 이 필드를 기준으로 `core_db.order_history.execution_source` 콜럼에 기록한다.
+> **`executionSource` 값**: `"FILLED"` = Requery 실체결 데이터 사용. `"VIRTUAL_FILL"` = Requery `UNKNOWN` 또는 `PENDING`(ExecutionReport 미수신) 또는 `MALFORMED`(FIX 파싱 오류) 유지로 관리자 입력가 또는 지정가 사용 — PENDING · MALFORMED 모두 UNKNOWN과 동일하게 Virtual Fill 대상. REJECT 결정 시: `executionSource: null`, `executedQty: null`, `executedPrice: null`, `finalStatus: "FAILED"`. APPROVE + Requery=CANCELED Race condition(완전 취소, `CumQty = 0`) 시: `executionSource: null`, `executedQty: null`, `executedPrice: null`, `finalStatus: "CANCELED"`. APPROVE + Requery=CANCELED Race condition(부분 체결 후 잔량 취소, `CumQty > 0`) 시: `executionSource: null`, `executedQty`(실체결 수량)·`executedPrice` non-null, `finalStatus: "CANCELED"`, `executionResult: "PARTIAL_FILL_CANCEL"`. `corebank-service`는 이 값을 `core_db.orders.failure_reason`/`external_sync_status` 및 `core_db.executions.exec_type` 조합으로 기록·추적한다.
 
 **응답 200 OK** (APPROVE 결정 — Requery 응답 PARTIALLY_FILLED, 부분 체결 확정)
 ```json

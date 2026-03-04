@@ -329,7 +329,7 @@ Phase 3 — Execute
   POST /api/v1/orders/sessions/{sessionId}/execute
   → Requires session in AUTHED state:
      - PENDING_NEW → 409 ORD-005 (session not in AUTHED state; OTP step not yet completed)
-     - EXECUTING (with active ch:txn-lock) → 409 CORE-003 (concurrent execute; lock NX failure)
+     - EXECUTING (with active ch:txn-lock) → 409 ORD-010 (concurrent execute; lock NX failure)
      - EXECUTING (ch:txn-lock expired, Recovery not yet run) → 409 ORD-005 (execution in progress; wait for Recovery Service resolution)
      - FAILED or COMPLETED → 409 ORD-006 (already in terminal state)
      - EXPIRED / Redis key missing → 404 ORD-005 (session not found)
@@ -375,12 +375,23 @@ For this simulator, external-layer responsibility is **not real institution sett
 - `DELAYED`: delayed provider feed (configured delay in seconds)
 - `REPLAY`: historical event replay with deterministic clock control for tests/demo
 
+**LIVE provider contract (KIS Open API WebSocket `H0STCNT0`):**
+
+- Real domain: `ws://ops.koreainvestment.com:21000`, Paper domain: `ws://ops.koreainvestment.com:31000`
+- WebSocket auth requires `approval_key` from `/oauth2/Approval`
+- Subscribe/unsubscribe contract: header `approval_key`, `custtype`, `tr_type(1=register,2=unregister)`, `content-type=utf-8`; body `tr_id=H0STCNT0`, `tr_key`
+- Real-time frame format: `encFlag|trId|count|payload`, payload uses `^` field delimiter
+- Multi-record frames must be split by `count` (e.g., `0|H0STCNT0|004|...` means 4 trade records in one frame)
+- If `encFlag=1`, decode using AES256 key/iv delivered by subscribe success response (`body.output.key`, `body.output.iv`)
+
 **Contract requirements:**
 
 - Every quote snapshot includes `symbol`, `bestBid`, `bestAsk`, `lastTrade`, `quoteAsOf`, `quoteSourceMode`
 - `MARKET` pre-check and valuation must use the same `quoteSnapshotId`
 - If quote age exceeds `maxQuoteAgeMs`, order prepare fails with validation error (stale quote)
 - Replay mode must be reproducible from seed + event index for CI
+
+**Detailed provider spec reference:** `_bmad-output/planning-artifacts/fep-gateway/kis-websocket-h0stcnt0-spec.md`
 
 ---
 
@@ -654,9 +665,9 @@ Long todaySold = queryDslExecutionRepository.sumTodaySellQty(accountId, symbol);
 - `@Version`-based optimistic locking is the wrong choice for this domain — a justified, documented decision
 
 **Future-Proofing (Hot Symbol Strategy):**
-The schema anticipates high-concurrency "Hot Symbols" (e.g., IPO day) via `position_update_mode` ENUM (`EAGER`, `DEFERRED`).
+The schema anticipates high-concurrency "Hot Symbols" (e.g., IPO day) via `balance_update_mode` ENUM (`EAGER`, `DEFERRED`).
 - **MVP (EAGER):** Standard pessimistic locking (User A waits for User B). Simple, correct, proven.
-- **Phase 2 (DEFERRED):** Insert-only execution log; position updated asynchronously. The schema supports this via `update_mode` column, but MVP implementation is strictly `EAGER` to prove deadlock-free concurrency first.
+- **Phase 2 (DEFERRED):** Insert-only execution log; position updated asynchronously. The schema supports this via `balance_update_mode` column, but MVP implementation is strictly `EAGER` to prove deadlock-free concurrency first.
 
 ---
 
@@ -928,7 +939,7 @@ services:
 
 | Table                         | Storage | Notes                                                                                                    |
 | ----------------------------- | ------- | -------------------------------------------------------------------------------------------------------- |
-| `accounts`                    | MySQL   | id, user_id, account_number, balance, daily_sell_limit (default: env DAILY_SELL_LIMIT_DEFAULT=500), status(ACTIVE/FROZEN/CLOSED), update_mode(EAGER/DEFERRED) |
+| `accounts`                    | MySQL   | id, user_id, account_number, balance, daily_limit (default: env DAILY_SELL_LIMIT_DEFAULT=500), status(ACTIVE/FROZEN/CLOSED), balance_update_mode(EAGER/DEFERRED) |
 | `positions`                   | MySQL   | id, account_id, symbol, quantity, avg_cost, updated_at                                                   |
 | `orders`                      | MySQL   | id, clOrdID(**UNIQUE**), account_id, symbol, side, qty, price, status(NEW/PENDING_NEW/EXECUTING/PARTIALLY_FILLED/FILLED/CANCELED/REJECTED), external_sync_status(CONFIRMED/FAILED/ESCALATED, pre-sync NULL), created_at, updated_at |
 | `executions`                  | MySQL   | id, order_id (FK → orders.id), account_id, symbol, side, **executed_qty**, **executed_price**, created_at |

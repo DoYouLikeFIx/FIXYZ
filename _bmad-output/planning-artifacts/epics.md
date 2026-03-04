@@ -1224,8 +1224,7 @@ So that order attempts respect position constraints and policy limits.
   **When** date boundary changes  
   **Then** counters reset according to timezone rule.
 
-> **MVP Scope Note:** `InsufficientPositionException` (available_qty < requested qty) is enforced in MVP.  
-> `DailySellLimitExceededException` is declared but **not enforced in MVP** — enforcement deferred to Phase 2.
+> **MVP Scope Note:** `InsufficientPositionException` (available_qty < requested qty)와 `DailySellLimitExceededException` 모두 MVP에서 강제한다.
 
 ### Story 5.2: [BE][AC] Order Execution & Position Update
 
@@ -1239,7 +1238,7 @@ So that position integrity is preserved.
 
 - **Given** authorized order execution  
   **When** execution occurs  
-  **Then** position deduction and OrderHistory record are committed atomically.
+  **Then** position deduction and `orders`/`executions` 기록이 원자적으로 커밋된다.
 - **Given** `MARKET` order with opposite-side liquidity  
   **When** matching runs  
   **Then** engine sweeps opposite book levels in price-time order until requested qty or liquidity exhaustion.
@@ -1248,7 +1247,7 @@ So that position integrity is preserved.
   **Then** request is rejected with deterministic no-liquidity contract and no position mutation.
 - **Given** execution failure mid-transaction  
   **When** transaction aborts  
-  **Then** neither partial position update nor OrderHistory record persists.
+  **Then** partial position update나 `orders`/`executions` 잔존이 없어야 한다.
 - **Given** insufficient position quantity condition  
   **When** availability pre-check fails  
   **Then** no position mutation occurs.
@@ -2136,14 +2135,17 @@ So that quote ingestion and downstream valuation use a single contract.
 **Acceptance Criteria:**
 
 - **Given** configured `LIVE` mode  
-  **When** quote events arrive  
-  **Then** normalized snapshots are emitted with `symbol`, `bestBid`, `bestAsk`, `lastTrade`, `quoteAsOf`, `quoteSnapshotId`, `quoteSourceMode=LIVE`.
+  **When** KIS WebSocket(`H0STCNT0`) quote events arrive  
+  **Then** adapter authenticates with `approval_key` and subscribes using `tr_type=1`, `tr_id=H0STCNT0`, `tr_key` contract.
 - **Given** configured `DELAYED` mode  
   **When** quote events are consumed  
   **Then** configured delay is applied deterministically and emitted snapshots include `quoteSnapshotId` with `quoteSourceMode=DELAYED`.
 - **Given** configured `REPLAY` mode  
   **When** replay seed and cursor are fixed  
   **Then** identical input produces identical quote snapshot sequence (including `quoteSnapshotId`) with `quoteSourceMode=REPLAY`.
+- **Given** KIS real-time frame `encFlag|trId|count|payload`  
+  **When** `count>1` 또는 `encFlag=1` frame is received  
+  **Then** adapter splits multi-record payload by `count`, decrypts encrypted payload via key/iv, and emits normalized snapshots with `quoteSourceMode=LIVE`.
 
 ### Story 11.2: [BE][MD] Quote Snapshot Freshness Guard
 
@@ -2184,6 +2186,9 @@ So that CI and scenario demos are deterministic and reproducible.
 - **Given** identical replay seed  
   **When** CI reruns  
   **Then** snapshot sequence hash matches baseline.
+- **Given** LIVE WebSocket disconnect/reconnect event  
+  **When** session recovers  
+  **Then** open subscriptions are re-registered deterministically and gap range is backfilled via replay policy.
 
 ### Story 11.4: [BE][AC] MARKET Order Sweep Matching Validation
 

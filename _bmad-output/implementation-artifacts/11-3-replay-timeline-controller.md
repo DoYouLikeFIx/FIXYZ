@@ -15,6 +15,7 @@ So that CI and scenario demos are deterministic and reproducible.
 1. Given replay start point and speed factor When replay starts Then timeline advances deterministically.
 2. Given replay pause/resume command When command is issued Then cursor and emitted sequence remain consistent.
 3. Given identical replay seed When CI reruns Then snapshot sequence hash matches baseline.
+4. Given LIVE WebSocket disconnect/reconnect event When session recovers Then open subscriptions are re-registered deterministically and gap range is backfilled via replay policy.
 
 ## Tasks / Subtasks
 
@@ -24,6 +25,8 @@ So that CI and scenario demos are deterministic and reproducible.
   - [ ] Add test coverage for AC 2
 - [ ] Implement acceptance-criteria scope 3 (AC: 3)
   - [ ] Add test coverage for AC 3
+- [ ] Implement acceptance-criteria scope 4 (AC: 4)
+  - [ ] Add test coverage for AC 4
 
 ## Dev Notes
 
@@ -38,6 +41,7 @@ So that CI and scenario demos are deterministic and reproducible.
 - Implement only the scope defined in this story's acceptance criteria.
 - Keep replay timeline controls deterministic and auditable for CI.
 - Preserve reproducibility with fixed seed/cursor and stable sequence hashing.
+- Include reconnect/resubscribe deterministic behavior for provider socket interruptions.
 
 ### Architecture Compliance
 
@@ -60,6 +64,7 @@ So that CI and scenario demos are deterministic and reproducible.
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
 - `_bmad-output/planning-artifacts/fep-gateway/api-spec.md`
+- `_bmad-output/planning-artifacts/fep-gateway/kis-websocket-h0stcnt0-spec.md`
 
 ## Dev Agent Record
 

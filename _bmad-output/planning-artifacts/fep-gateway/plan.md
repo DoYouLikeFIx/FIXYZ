@@ -52,14 +52,14 @@ Stores TLS credentials for FIX session security (PKI/CA based).
 - `key_index` (PK): Key Slot ID
 - `institution_code`: FK
 - `key_type`: 'TLS_CERT', 'LOGON_PASSWORD', 'ADMIN_TOKEN'
-- `key_value_encrypted`: Encrypted credential blob
-- `check_value`: Fingerprint / Hash for integrity check
+- `credential_value_encrypted`: Encrypted credential blob
+- `cert_fingerprint`: Fingerprint / Hash for integrity check
 
 #### `fep_transaction_journal`
 The raw record of FIX messages sent and received (Audit Trail).
 - `trace_id` (PK): ClOrdID (FIX Tag 11)
 - `institution_code`: FK
-- `message_type`: 'D' (NewOrderSingle), '8' (ExecutionReport), 'F' (OrderCancelRequest), '0' (Heartbeat)
+- `msg_type`: 'D' (NewOrderSingle), '8' (ExecutionReport), 'F' (OrderCancelRequest), '0' (Heartbeat)
 - `request_payload`: Encrypted/Masked Payload
 - `response_payload`: Encrypted/Masked Payload
 - `response_code`: External Response Code (e.g., '0000', '9912')

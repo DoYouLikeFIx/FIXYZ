@@ -12,9 +12,10 @@ So that quote ingestion and downstream valuation use a single contract.
 
 ## Acceptance Criteria
 
-1. Given configured `LIVE` mode When quote events arrive Then normalized snapshots are emitted with `symbol`, `bestBid`, `bestAsk`, `lastTrade`, `quoteAsOf`, `quoteSnapshotId`, `quoteSourceMode=LIVE`.
+1. Given configured `LIVE` mode When KIS WebSocket(`H0STCNT0`) quote events arrive Then adapter authenticates with `approval_key` and subscribes using `tr_type=1`, `tr_id=H0STCNT0`, `tr_key` contract.
 2. Given configured `DELAYED` mode When quote events are consumed Then configured delay is applied deterministically and emitted snapshots include `quoteSnapshotId` with `quoteSourceMode=DELAYED`.
 3. Given configured `REPLAY` mode When replay seed and cursor are fixed Then identical input produces identical quote snapshot sequence (including `quoteSnapshotId`) with `quoteSourceMode=REPLAY`.
+4. Given KIS real-time frame `encFlag|trId|count|payload` When `count>1` or `encFlag=1` frame is received Then adapter splits multi-record payload by `count`, decrypts encrypted payload via key/iv, and emits normalized snapshots with `quoteSourceMode=LIVE`.
 
 ## Tasks / Subtasks
 
@@ -24,6 +25,8 @@ So that quote ingestion and downstream valuation use a single contract.
   - [ ] Add test coverage for AC 2
 - [ ] Implement acceptance-criteria scope 3 (AC: 3)
   - [ ] Add test coverage for AC 3
+- [ ] Implement acceptance-criteria scope 4 (AC: 4)
+  - [ ] Add test coverage for AC 4
 
 ## Dev Notes
 
@@ -38,6 +41,7 @@ So that quote ingestion and downstream valuation use a single contract.
 - Implement only the scope defined in this story's acceptance criteria.
 - Keep quote snapshot contract aligned with architecture/PRD/API (`quoteSnapshotId`, `quoteAsOf`, `quoteSourceMode`).
 - Keep deterministic behavior for DELAYED/REPLAY testability.
+- Enforce KIS provider contract (`approval_key`, `tr_type=1/2`, `count`-based frame split, `encFlag` decrypt).
 
 ### Architecture Compliance
 
@@ -61,6 +65,7 @@ So that quote ingestion and downstream valuation use a single contract.
 - `_bmad-output/planning-artifacts/prd.md`
 - `_bmad-output/planning-artifacts/channels/api-spec.md`
 - `_bmad-output/planning-artifacts/fep-gateway/api-spec.md`
+- `_bmad-output/planning-artifacts/fep-gateway/kis-websocket-h0stcnt0-spec.md`
 
 ## Dev Agent Record
 

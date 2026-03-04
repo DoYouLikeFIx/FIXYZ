@@ -69,7 +69,7 @@ So that portfolio integrity is preserved.
 - THEN `position_holding.quantity` 증가량이 `executedQty(5)` 만 처리됨
 - AND `canceledQty × executedPrice` 상당액은 `cash_account.balance` 환원됨
 - AND `order_session.execution_result = PARTIAL_FILL_CANCEL`, `status = COMPLETED`
-- AND 환원 전후로 `order_history` 테이블에 `filled_qty=5`, `canceled_qty=5` 모두 기록됨 (AC 4 추적성)
+- AND 환원 전후로 `orders`/`executions` 기록에 `filled_qty=5`, `canceled_qty=5` 모두 추적 가능함 (AC 4 추적성)
 - NOTE 참고: `fep-gateway/api-spec.md` §3.3 PARTIAL_FILL_CANCEL 정책
 
 - Status set to `ready-for-dev`.
