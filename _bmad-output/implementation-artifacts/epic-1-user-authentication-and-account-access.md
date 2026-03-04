@@ -165,7 +165,7 @@ So that I know how much money I have before initiating an order.
 
 **Given** `GET /api/v1/portfolio/{accountId}/balance` call (own account)  
 **When** request processed  
-**Then** HTTP 200: `{ accountId, balance, pendingAmount, currency, asOf }`  
+**Then** HTTP 200: `{ accountId, balance, pendingAmount, currency, balanceAsOf }`  
 **And** `balance` is available balance after deducting PENDING orders, `pendingAmount` is the amount reserved for pending orders
 
 **Given** query by account ID owned by another member  

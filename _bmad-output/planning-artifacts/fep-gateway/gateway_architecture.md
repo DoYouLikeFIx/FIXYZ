@@ -1,7 +1,7 @@
 # FEP Gateway (Internal) — 시스템 아키텍처 (v2.0 — FIX 4.2)
 
-FEP Gateway는 내부 시스템(Channel, Account)과 FIX Simulator(KRX/KOSDAQ 대외계)를 연결하는 **중계 관문(Gateway)** 이다.
-내부 표준 규격(JSON/HTTP)을 FIX 4.2 프로토콜(QuickFIX/J TCP)으로 변환하고, 세션/보안 채널을 관리한다.
+FEP Gateway는 모의투자 환경에서 **시세 수신 + 가상 체결 연계 + FIX 어댑터**를 담당하는 대외계 핵심 서비스다.
+내부 표준 규격(JSON/HTTP)을 FIX 4.2 프로토콜(QuickFIX/J TCP)로 변환하며, KIS WebSocket(`H0STCNT0`) 기반 `LIVE/DELAYED/REPLAY` 시세를 정규화해 가상 체결·사전검증에 공급한다.
 
 ---
 
@@ -18,6 +18,9 @@ graph TD
         GW_API --> Router[Routing Engine]
         Router -->|Convert| Translator[FIX Message Builder]
         Translator --> ConnMgr[QuickFIX/J Session Manager]
+        MDSrc[KIS WebSocket / Replay Source] --> MDAdapter[Market Data Adapter]
+        MDAdapter --> QuoteCache[Quote Snapshot Cache]
+        QuoteCache --> GW_API
         
         ConnMgr -->|Log| DB[(FEP DB)]
         ConnMgr -. Counter/State .-> Redis[(Redis Cache)]
@@ -25,6 +28,7 @@ graph TD
 
     subgraph "External Zone"
         ConnMgr <-->|FIX 4.2 TCP| Sim[FIX Simulator \nKRX/KOSDAQ]
+        MDSrc <-->|WebSocket H0STCNT0| KIS[KIS Open API]
     end
 ```
 
@@ -53,6 +57,11 @@ graph TD
 - FIX 세션 인증에 필요한 **TLS_CERT / LOGON_PASSWORD / ADMIN_TOKEN**을 PKI/CA 기반으로 관리.
 - FIX Logon(MsgType=A): `Username`(Tag 553) + `Password`(Tag 554) + TLS 코드인증.
 - MAC/PIN Block 계산 없음 — FIX 4.2는 트랜스포트 계층 TLS로 무결성 보장.
+
+### 2.5 Market Data Adapter (시세 어댑터)
+- KIS Open API WebSocket `H0STCNT0` 계약(approval key, `encFlag|trId|count|payload`, AES key/iv 복호화)을 처리한다.
+- `LIVE/DELAYED/REPLAY` 모드를 단일 quote snapshot 계약(`quoteSnapshotId`, `quoteAsOf`, `quoteSourceMode`)으로 정규화한다.
+- 재연결 시 구독 자동 재등록, gap-fill(replay 보정), stale quote 차단 정책(`maxQuoteAgeMs`)을 강제한다.
 
 ---
 

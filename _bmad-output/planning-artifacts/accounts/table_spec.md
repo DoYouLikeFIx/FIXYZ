@@ -5,7 +5,7 @@
 *   **Dual Key**: 내부 조인/락/성능용 `id` `BIGINT UNSIGNED AUTO_INCREMENT` + 외부 노출용 `public_id` `CHAR(36) UNIQUE`
 *   **Append-only 원칙**
     *   `journal_entries`, `ledger_entries`, `executions`: UPDATE/DELETE 금지(정책)
-    *   상태/정정은 새 행(보상/취소 이벤트) 로 표현
+    *   상태/정정은 새 행(조정/취소 이벤트)로 표현
 *   **Idempotency**
     *   주문/전표/업무레코드의 핵심 멱등 키는 `client_request_id UNIQUE`
 *   **금액 타입**
@@ -15,8 +15,9 @@
     *   파티션 제약 때문에 `ledger_entries.public_id` 전역 UNIQUE 금지
     *   외부 단건 조회는 `ledger_entry_refs`(`public_id` PK) 사용
 *   **동시성**
-    *   주문 정산은 `accounts`를 `SELECT … FOR UPDATE`로 직렬화(Optimistic 금지)
+    *   주문 정산의 기본 직렬화는 `positions(account_id, symbol)` `SELECT ... FOR UPDATE` (Optimistic 금지)
     *   매도 과매도 방지는 `positions` (`account_id`, `symbol`)을 `SELECT … FOR UPDATE`로 직렬화
+    *   `accounts` 락은 현금 잔액 갱신이 필요한 구간에서만 최소 범위로 획득
 
 ---
 
@@ -24,9 +25,9 @@
 
 ### 1.1 테이블 목적
 
-`accounts`는 계좌의 “현재 상태를 빠르게 보여주기 위한 캐시 + 동시성 락 타깃”이다.
+`accounts`는 계좌의 “현재 상태를 빠르게 보여주기 위한 캐시 + 선택적(최소범위) 락 타깃”이다.
 *   ledger가 진실이지만, 매 요청마다 원장을 합산하면 비용이 크므로 `balance`는 derived cache 로 저장
-*   주문 체결 시 `SELECT … FOR UPDATE`의 락 타깃
+*   주문 체결의 기본 락은 `positions(account_id, symbol)`이며, `accounts` 락은 현금 잔액 갱신 구간에서만 사용
 *   계좌 종료는 삭제가 아니라 `status=CLOSED` + `closed_at`로 남겨 감사/추적성 유지
 *   일일 한도는 사용량 컬럼 없이 당일 DEBIT 합산으로 검증(원장 기반 정책)
 
@@ -68,12 +69,12 @@
 ### 2.1 테이블 목적
 
 `journal_entries`는 주문(`trade_ref_id`) 단위의 전표 헤더다.
-*   ledger 라인만 있으면 “업무 유형/상태/실패 사유/보상 관계”를 빠르게 파악하기 어렵다
+*   ledger 라인만 있으면 “업무 유형/상태/실패 사유/정정 관계”를 빠르게 파악하기 어렵다
 *   전표 헤더로:
-    *   전표 유형(BUY/SELL/COMPENSATION/ADJUSTMENT)
+    *   전표 유형(BUY/SELL/ADJUSTMENT)
     *   전표 상태(PENDING/POSTED/FAILED)
     *   실패/불확실 사유
-    *   원본-보상 추적(`original_*`)
+    *   원본-정정 추적(`original_*`)
         를 일관되게 관리
 *   Append-only로 감사/증빙에 적합
 
@@ -85,9 +86,9 @@
 | `public_id` | 외부 전표 참조(로그/감사/CS) |
 | `trade_ref_id` | 주문 참조 ID. 전표 헤더 1개로 강제(UK) |
 | `client_request_id` | 멱등 키(전표 중복 생성 방지) |
-| `original_trade_ref_id` | 보상/조정의 “원본 주문” 추적 |
-| `original_journal_entry_id` | 보상/조정의 “원본 전표” 추적(논리 참조) |
-| `journal_type` | 전표 성격(BUY_ORDER/SELL_ORDER/COMPENSATION/ADJUSTMENT) |
+| `original_trade_ref_id` | 정정/조정의 “원본 주문” 추적 |
+| `original_journal_entry_id` | 정정/조정의 “원본 전표” 추적(논리 참조) |
+| `journal_type` | 전표 성격(BUY_ORDER/SELL_ORDER/ADJUSTMENT) |
 | `journal_status` | 원장 반영 관점 상태(PENDING/POSTED/FAILED) |
 | `failure_reason` | 실패/불확실 사유(운영/복구 분기 근거) |
 | `created_at` | 발생 시각(타임라인/감사) |
@@ -98,11 +99,11 @@
 *   **UK**(`trade_ref_id`) : “한 주문 = 전표 헤더 1개” 고정
 *   **UK**(`client_request_id`) : 멱등
 *   **IDX**(`journal_status`, `created_at`) : 미처리/실패 전표 운영 스캔
-*   **IDX**(`journal_type`, `created_at`) : 보상/조정 전표만 조회
+*   **IDX**(`journal_type`, `created_at`) : 정정/조정 전표만 조회
 *   **IDX**(`original_trade_ref_id`, `created_at`) : 원본 기준 타임라인
 *   **IDX**(`original_journal_entry_id`, `created_at`) : 원본 전표 기준 타임라인
 *   **CHECK**(정책)
-    *   `journal_type IN ('BUY_ORDER', 'SELL_ORDER', 'COMPENSATION', 'ADJUSTMENT')`
+    *   `journal_type IN ('BUY_ORDER', 'SELL_ORDER', 'ADJUSTMENT')`
     *   `journal_status IN ('PENDING', 'POSTED', 'FAILED')`
 
 ---
@@ -265,6 +266,7 @@
 | `price` | LIMIT일 때 필수(FIX Tag 44) |
 | `ord_qty` | 주문 수량(>0) |
 | `status` | 주문 상태 머신 |
+| `external_sync_status` | post-commit 외부 동기화 상태(CONFIRMED/FAILED/ESCALATED, pre-sync는 NULL) |
 | `cum_qty` | 누적 체결 수량 |
 | `avg_px` | 평균 체결가 |
 | `leaves_qty` | 미체결 잔량 |
@@ -324,7 +326,8 @@
     *   `available_qty >= 0`
     *   `available_qty <= quantity`
 *   **락 정책(고정)**
-    *   매도 실행 시: `SELECT ... FOR UPDATE WHERE account_id=? AND symbol=?`
+    *   주문 실행 시: `SELECT ... FOR UPDATE WHERE account_id=? AND symbol=?`
+    *   BUY 최초 진입(행 없음): `INSERT ... ON DUPLICATE KEY UPDATE`로 bootstrap 후 동일 트랜잭션에서 `FOR UPDATE` 잠금
 
 ---
 
@@ -332,10 +335,11 @@
 
 ### 9.1 테이블 목적
 
-`executions`는 FEP에서 들어오는 ExecutionReport(35=8)를 Append-only로 저장한다.
-*   `exec_id UNIQUE`로 외부 체결 멱등을 강제
+`executions`는 로컬 Order Book 매칭 체결을 Append-only로 저장한다.
+*   `exec_id UNIQUE`로 로컬 canonical 체결 멱등을 강제
+*   `external_exec_id`는 FEP 확인/복구 상관관계 키로 선택 저장한다.
 *   체결 이벤트의 진실 원천:
-    `SUM(BUY TRADE last_qty) - SUM(SELL TRADE last_qty) == positions.quantity` 검증 가능
+    `SUM(BUY TRADE executed_qty) - SUM(SELL TRADE executed_qty) == positions.quantity` 검증 가능
 
 ### 9.2 컬럼 명세
 
@@ -343,24 +347,26 @@
 | --- | --- |
 | `id` | 내부 PK |
 | `public_id` | 외부 체결 참조 |
-| `exec_id` | FIX Tag 17 멱등 키(UK) |
+| `exec_id` | 로컬 canonical execution id(UK) |
+| `external_exec_id` | FEP ExecID(FIX Tag 17, NULL 허용 UK) |
 | `order_id` | `orders` FK |
 | `cl_ord_id` | 역방향 조회용(FIX Tag 11) |
 | `exec_type` | 이벤트 종류(FIX Tag 150) |
 | `ord_status` | 주문 상태(FIX Tag 39) |
 | `symbol` | 종목 |
 | `side` | BUY/SELL |
-| `last_qty` | 이번 체결 수량(TRADE 외 0) |
-| `last_px` | 이번 체결가(TRADE만) |
+| `executed_qty` | 이번 체결 수량(TRADE 외 0, FIX LastQty) |
+| `executed_price` | 이번 체결가(TRADE만, FIX LastPx) |
 | `cum_qty` | 누적 체결 수량 |
 | `leaves_qty` | 미체결 잔량 |
 | `fep_reference_id` | 외부 참조 |
-| `created_at` | 수신 시각(append-only) |
+| `created_at` | 로컬 체결 기록 시각(append-only) |
 
 ### 9.3 제약/인덱스/불변 정책
 
 *   **UK**(`public_id`)
-*   **UK**(`exec_id`) : 체결 멱등
+*   **UK**(`exec_id`) : 로컬 체결 멱등
+*   **UK**(`external_exec_id`) : 외부 확인 ID (NULL 허용)
 *   **IDX**(`order_id`, `created_at`)
 *   **IDX**(`cl_ord_id`, `created_at`)
 *   **IDX**(`symbol`, `side`, `created_at`)
@@ -368,7 +374,7 @@
     *   `order_id -> orders.id`
 *   **불변 정책(고정)**
     *   UPDATE/DELETE 금지
-    *   체결 취소는 `exec_type='CANCELLED'` 신규 행으로 기록
+    *   체결 취소는 `exec_type='CANCELED'` 신규 행으로 기록
 
 ---
 
@@ -388,8 +394,9 @@ WHERE account_id = ?
 ## 부록 B. DEFERRED Read-Repair 처리 요약
 
 *   **전제**: DEFERRED 계좌는 `account_id` 기준 단일 라이터로 처리.
-    1.  `SELECT ... FOR UPDATE`로 `accounts` lock
-    2.  `last_synced_ledger_ref` 이후 ledger들을 반영해 `accounts.balance` 최신화
-    3.  워터마크 갱신
-    4.  DEBIT ledger insert
-    5.  `order_records` 스냅샷 저장
+    1.  주문 대상 `positions(account_id, symbol)`를 `SELECT ... FOR UPDATE`로 잠금
+    2.  현금 잔액 갱신 구간에서만 `accounts` row lock을 최소 범위로 획득
+    3.  `last_synced_ledger_ref` 이후 ledger들을 반영해 `accounts.balance` 최신화
+    4.  워터마크 갱신
+    5.  DEBIT ledger insert
+    6.  `order_records` 스냅샷 저장

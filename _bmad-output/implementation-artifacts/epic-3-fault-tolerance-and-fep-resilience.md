@@ -63,7 +63,7 @@ So that I can demonstrate circuit breaker behavior during interviews without cod
 
 **Note:** CB OPEN is triggered by 3 actual TIMEOUT failures through corebank-service's `FepClient`. The FEP chaos endpoint (`PUT /fep-internal/rules { action_type: "TIMEOUT", delay_ms: 3000 }`) sets the simulator into TIMEOUT mode; executing 3 orders causes Resilience4j to exhaust `slidingWindowSize=3` and transition `CLOSED → OPEN`.
 
-> **[Design Note]** `processedOrders` is stored in application memory (ConcurrentHashMap). When `FepSimulator` restarts, the map is cleared and the recovery scheduler may receive UNKNOWN and execute compensating reversals. This is an acceptable trade-off within portfolio scope — in actual production, persist in Redis or DB.
+> **[Design Note]** `processedOrders` is stored in application memory (ConcurrentHashMap). When `FepSimulator` restarts, the map is cleared and the recovery scheduler may receive UNKNOWN and escalate the session for replay/requery. This is an acceptable trade-off within portfolio scope — in actual production, persist in Redis or DB.
 
 **Given** `FepIntegrationTestBase` (SpringBootTest + WireMock)  
 **When** FEP simulator integration test  

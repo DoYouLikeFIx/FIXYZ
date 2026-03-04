@@ -462,8 +462,8 @@ LIMIT 500;
 ```
 - 인덱스: `IDX(status, expires_at)`
 
-## 4.9 EXECUTING timeout 스캔 및 FAILED 처리
-**용도**: `executing_started_at` 기준 timeout 초과 세션 식별 및 FAILED 처리  
+## 4.9 EXECUTING timeout 스캔 및 REQUERYING 전이
+**용도**: `executing_started_at` 기준 timeout 초과 세션 식별 및 REQUERYING 전이  
 **판정 기준**: `executing_started_at < NOW(6) - INTERVAL 30 SECOND` (정책 조정 가능)
 
 ```sql
@@ -476,16 +476,14 @@ ORDER BY executing_started_at ASC
 LIMIT 100;
 ```
 - 인덱스: `IDX(status, executing_started_at)` (db_schema 3.4에 추가 완료)
-- **처리 방침**: 채널계는 Core API 재조회로 COMPLETED/FAILED를 확정  
-  → 재조회 결과에 따라 4.5(COMPLETED) 또는 4.6(FAILED) 쿼리 적용
+- **처리 방침**: timeout 시 즉시 FAILED로 종결하지 않고 `REQUERYING`으로 전이한 뒤 Core/FEP 재조회로 최종 상태를 확정  
+  → 재조회 결과에 따라 4.5(COMPLETED), 4.6(FAILED), 취소(CANCELED), 또는 수동 처리 대기(ESCALATED)로 종결
 
 ```sql
--- Step 2. Core 재조회 결과 확인 불가(네트워크 단절 등) 시 FAILED 확정
+-- Step 2. timeout 대상 세션을 REQUERYING으로 전이 (복구 워커가 후속 Requery 수행)
 UPDATE order_sessions
-SET status              = 'FAILED',
-    failure_reason_code = 'EXECUTION_TIMEOUT',
-    completed_at        = NOW(6),
-    updated_at          = NOW(6)
+SET status    = 'REQUERYING',
+    updated_at = NOW(6)
 WHERE id = ?
   AND status = 'EXECUTING';
 ```
@@ -781,9 +779,12 @@ LIMIT 50;
 11a. 체결: UPDATE order_sessions (EXECUTING → COMPLETED) + 스냅샷 저장
          INSERT notifications (ORDER_FILLED)
          INSERT audit_logs (ORDER_EXECUTED)
-11b. 거부: UPDATE order_sessions (EXECUTING → FAILED)
+11b. 명확한 거부: UPDATE order_sessions (EXECUTING → FAILED)
          INSERT notifications (ORDER_REJECTED)
          INSERT audit_logs (ORDER_FAILED)
+11c. timeout/불확실: UPDATE order_sessions (EXECUTING → REQUERYING)
+         [복구 워커] REQUERYING → COMPLETED/CANCELED/ESCALATED
+         [운영자 Replay] ESCALATED → COMPLETED/FAILED/CANCELED
 ```
 
 > **불변 규칙**: 채널계는 `core_db.accounts`의 잔액을 직접 수정하지 않는다.

@@ -3690,7 +3690,7 @@ So that local ledger stays consistent with external processing lifecycle.
 Acceptance Criteria
 
 - Given FEP-routed order execution request When pre-posting/debit occurs Then order state records external linkage metadata.
-- Given external failure requiring compensation When compensation path runs Then compensating credit is recorded with traceable linkage.
+- Given external failure after local canonical match When recovery path runs Then position truth is preserved and external sync state is escalated with traceable linkage.
 - Given external unknown outcome When settlement deferred Then ledger state remains reconcilable for later recovery.
 - Given FEP order FILLED When finalized Then final order status (FILLED) and clOrdID references are consistent.
 
@@ -3932,7 +3932,7 @@ So that accounting integrity can be continuously verified.
 
 Acceptance Criteria
 
-- Given completed order set When integrity query runs Then debit/credit(+compensate) invariants hold.
+- Given completed order set When integrity query runs Then debit/credit(+adjustment) invariants hold.
 - Given detected mismatch When integrity check fails Then anomaly is reported with traceable identifiers.
 - Given scheduled integrity job When executed Then summary metrics are stored for operations.
 - Given release gate When ledger integrity test fails Then build is blocked.

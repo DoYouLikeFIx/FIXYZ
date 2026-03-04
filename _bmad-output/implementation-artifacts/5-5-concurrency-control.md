@@ -8,14 +8,15 @@ Status: ready-for-dev
 
 As a corebank integrity owner,
 I want pessimistic locking and race-safe behavior,
-So that concurrent orders cannot produce negative or corrupted balances.
+So that concurrent orders cannot produce negative or corrupted position quantities.
 
 ## Acceptance Criteria
 
-1. Given concurrent order attempts on same account When lock policy is applied Then final balance never becomes negative.
+1. Given concurrent order attempts on same account+symbol When lock policy is applied Then final available_qty never becomes negative.
 2. Given lock contention When threshold exceeded Then request fails with deterministic conflict/error contract.
-3. Given 10-thread concurrency test When executed in CI Then expected success/failure counts and final balance assertions pass.
-4. Given lock duration observation When measured Then operational threshold alerting is available.
+3. Given 10-thread concurrency test on single symbol When executed in CI Then expected success/failure counts and final available_qty assertions pass.
+4. Given concurrent orders on two different symbols When executed in parallel Then symbol-level lock isolation is verified without cross-symbol blocking.
+5. Given lock duration observation When measured Then operational threshold alerting is available.
 
 ## Tasks / Subtasks
 
@@ -27,6 +28,8 @@ So that concurrent orders cannot produce negative or corrupted balances.
   - [ ] Add test coverage for AC 3
 - [ ] Implement acceptance-criteria scope 4 (AC: 4)
   - [ ] Add test coverage for AC 4
+- [ ] Implement acceptance-criteria scope 5 (AC: 5)
+  - [ ] Add test coverage for AC 5
 
 ## Dev Notes
 

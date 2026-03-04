@@ -20,12 +20,12 @@ Proposed:
 ### 2.2. Responsibility Boundaries
 | Feature | **FEP Gateway (Internal)** | **FEP Simulator (External)** |
 | :--- | :--- | :--- |
-| **Role** | Client / Initiator | Server / Responder |
+| **Role** | Market-data ingestion + virtual execution orchestrator + Client/Initiator | Server / Responder |
 | **Protocol** | Converts Internal JSON -> FIX 4.2/TCP | Parses FIX 4.2/TCP -> Internal Logic |
 | **Connection** | Manages QuickFIX/J Session Pool, Keep-Alive | Accepts FIX Sessions, Heartbeat Response |
 | **Security** | TLS_CERT/LOGON_PASSWORD (PKI/CA) | Validates FIX Logon credentials |
 | **Routing** | Decides FIX Session based on SecurityExchange | N/A (It *is* the endpoint) |
-| **Data Scope** | Canonical Order Record, Audit Log | Mock Accounts, Chaos Rules |
+| **Data Scope** | Quote Snapshot (`LIVE/DELAYED/REPLAY`), Virtual Fill Governance, Audit Log | Mock Accounts, Chaos Rules, Replay-able market events |
 
 ## 3. Schema Design (Amelia - Dev)
 
@@ -52,14 +52,14 @@ Stores TLS credentials for FIX session security (PKI/CA based).
 - `key_index` (PK): Key Slot ID
 - `institution_code`: FK
 - `key_type`: 'TLS_CERT', 'LOGON_PASSWORD', 'ADMIN_TOKEN'
-- `key_value_encrypted`: Encrypted credential blob
-- `check_value`: Fingerprint / Hash for integrity check
+- `credential_value_encrypted`: Encrypted credential blob
+- `cert_fingerprint`: Fingerprint / Hash for integrity check
 
 #### `fep_transaction_journal`
 The raw record of FIX messages sent and received (Audit Trail).
 - `trace_id` (PK): ClOrdID (FIX Tag 11)
 - `institution_code`: FK
-- `message_type`: 'D' (NewOrderSingle), '8' (ExecutionReport), 'F' (OrderCancelRequest), '0' (Heartbeat)
+- `msg_type`: 'D' (NewOrderSingle), '8' (ExecutionReport), 'F' (OrderCancelRequest), '0' (Heartbeat)
 - `request_payload`: Encrypted/Masked Payload
 - `response_payload`: Encrypted/Masked Payload
 - `response_code`: External Response Code (e.g., '0000', '9912')

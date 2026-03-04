@@ -7,7 +7,7 @@
 DB 레벨 목표:
 *   Double-entry ledger 기반 원장 무결성
 *   Idempotency(client_request_id) 중복 처리 방지
-*   Deferred compensation(FIX Simulator timeout 불확실) 복구 가능 
+*   Deferred external-sync recovery(FIX Simulator timeout/불확실) 복구 가능 
 *   Recovery 스케줄러가 상태를 정확히 판별 가능한 조회 구조
 *   계좌번호 정규화(숫자만 저장) + DB 레벨 강제(CHECK REGEXP)
 *   balance 음수 방지(DB 제약)
@@ -29,8 +29,9 @@ DB 레벨 목표:
 
 ### 2.2 락 정책
 *   Optimistic Lock(version) 금지
-*   **주문 처리는 accounts row를 SELECT … FOR UPDATE로 직렬화**
-*   데드락 방지를 위해 주문 정산 시 단일 투자자 계좌(`from_account_id`)를 `SELECT FOR UPDATE`로 직렬화 — 양방향 락 불요
+*   **주문 실행의 기본 락 범위는 `positions(account_id, symbol)`이다.**
+*   매도/매수 체결의 재고(보유수량) 경합은 `SELECT ... FOR UPDATE WHERE account_id = ? AND symbol = ?`로 직렬화한다.
+*   `accounts` row lock은 계좌 현금 잔액 갱신이 필요한 구간에서만 최소 범위로 획득한다(교차 종목 블로킹 금지).
 
 ### 2.3 Hot Account(Deferred Mode) 정책
 *   `balance_update_mode`:
@@ -91,7 +92,7 @@ DB 레벨 목표:
 | client_request_id | CHAR(36) | N | UK | 멱등키 |
 | original_trade_ref_id | CHAR(36) | Y | IDX | 원본 주문 |
 | original_journal_entry_id | BIGINT UNSIGNED | Y | IDX | 원본 전표 참조(논리) |
-| journal_type | VARCHAR(32) | N | CHECK | BUY_ORDER/SELL_ORDER/COMPENSATION/ADJUSTMENT |
+| journal_type | VARCHAR(32) | N | CHECK | BUY_ORDER/SELL_ORDER/ADJUSTMENT |
 | journal_status | VARCHAR(16) | N | CHECK | PENDING/POSTED/FAILED |
 | failure_reason | VARCHAR(255) | Y |  | 실패/불확실 사유 |
 | created_at | DATETIME(6) | N |  |  |
@@ -106,7 +107,7 @@ DB 레벨 목표:
 | client_request_id | CHAR(36) | N | UK | 멱등키 (채널계 order_sessions.client_request_id 대응) |
 | trade_ref_id | CHAR(36) | N | IDX | 주문 참조 ID |
 | order_side | VARCHAR(16) | N | CHECK | BUY\|SELL |
-| status | VARCHAR(20) | N | CHECK | NEW\|PENDING_NEW\|EXECUTING\|PARTIALLY_FILLED\|FILLED\|CANCELLED\|REJECTED\|COMPENSATED |
+| status | VARCHAR(20) | N | CHECK | NEW\|PENDING_NEW\|EXECUTING\|PARTIALLY_FILLED\|FILLED\|CANCELED\|REJECTED\|ESCALATED |
 | failure_reason | VARCHAR(255) | Y |  | 내부 분기 사유 |
 | amount | DECIMAL(19,4) | N | CHECK(amount>0) | 금액 |
 | currency_code | CHAR(3) | N | DEFAULT 'KRW' | 통화 코드 |
@@ -166,8 +167,13 @@ DB 레벨 목표:
 | side | VARCHAR(10) | N | CHECK | BUY\|SELL (FIX tag 54: 1=BUY, 2=SELL) |
 | ord_type | VARCHAR(20) | N | CHECK | MARKET\|LIMIT (FIX tag 40) |
 | price | DECIMAL(19,4) | Y |  | 지정가(LIMIT일 때 필수, MARKET이면 NULL, FIX tag 44) |
+| pre_trade_price | DECIMAL(19,4) | Y |  | MARKET 사전검증 기준 가격 (`qty × pre_trade_price`) |
+| quote_snapshot_id | VARCHAR(64) | Y | IDX | MARKET 사전검증/체결근거 snapshot 식별자 |
+| quote_as_of | DATETIME(6) | Y |  | MARKET snapshot 기준 시각 (staleness 검증 기준) |
+| quote_source_mode | VARCHAR(16) | Y | CHECK | LIVE\|DELAYED\|REPLAY |
 | ord_qty | BIGINT UNSIGNED | N | CHECK(ord_qty>0) | 주문 수량 (FIX tag 38) |
-| status | VARCHAR(20) | N | CHECK | NEW\|PENDING_NEW\|EXECUTING\|PARTIALLY_FILLED\|FILLED\|CANCELLED\|REJECTED\|COMPENSATED |
+| status | VARCHAR(20) | N | CHECK | NEW\|PENDING_NEW\|EXECUTING\|PARTIALLY_FILLED\|FILLED\|CANCELED\|REJECTED |
+| external_sync_status | VARCHAR(20) | Y | CHECK | CONFIRMED\|FAILED\|ESCALATED (post-commit 외부 동기화 상태, pre-sync 단계는 NULL 허용) |
 | cum_qty | BIGINT UNSIGNED | N | DEFAULT 0 | 누적 체결 수량 (FIX tag 14) |
 | avg_px | DECIMAL(19,4) | Y |  | 평균 체결가 (FIX tag 6) |
 | leaves_qty | BIGINT UNSIGNED | N | DEFAULT 0 | 미체결 잔량 (FIX tag 151) |
@@ -178,8 +184,8 @@ DB 레벨 목표:
 | created_at | DATETIME(6) | N |  | 주문 생성 |
 | updated_at | DATETIME(6) | N |  | 최종 상태 변경 |
 
-*   **인덱스**: `UK(public_id)`, `UK(cl_ord_id)`, `IDX(member_id, created_at)`, `IDX(account_id, symbol, created_at)`, `IDX(symbol, status)`, `IDX(status, executing_started_at)`, `IDX(status, updated_at)`
-*   **CHECK**: `(ord_type = 'LIMIT' AND price IS NOT NULL) OR ord_type = 'MARKET'`
+*   **인덱스**: `UK(public_id)`, `UK(cl_ord_id)`, `IDX(member_id, created_at)`, `IDX(account_id, symbol, created_at)`, `IDX(symbol, status)`, `IDX(status, executing_started_at)`, `IDX(status, updated_at)`, `IDX(quote_snapshot_id, created_at)`
+*   **CHECK**: `(ord_type = 'LIMIT' AND price IS NOT NULL) OR (ord_type = 'MARKET' AND pre_trade_price IS NOT NULL AND quote_snapshot_id IS NOT NULL AND quote_as_of IS NOT NULL AND quote_source_mode IS NOT NULL)`
 *   **CHECK**: `leaves_qty + cum_qty = ord_qty` — 앱 레이어 강제 (체결 수량 합산 정합성)
 
 ### 3.8 positions (포지션 원장) — Finding #3
@@ -192,48 +198,70 @@ DB 레벨 목표:
 | symbol | VARCHAR(20) | N |  | 종목코드 |
 | quantity | BIGINT UNSIGNED | N | DEFAULT 0, CHECK(>=0) | 총 보유 수량 (양수 강제) |
 | available_qty | BIGINT UNSIGNED | N | DEFAULT 0, CHECK(>=0) | 주문 가능 수량 (`quantity` 이하, 미체결 주문 차감 후) |
-| avg_cost | DECIMAL(19,4) | Y |  | 평균 매입 단가 (SELL 시에도 보존) |
+| avg_cost | DECIMAL(19,4) | Y |  | 평균 매입 단가 (MVP: 가중평균 방식, SELL 시 보존) |
 | created_at | DATETIME(6) | N |  | 최초 포지션 생성 |
 | updated_at | DATETIME(6) | N |  | 마지막 체결/변경 시각 |
 
 *   **인덱스**: `UK(account_id, symbol)` (락 타깃 유니크 조합), `IDX(symbol)`, `IDX(account_id, available_qty)`
-*   **락 정책**: 출매도 주문 실행 시 `SELECT ... FOR UPDATE WHERE account_id = ? AND symbol = ?` — `@Lock(PESSIMISTIC_WRITE)` via QueryDSL/JPA
+*   **락 정책**: 주문 실행 시 `SELECT ... FOR UPDATE WHERE account_id = ? AND symbol = ?` — `@Lock(PESSIMISTIC_WRITE)` via QueryDSL/JPA
+*   **최초 매수(행 부재) 정책**: BUY 실행 전에 `INSERT ... ON DUPLICATE KEY UPDATE`로 `(account_id, symbol)` 행을 bootstrap한 뒤 동일 트랜잭션에서 `FOR UPDATE` 잠금을 획득한다.
 *   **CHECK**: `available_qty <= quantity`
 
-### 3.9 executions (체결 이력, FIX 4.2 ExecutionReport) — Finding #4
-> **📌 설계 의도**: FEP Simulator로부터 수신한 `ExecutionReport(35=8)`의 모든 체결 이벤트를 Append-Only로 기록. `SUM(BUY executed_qty) − SUM(SELL executed_qty) == positions.quantity` 정합성 검증(시나리오 #7)의 진실 원천.
+### 3.9 executions (체결 이력, 로컬 매칭 Canonical) — Finding #4
+> **📌 설계 의도**: 모의투자 기준 체결 진실원천은 CoreBanking 로컬 Order Book 매칭 결과다. 로컬 매칭 체결 이벤트를 Append-Only로 기록하고, FEP `ExecutionReport(35=8)`는 확인/복구 신호로 참조한다. `SUM(BUY executed_qty) − SUM(SELL executed_qty) == positions.quantity` 정합성 검증(시나리오 #7)의 진실 원천.
 
 | 컬럼 | 타입 | NULL | 제약 | 설명 |
 | --- | --- | --- | --- | --- |
 | id | BIGINT UNSIGNED | N | PK(AUTO) | 내부 PK |
 | public_id | CHAR(36) | N | UK | 외부 체결 참조 UUID |
-| exec_id | VARCHAR(64) | N | UK | FEP의 ExecID (FIX tag 17) — 외부 체결 멱등 키 |
+| exec_id | VARCHAR(64) | N | UK | 로컬 canonical execution ID (로컬 매칭 멱등 키) |
+| external_exec_id | VARCHAR(64) | Y | UK | FEP ExecID (FIX tag 17) — 외부 확인/복구 상관관계 키 |
 | order_id | BIGINT UNSIGNED | N | FK | orders.id |
 | cl_ord_id | VARCHAR(64) | N | IDX | FIX tag 11 (주문-체결 역방향 조회용) |
-| exec_type | VARCHAR(10) | N | CHECK | NEW\|TRADE\|CANCELLED\|REJECTED\|REPLACE (FIX tag 150) |
-| ord_status | VARCHAR(20) | N | CHECK | NEW\|PARTIALLY_FILLED\|FILLED\|CANCELLED\|REJECTED (FIX tag 39) |
+| exec_type | VARCHAR(10) | N | CHECK | NEW\|TRADE\|CANCELED\|REJECTED\|REPLACE (FIX tag 150) |
+| ord_status | VARCHAR(20) | N | CHECK | NEW\|PARTIALLY_FILLED\|FILLED\|CANCELED\|REJECTED (FIX tag 39) |
 | symbol | VARCHAR(20) | N |  | 종목코드 (FIX tag 55) |
 | side | VARCHAR(10) | N | CHECK | BUY\|SELL (FIX tag 54) |
-| last_qty | BIGINT UNSIGNED | N | DEFAULT 0 | 이번 체결 수량 (FIX tag 32, TRADE 외에는 0) |
-| last_px | DECIMAL(19,4) | Y |  | 이번 체결가 (FIX tag 31, TRADE일 때만 non-NULL) |
+| executed_qty | BIGINT UNSIGNED | N | DEFAULT 0 | 이번 체결 수량 (FIX tag 32 LastQty, TRADE 외에는 0) |
+| executed_price | DECIMAL(19,4) | Y |  | 이번 체결가 (FIX tag 31 LastPx, TRADE일 때만 non-NULL) |
 | cum_qty | BIGINT UNSIGNED | N | DEFAULT 0 | 누적 체결 수량 (FIX tag 14) |
 | leaves_qty | BIGINT UNSIGNED | N | DEFAULT 0 | 미체결 잔량 (FIX tag 151) |
+| quote_snapshot_id | VARCHAR(64) | Y | IDX | 체결 시 사용한 quote snapshot 식별자 (추적성 키) |
+| quote_as_of | DATETIME(6) | Y |  | 체결 근거 snapshot 기준 시각 |
+| quote_source_mode | VARCHAR(16) | Y | CHECK | LIVE\|DELAYED\|REPLAY |
 | fep_reference_id | VARCHAR(64) | Y |  | FEP/Simulator 참조 ID |
-| created_at | DATETIME(6) | N |  | 체결 보고 수신 시각 (Append-Only) |
+| created_at | DATETIME(6) | N |  | 로컬 체결 기록 시각 (Append-Only) |
 
-*   **인덱스**: `UK(exec_id)`, `IDX(order_id, created_at)`, `IDX(cl_ord_id, created_at)`, `IDX(symbol, side, created_at)` (시나리오 #7 정합성 검증 쿼리용)
-*   **불변 정책**: Append-Only — UPDATE/DELETE 금지. 체결 취소는 `exec_type = 'CANCELLED'` 신규 행으로 기록.
+*   **인덱스**: `UK(exec_id)`, `UK(external_exec_id)`(NULL 허용), `IDX(order_id, created_at)`, `IDX(cl_ord_id, created_at)`, `IDX(symbol, side, created_at)`, `IDX(quote_snapshot_id, created_at)` (시나리오 #7 정합성 검증 쿼리용)
+*   **불변 정책**: Append-Only — UPDATE/DELETE 금지. 체결 취소는 `exec_type = 'CANCELED'` 신규 행으로 기록.
+*   **추적 정책**: `exec_type='TRADE'` 체결 행은 원 주문(`orders`)의 `quote_snapshot_id/quote_as_of/quote_source_mode`를 복제해 MARKET 체결 근거를 항상 역추적 가능하게 유지한다.
 *   **시나리오 #7 검증 쿼리**:
     ```sql
     SELECT
-        SUM(CASE WHEN side = 'BUY'  AND exec_type = 'TRADE' THEN last_qty ELSE 0 END)
-      - SUM(CASE WHEN side = 'SELL' AND exec_type = 'TRADE' THEN last_qty ELSE 0 END)
+        SUM(CASE WHEN side = 'BUY'  AND exec_type = 'TRADE' THEN executed_qty ELSE 0 END)
+      - SUM(CASE WHEN side = 'SELL' AND exec_type = 'TRADE' THEN executed_qty ELSE 0 END)
         AS expected_qty
     FROM executions
     WHERE symbol = ?
       AND order_id IN (SELECT id FROM orders WHERE account_id = ?);
-    -- expected_qty == positions.quantity (해당 account_id, symbol 기준)
-    ```
+	    -- expected_qty == positions.quantity (해당 account_id, symbol 기준)
+	    ```
+
+### 3.10 position_pnl_snapshots (평가/실현 손익 스냅샷)
+| 컬럼 | 타입 | NULL | 제약 | 설명 |
+| --- | --- | --- | --- | --- |
+| id | BIGINT UNSIGNED | N | PK(AUTO) | 내부 PK |
+| account_id | BIGINT UNSIGNED | N | FK | accounts.id |
+| symbol | VARCHAR(20) | N | IDX | 종목코드 |
+| mark_price | DECIMAL(19,4) | N | CHECK(mark_price>=0) | 평가 기준 가격 |
+| unrealized_pnl | DECIMAL(19,4) | N |  | 평가손익 |
+| realized_pnl_daily | DECIMAL(19,4) | N |  | 당일 실현손익 |
+| as_of | DATETIME(6) | N | IDX | 시세 스냅샷 기준 시각 |
+| source_mode | VARCHAR(16) | N | CHECK | LIVE\|DELAYED\|REPLAY |
+| created_at | DATETIME(6) | N |  | 스냅샷 적재 시각 |
+
+*   **인덱스**: `IDX(account_id, symbol, as_of)`, `IDX(source_mode, as_of)`
+*   **정책**: stale quote(`now - as_of > maxQuoteAgeMs`) 구간은 스냅샷 적재/노출 대상에서 제외한다.
 ---
 
 ## 4. “당일 DEBIT SUM” 기반 한도 검증 쿼리 규격
@@ -254,12 +282,13 @@ WHERE account_id = ?
 *   **전제:** DEFERRED 계좌는 account_id 기준 단일 라이터(큐/디스럽터)로 처리한다.
 
 **주문 체결 시:**
-1.  `SELECT ... FOR UPDATE`로 accounts lock
-2.  워터마크 이후 반영:
+1.  주문 대상 `positions(account_id, symbol)` row를 `SELECT ... FOR UPDATE`로 잠근다.
+2.  현금 잔액 갱신이 필요한 구간에서만 `accounts` row를 최소 범위로 잠근다.
+3.  워터마크 이후 반영:
     *   워터마크는 `accounts.last_synced_ledger_ref` (accounts.balance에 마지막으로 반영된 ledger_entries.id 등의 기준값)
-3.  `accounts.balance`를 최신화하고 워터마크 갱신
-4.  DEBIT ledger insert
-5.  `order_records` 주문 체결 결과 스냅샷 저장 (FIX ExecutionReport 기반, FindingR4-R11)
+4.  `accounts.balance`를 최신화하고 워터마크 갱신
+5.  DEBIT ledger insert
+6.  `order_records` 주문 체결 결과 스냅샷 저장 (로컬 canonical 체결 + 외부 확인 상태 포함)
 
 ---
 

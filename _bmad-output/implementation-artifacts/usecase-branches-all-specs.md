@@ -962,11 +962,11 @@
 - BR-5.2-01
   - Given: authorized order execution  
   - When: execution occurs  
-  - Then: position deduction and OrderHistory record are committed atomically.
+  - Then: position deduction and orders/executions records are committed atomically.
 - BR-5.2-02
   - Given: execution failure mid-transaction  
   - When: transaction aborts  
-  - Then: neither partial position update nor OrderHistory record persists.
+  - Then: neither partial position update nor orders/executions record persists.
 - BR-5.2-03
   - Given: insufficient position quantity condition  
   - When: availability pre-check fails  
@@ -986,9 +986,9 @@
   - When: pre-execution position reservation occurs  
   - Then: order state records FEP reference and clOrdID metadata.
 - BR-5.3-02
-  - Given: FEP rejection/failure requiring position restoration  
-  - When: position restoration path runs  
-  - Then: position quantity is restored with traceable order linkage.
+  - Given: FEP rejection/failure after local canonical match commit  
+  - When: external sync recovery path runs  
+  - Then: position quantity remains canonical and order is marked `ESCALATED` for replay/requery.
 - BR-5.3-03
   - Given: FEP unknown/pending outcome  
   - When: order settlement deferred  
@@ -1792,10 +1792,10 @@
   - Given: Resilience4j CB 상태가 OPEN
   - When: 주문 execute 호출
   - Then: FEP 호출 없이 fallback 즉시 반환, 트랜잭션 미시작, 주문/포지션 무변경
-- BR-OPS-02 (Post-commit 실패 보상)
+- BR-OPS-02 (Post-commit 실패 복구)
   - Given: 코어 트랜잭션 커밋 후 FEP timeout/5xx/rejected
   - When: 후속 외부 호출 실패 감지
-  - Then: 보상 트랜잭션으로 포지션 역보정, 추적 가능한 실패 상태로 정규화
+  - Then: 포지션은 canonical 상태로 유지하고 external sync 상태를 ESCALATED로 전환해 추적 가능한 복구 상태로 정규화
 - BR-OPS-03 (실행 락 경합)
   - Given: 동일 orderSessionId에 대해 `ch:txn-lock:{sessionId}` NX 획득 실패
   - When: 동시 execute 요청

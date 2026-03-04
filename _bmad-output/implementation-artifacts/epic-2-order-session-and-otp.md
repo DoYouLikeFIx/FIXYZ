@@ -11,7 +11,7 @@ An authenticated user can initiate a securities order (BUY/SELL) creating an Ord
 **Architecture requirements:** OrderSessionService.initiate() (cash/position/daily-limit validation), OtpService, OrderSession FSM (PENDING_NEW→AUTHED), TOTP (RFC 6238, ±1 window, Vault-stored secret), clOrdID UNIQUE  
 **Frontend:** OrderPage.tsx (FSM), OrderInputForm.tsx, OtpInput.tsx, useOrder.ts (useReducer)
 
-> **OrderSession FSM (Backend):** `PENDING_NEW → AUTHED → EXECUTING → COMPLETED | FAILED | EXPIRED`  
+> **OrderSession FSM (Backend):** `PENDING_NEW → AUTHED → EXECUTING → (COMPLETED|FAILED|CANCELED|REQUERYING)`, `REQUERYING → (COMPLETED|CANCELED|ESCALATED)`, `ESCALATED → (COMPLETED|FAILED|CANCELED)`, `PENDING_NEW|AUTHED → EXPIRED`  
 > **Frontend useReducer step FSM:** `'INPUT' → 'OTP' → 'CONFIRM' → 'PROCESSING' → 'COMPLETED' | 'FAILED' | 'OTP_EXPIRED'`
 >
 > **Redis keys:**
@@ -52,7 +52,7 @@ So that I can proceed through the OTP verification step before the order is exec
 **When** position and daily limit validation  
 **Then** corebank-service `GET /internal/v1/accounts/{accountId}/positions?symbol={symbol}` called for real-time available qty  
 **And** `qty > available_qty` → HTTP 422 `{ code: "ORD-003", message: "Insufficient position qty.", availableQty: N, requestedQty: M }` (FR-49)  
-**And** QueryDSL daily sell limit query executed: `SUM(order_executions.executed_qty WHERE side=SELL AND symbol=X AND account_id=Y AND created_at >= today)`  
+**And** QueryDSL daily sell limit query executed: `SUM(executions.executed_qty WHERE side=SELL AND symbol=X AND account_id=Y AND created_at >= today)`  
 **And** `todaySold + qty > Account.dailySellLimit` → HTTP 422 `{ code: "ORD-002", message: "Daily sell limit exceeded.", todaySold: N, dailyLimit: M, requestedQty: Q }` (FR-47)  
 **And** `Account.dailySellLimit` default per-symbol (externalized via env var `DAILY_SELL_LIMIT_DEFAULT`)
 
@@ -103,7 +103,7 @@ So that I can proceed through the OTP verification step before the order is exec
 
 **Given** Package Structure  
 **Then** Package Path `io.github.yeongjae.fix.channel.order.{subpackage}`:
-- `domain/OrderSession.java` — `@Entity`, FSM status enum (`PENDING_NEW`, `AUTHED`, `EXECUTING`, `COMPLETED`, `FAILED`, `EXPIRED`)
+- `domain/OrderSession.java` — `@Entity`, FSM status enum (`PENDING_NEW`, `AUTHED`, `EXECUTING`, `REQUERYING`, `ESCALATED`, `COMPLETED`, `FAILED`, `CANCELED`, `EXPIRED`)
 - `service/OrderSessionService.java` — `initiate()`, `getStatus()`
 - `service/OtpService.java` — `generate()`, `verify()`
 - `service/SessionOwnershipValidator.java` — `@Component`, `validateOwner(sessionId, memberId)`
