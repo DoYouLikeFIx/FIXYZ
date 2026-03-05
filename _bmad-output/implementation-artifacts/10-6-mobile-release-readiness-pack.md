@@ -1,7 +1,6 @@
 # Story 10.6: [MOB] Mobile Release Readiness Pack
 
 Status: ready-for-dev
-
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
 ## Story
@@ -16,6 +15,11 @@ So that mobile deployment quality is auditable.
 2. Given auth/order/notification regressions When detected Then release gate fails.
 3. Given release checklist template When preparing distribution Then checklist and artifact links are completed.
 4. Given final build candidate When approved Then release notes and handoff package are finalized.
+
+## Scenario Catalog (Plain Language)
+
+- `E10-MOB-001`: 모바일에서 로그인→주문→결과 확인 흐름이 정상인지 확인합니다.
+- `E10-MOB-002`: 기기/환경별 핵심 흐름 오류가 나면 배포가 차단되는지 확인합니다.
 
 ## Tasks / Subtasks
 

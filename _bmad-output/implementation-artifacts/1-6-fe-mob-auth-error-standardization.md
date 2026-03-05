@@ -162,3 +162,28 @@ GPT-5 Codex (Codex desktop)
 ### File List
 
 - /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/1-6-fe-mob-auth-error-standardization.md
+
+---
+
+## Password Recovery Mapping Addendum (Story 1.7 linkage, 2026-03-05)
+
+### Canonical code additions
+
+| Code | HTTP | FE/MOB semantic |
+|---|---|---|
+| `AUTH-012` | 401 | Invalid or expired reset token; guide user to request reset again |
+| `AUTH-013` | 409 | Already consumed reset token; guide user to request new reset link |
+| `AUTH-014` | 429 | Forgot/challenge/reset rate limited; show retry-after guidance |
+| `AUTH-015` | 422 | New password equals current password; ask for different password |
+| `AUTH-016` | 401 | Session stale after password change; force re-authentication |
+
+### Cross-client UX rules
+
+- Forgot API `202` response always includes:
+  - `data.recovery.challengeEndpoint=/api/v1/auth/password/forgot/challenge`
+  - `data.recovery.challengeMayBeRequired=true`
+- On CSRF `403` for forgot/challenge/reset submit:
+  - Re-fetch CSRF once
+  - Retry once with identical payload
+  - Second `403` => terminal error UX
+- Unknown code fallback remains mandatory with visible correlation id.

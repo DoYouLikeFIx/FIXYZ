@@ -1874,3 +1874,106 @@ flowchart LR
 | CORS (배포) | `SameSite=None` 적용 환경에서는 `allowedOrigins`를 명시적으로 허용 오리진 목록으로 제한해야 한다. 와일드카드(`*`) 금지. 예: `https://fix.yourdomain.com`. CORS 설정 오류 시 `SameSite=None` + `allowCredentials=true` 조합으로 CSRF 방어가 무력화될 수 있다. |
 | Trace | `traceparent` + `X-Correlation-Id` 헤더 → MDC 주입 → 모든 응답 `traceId` 포함 |
 
+
+---
+
+## 7. Password Recovery Addendum (Story 1.7, 2026-03-05)
+
+### 7.1 Endpoints
+
+1. `POST /api/v1/auth/password/forgot`
+
+- Request
+```json
+{
+  "username": "user01",
+  "challengeToken": "<optional>",
+  "challengeAnswer": "<optional>"
+}
+```
+
+- Response `202 Accepted` (fixed across all outcomes)
+```json
+{
+  "success": true,
+  "data": {
+    "accepted": true,
+    "message": "If the account is eligible, a reset email will be sent.",
+    "recovery": {
+      "challengeEndpoint": "/api/v1/auth/password/forgot/challenge",
+      "challengeMayBeRequired": true
+    }
+  },
+  "error": null,
+  "traceId": "trace-001"
+}
+```
+
+2. `POST /api/v1/auth/password/forgot/challenge`
+
+- Request
+```json
+{
+  "username": "user01"
+}
+```
+
+- Response `200 OK` (anti-enumeration parity required)
+```json
+{
+  "success": true,
+  "data": {
+    "challengeToken": "<signed blob>",
+    "challengeType": "proof-of-work|captcha",
+    "challengeTtlSeconds": 300
+  },
+  "error": null,
+  "traceId": "trace-001"
+}
+```
+
+3. `POST /api/v1/auth/password/reset`
+
+- Request
+```json
+{
+  "token": "<raw token>",
+  "newPassword": "Test1234!"
+}
+```
+
+- Success: `204 No Content`
+
+### 7.2 Error Code Mapping
+
+| Code | HTTP | Meaning |
+|---|---|---|
+| `AUTH-012` | 401 | reset token invalid or expired |
+| `AUTH-013` | 409 | reset token already consumed |
+| `AUTH-014` | 429 | forgot/challenge/reset rate limit exceeded (`Retry-After` required) |
+| `AUTH-015` | 422 | new password equals current password |
+| `AUTH-016` | 401 | stale session after password change |
+
+### 7.3 CSRF and Retry Rules
+
+- `forgot/challenge/reset` are non-GET endpoints and MUST remain CSRF-protected.
+- On CSRF `403`, client behavior is fixed:
+  - Re-fetch CSRF once (`GET /api/v1/auth/csrf`)
+  - Retry submit once with identical payload/idempotency fields
+  - If second `403`, stop and surface terminal UX error
+
+### 7.4 Rate Limits
+
+- `forgot`: `per-IP 5/min`, `per-username 3/15min`, `mail-cooldown-key(usernameHash) 1/5min`
+- `forgot/challenge`: `per-IP 5/min`, `per-username 3/10min`, `endpoint-global 60/min`
+- `reset`: `per-IP 10/5min`, `per-tokenHash 5/15min`, `endpoint-global 60/min`
+
+### 7.5 Security and Timing Constraints
+
+- Forgot path anti-enumeration envelope: floor `400ms`, jitter `0~50ms`, p95 delta (`existent/non-existent/challenge`) <= `80ms`.
+- Reset token validation timing equalization: floor `120ms`, jitter `0~20ms` across valid/invalid/expired/consumed paths.
+- Reset token persistence:
+  - Table: `channel_db.password_reset_tokens`
+  - Only HMAC token hash persisted (no raw token)
+  - One-active-token invariant: unique `(member_uuid, active_slot)` and domain guard `active_slot IS NULL OR active_slot = 1`
+- Successful reset MUST update `members.password_changed_at` in same DB transaction as password hash update and token consume.

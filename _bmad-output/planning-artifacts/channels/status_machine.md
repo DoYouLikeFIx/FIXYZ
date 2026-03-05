@@ -370,3 +370,19 @@ stateDiagram-v2
     *   **Case 2 (Core 거절)**: Core/FEP가 명확한 거절이면 Channel `FAILED`.
     *   **Case 3 (Core 취소)**: Core/FEP가 `CANCELED`면 Channel `CANCELED`.
     *   **Case 4 (불확실 지속)**: 재시도 한도 초과 시 Channel `ESCALATED` (수동 Replay 대상).
+
+---
+
+## Password Recovery State Addendum (Story 1.7, 2026-03-05)
+
+### Reset token lifecycle
+
+- `ACTIVE` (represented by `active_slot=1`, `consumed_at IS NULL`, `expires_at > now`)
+- `CONSUMED` (`consumed_at IS NOT NULL`, `active_slot IS NULL`)
+- `EXPIRED` (`expires_at < now`, `active_slot IS NULL`)
+- `INVALIDATED_BY_REISSUE` (`active_slot` changed from `1` to `NULL` on new issue)
+
+Transition rules:
+- `ACTIVE -> CONSUMED` on successful password reset
+- `ACTIVE -> INVALIDATED_BY_REISSUE` on new forgot issue
+- `ACTIVE -> EXPIRED` by time

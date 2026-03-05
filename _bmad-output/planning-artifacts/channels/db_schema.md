@@ -231,3 +231,46 @@ DB 레벨 목표:
 
 - **인덱스**: `UK(security_event_uuid)`, `IDX(status, severity, occurred_at)`, `IDX(member_id, occurred_at)`, `IDX(event_type, occurred_at)`, `IDX(admin_member_id)`
 - 채널 서비스가 직접 기록하는 보안 이벤트는 `members` 인증 경계(`LOCKED`/`UNLOCKED`) 중심이다. 계좌 라이프사이클(`FROZEN`/`CLOSED`)은 corebank 시스템에서 관리한다.
+
+---
+
+## 3.8 password_reset_tokens (Password Recovery Addendum, 2026-03-05)
+
+| Column | Type | Null | Constraint | Description |
+| --- | --- | --- | --- | --- |
+| id | BIGINT UNSIGNED | N | PK(AUTO) | Internal key |
+| member_uuid | CHAR(36) | N | IDX | Target member UUID |
+| token_hash | CHAR(64) | N | UK | HMAC-SHA-256(token, pepper) only |
+| pepper_version | SMALLINT | N | | Active/previous pepper key version |
+| active_slot | TINYINT | Y | CHECK | `1` for active, `NULL` for terminal |
+| issued_at | DATETIME(6) | N | | Issued timestamp |
+| expires_at | DATETIME(6) | N | IDX | Expiry timestamp |
+| consumed_at | DATETIME(6) | Y | IDX | Consume timestamp |
+| request_ip | VARCHAR(45) | Y | | Masked source IP |
+| request_user_agent_hash | CHAR(64) | Y | | User-agent hash |
+| created_at | DATETIME(6) | N | | Insert timestamp |
+| updated_at | DATETIME(6) | N | | Last update timestamp |
+
+Required constraints:
+- `UNIQUE(token_hash)`
+- `UNIQUE(member_uuid, active_slot)` (one active token per member)
+- `CHECK (active_slot IS NULL OR active_slot = 1)`
+
+Required indexes:
+- `(expires_at)`
+- `(consumed_at)`
+- `(member_uuid, active_slot)`
+
+Scheduler policy:
+- Every 15 minutes
+- `batchSize=500`, `maxBatchesPerRun=8`, `maxRunSeconds=20`
+- Alert threshold: `backlogAlertThresholdRows=10000`
+- Processing order: oldest `expires_at` first
+- Retain terminal rows 30 days, then purge
+
+## 3.9 members password_changed_at (Password Recovery Addendum)
+
+`members` table adds:
+- `password_changed_at DATETIME(3) NOT NULL`
+- Backfill from `updated_at` (fallback `created_at`)
+- Index: `(member_uuid, password_changed_at)`

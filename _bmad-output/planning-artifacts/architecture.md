@@ -37,7 +37,7 @@ Six capability domains, all implemented in `channel-service` unless noted:
 | Orders        | 3-phase state machine: Prepare → OTP Verify → Execute; Order Book matching (CoreBanking); FEP Gateway routing (FIX 4.2) |
 | Notification  | SSE `EventSource` stream — order execution results, position updates, security alerts; session-expiry push event      |
 | Admin         | Force-logout (Redis bulk purge), audit log query (`ROLE_ADMIN` only)                                                  |
-| Observability | Structured JSON logs, W3C `traceparent` propagation, Actuator metrics/circuit breaker exposure                        |
+| Observability | Structured JSON logs, W3C `traceparent` propagation, Prometheus scrape + Grafana dashboards, Actuator health/circuit breaker exposure |
 
 7 non-negotiable acceptance scenarios drive CI gate:
 
@@ -72,7 +72,7 @@ Six capability domains, all implemented in `channel-service` unless noted:
 | Idempotency                 | `ClOrdID` UNIQUE at DB level                                                             | `UNIQUE INDEX idx_clordid (cl_ord_id)` in `core_db.orders`                                          |
 | Execution source of truth   | Local CoreBanking Order Book match is canonical in simulator mode                        | `executions`/`positions` are committed from local matcher; FEP `ExecutionReport` used for confirmation/recovery only |
 | Market Data                 | `LIVE` / `DELAYED` / `REPLAY` source modes with quote freshness bound                    | `quoteSnapshotId` + `quoteAsOf` + `quoteSourceMode` required for MARKET pre-check and valuation; stale snapshots are rejected deterministically |
-| Observability (Demo)        | Actuator selectively exposed for screenshare demo                                        | `circuitbreakers` + `health` endpoints accessible without auth; FEP chaos endpoint robustly designed |
+| Observability (Demo)        | Grafana dashboard + selected Actuator endpoints for drill/demo                            | Grafana panels (execution/pending/latency) are primary; `circuitbreakers` + `health` remain accessible for targeted drill evidence |
 | Rate Limiting               | Login: 5 req/min/IP; OTP: 3/session; Order Prepare: 10 req/min/userId                   | Bucket4j + Redis-backed `Filter` on 3 endpoints only                                                |
 | Test Coverage               | CoreBanking ≥ 80%, Channel ≥ 70%, FEP Gateway ≥ 60%, FEP Simulator ≥ 60%                 | JaCoCo in Gradle; real MySQL + Redis via Testcontainers (H2 disqualified for runtime/integration, OpenAPI generation-only profile exception) |
 | Cold Start (Demo Guarantee) | `docker compose up` → first API call ≤ 120s (Vault + vault-init initialization accounts for extended window vs. non-Vault baseline) | `depends_on: condition: service_healthy` mandatory; Flyway DDL targeting < 3s total migration time  |
@@ -322,6 +322,27 @@ export const formatKRW = (amount: number): string =>
 | --------- | ------------------------------ | ---------------------------------------- | --------------- | -------------------------- |
 | Local dev | `pnpm dev` (:5173, Vite proxy) | `docker compose up` (:8080)              | `Strict`        | Not needed (proxy)         |
 | Deployed  | Vercel (`fix-xxx.vercel.app`)  | AWS EC2 t3.small (`fix-api.example.com`) | `None; Secure`  | Required, explicit origins |
+
+### Channel DMZ / Internal Zone Summary (Interview-Friendly)
+
+To make the network model explainable to non-project stakeholders:
+
+- **Frontend is in the DMZ-facing channel zone** (web/mobile entry).
+- **Backend core services run in internal zones** (corebank/fep-gateway/fep-simulator are not host-exposed).
+- **Only channel-service is externally reachable**; internal services communicate through private compose networks.
+
+### Cookie/Session Request Chain (Terminal → Backend)
+
+The authentication path is intentionally documented in business terms:
+
+1. User terminal sends request through frontend.
+2. Session cookie is attached to the channel request.
+3. Channel validates session/CSRF and enforces auth policy.
+4. Channel calls internal backend services with internal trust headers.
+5. Backend returns execution/account data; channel returns user-facing response.
+
+This chain is the canonical explanation model for reviews:  
+**terminal → cookie → frontend/channel → session validation → backend processing**.
 
 **AWS EC2 deployment:**
 
@@ -996,7 +1017,7 @@ Trunk-based with short-lived feature branches:
 | RULE-065 | React Hook Form + Zod 폼 패턴             |
 | RULE-066 | Tailwind 반응형 breakpoint 기준           |
 | RULE-067 | 접근성(a11y) 최소 요건                    |
-| RULE-068 | Actuator 보안 및 포트 분리                |
+| RULE-068 | Actuator/Prometheus 보안 및 포트 분리     |
 | RULE-069 | Graceful Shutdown 패턴                    |
 | RULE-070 | HikariCP 커넥션 풀 설정                   |
 | RULE-071 | 주문 요청 Idempotency 패턴 (ClOrdID)      |
@@ -1815,7 +1836,7 @@ const {
 // ❌ 금지: 색상만으로 정보 전달
 ```
 
-### RULE-068: Actuator 보안 설정
+### RULE-068: Actuator + Prometheus 보안 설정
 
 ```yaml
 management:
@@ -1824,7 +1845,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics   # MVP: prometheus 제외 (post-MVP Future Enhancement)
+        include: health,info,metrics,prometheus,circuitbreakers
   endpoint:
     health:
       show-details: when-authorized
@@ -1833,6 +1854,8 @@ management:
 # ❌ 금지: include: "*"
 # ❌ 금지: management.port = 8080 (동일 포트)
 # ❌ 금지: management.port = 8081 (corebank-service 앱 포트와 충돌)
+# Prometheus는 내부 네트워크 스크레이퍼만 접근
+# Grafana는 Prometheus를 단일 메트릭 소스로 사용
 ```
 
 ### RULE-069: Graceful Shutdown
@@ -2118,7 +2141,7 @@ RULE 위반이 정당화되는 경우 (성능 최적화, 외부 라이브러리 
 - ❌ Saga 오케스트레이터
 - ❌ OAuth2 외부 제공자 (Keycloak — Step 2 결정)
 - ❌ Kubernetes (EC2 Docker Compose로 충분)
-- ❌ 전문 APM (Datadog/NewRelic — Actuator+prometheus로 충분)
+- ❌ 전문 APM (Datadog/NewRelic — Prometheus+Grafana+Actuator로 MVP 충분)
 - ❌ JPA Multi-tenancy
 
 ---
@@ -2931,7 +2954,7 @@ Option B: @BeforeEach void cleanup() { repository.deleteAll(); }
 권장: Option B (간단, 대부분의 통합 테스트에 충분)
 ```
 
-#### Actuator 보안 설정 (Q-7-13)
+#### Actuator + Prometheus 보안 설정 (Q-7-13)
 
 ```yaml
 # 전 서비스 application.yml 공통
@@ -2939,13 +2962,13 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
+        include: health,info,metrics,prometheus,circuitbreakers
   endpoint:
     health:
       show-details: when-authorized
 
 # SecurityConfig: Spring Security 설정
-.requestMatchers("/actuator/health").permitAll()
+.requestMatchers("/actuator/health", "/actuator/prometheus").permitAll()
 .requestMatchers("/actuator/**").hasRole("ADMIN")
 ```
 
@@ -3147,7 +3170,7 @@ eventsource.onerror = () => {
 
 1. Kafka 기반 비동기 알림 파이프라인 (SSE 대체)
 2. 타사 증권사 라우팅 (현재 설계 범위 밖, 의도적 제외)
-3. Grafana + Prometheus 관찰가능성 스택
+3. Grafana Alerting/Alertmanager 연계 및 SLO burn-rate 알림 고도화
 
 ---
 

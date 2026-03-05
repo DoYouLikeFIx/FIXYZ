@@ -247,3 +247,35 @@
 *   **전략**:
     *   **Immutable Ledger**: Core의 `journal_entries`는 회원 상태와 무관하게 기록을 유지한다.
     *   **History Access**: 탈퇴 회원의 주문 내역 조회 요청 시, Channel은 `deleted_at` 회원의 접근을 차단하되, 내부 감사/CS 도구에서는 조회 가능하도록 필터를 적용한다.
+
+---
+
+## 9. Password Recovery Table Addendum (Story 1.7, 2026-03-05)
+
+### 9.1 members extension
+
+Add column:
+- `password_changed_at DATETIME(3) NOT NULL`
+
+Backfill:
+- from `updated_at` (fallback `created_at`)
+
+Index:
+- `(member_uuid, password_changed_at)`
+
+### 9.2 password_reset_tokens
+
+Purpose:
+- secure forgot/reset token lifecycle
+- one active token per member
+
+Required constraints:
+- `UNIQUE(token_hash)`
+- `UNIQUE(member_uuid, active_slot)`
+- `CHECK (active_slot IS NULL OR active_slot = 1)`
+
+Required operational policy:
+- no raw token persistence
+- only HMAC token hash persistence
+- retention: terminal rows 30 days then purge
+- cleanup loop bounds: `batchSize=500`, `maxBatchesPerRun=8`, `maxRunSeconds=20`

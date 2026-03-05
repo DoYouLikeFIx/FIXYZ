@@ -133,8 +133,8 @@ FIX is the gap between "I know Spring Boot" and "I understand why a 은행계 �
 
 | Metric                      | Target                                                | How Verified                                             |
 | --------------------------- | ----------------------------------------------------- | -------------------------------------------------------- |
-| Channel p95 response time   | Visible in Actuator, documented in README             | Spring Boot Actuator `/actuator/metrics`                 |
-| Order execution failure rate | Circuit breaker demo scenario scripted and runnable   | Resilience4j OPEN state observable in Actuator           |
+| Channel p95 response time   | Visible in Grafana latency panel, documented in README | Prometheus scrape (`/actuator/prometheus`) + Grafana panel |
+| Order execution failure rate | Circuit breaker demo scenario scripted and runnable   | Grafana error-rate panel + circuit breaker drill evidence |
 | Concurrent sell integrity   | 0 over-sell events under 10-thread simultaneous sell  | `@SpringBootTest` + `ExecutorService` test passing in CI |
 | Docker cold start           | `docker compose up` → first successful API call ≤ 120s | Documented in README Quick Start (Vault + vault-init initialization accounts for extended window) |
 | CoreBanking test coverage   | ≥ 80% line coverage                                   | JaCoCo report in CI                                      |
@@ -164,6 +164,7 @@ All seven must pass in CI before the MVP is considered complete:
 - `docker compose up` cold start ≤ 120s to first API response
 - Four deployable services wired: `channel-service`, `corebank-service`, `fep-gateway`, `fep-simulator`
 - React Web 5-screen demo functional (Login, Portfolio View, Order Entry, Order Flow, Notification Feed)
+- Prometheus + Grafana observability stack running with core operational panels
 - README with architecture diagram, dual-audience demo script, Quick Start section, CI badge
 - Flyway migration history: `V1__init.sql` through final schema version across 3 schemas
 - Audit log, PII masking, and session security documented with OWASP references
@@ -171,7 +172,7 @@ All seven must pass in CI before the MVP is considered complete:
 ### Growth Features (Post-MVP)
 
 - React Native mobile view (responsive demo for mobile-first interviewers)
-- Prometheus + Grafana dashboard (visual observability demo)
+- Grafana alert tuning + Alertmanager integration (pager/webhook routing)
 - Keycloak SSO integration (demonstrates enterprise IDP awareness)
 - Advanced rate limiting and fraud detection simulation
 
@@ -1144,7 +1145,7 @@ The MVP is complete when every architectural claim in FIX is backed by a passing
 | Idempotency    | `clOrdID` UNIQUE index + app-layer check                             |
 | Resilience     | Resilience4j circuit breaker (FEP path); distributed retry via OrderSessionRecoveryService |
 | Rate Limiting  | Bucket4j — 3 endpoints (login, OTP, sessions)                                |
-| Observability  | Spring Actuator, Micrometer, `traceparent` propagation                       |
+| Observability  | Prometheus + Grafana + Micrometer, `traceparent` propagation                 |
 | Notifications  | SSE stream + DB persistence (`notifications` table)                          |
 | Admin          | Force-invalidate session API (ROLE_ADMIN)                                    |
 | Documentation  | Swagger UI (Channel + CoreBanking + FEP Gateway + FEP Simulator), dual-audience README |
@@ -1212,7 +1213,7 @@ All seven must pass in CI before MVP is complete:
 **Phase 2 — Growth (Post-MVP):**
 
 - React Native mobile view (responsive demo for mobile-first interviewers)
-- Prometheus + Grafana dashboard (visual observability demo)
+- Grafana alert tuning + Alertmanager integration (pager/webhook routing)
 - Keycloak SSO integration (enterprise IDP awareness)
 - Bucket4j advanced: user-level rate limit (현재 IP-level)
 - 알림 읽음 처리 클릭 이벤트 + 필터링 UI
@@ -1364,10 +1365,10 @@ jobs:
 ### Performance
 
 - **NFR-P1:** Channel-service read endpoints (account list, balance inquiry) must achieve p95 response time ≤ 500ms under normal load.
-  _Measurement: Spring Boot Actuator `http.server.requests` metric filtered by `uri` and `outcome=SUCCESS`._
+  _Measurement: Prometheus `http_server_requests_seconds` queried via PromQL and visualized in Grafana p95 panel (`uri`, `outcome=SUCCESS` filters)._
 
 - **NFR-P2:** Order Prepare endpoint (OTP issuance) must achieve p95 response time ≤ 1,000ms under normal load.
-  _Measurement: Actuator `http.server.requests` metric for `/api/v1/orders/sessions`._
+  _Measurement: Prometheus metric query for `/api/v1/orders/sessions` latency series in Grafana._
 
 - **NFR-P3:** Full system cold start (`docker compose up` from clean state) must complete within 120 seconds on a developer laptop (8GB RAM, 4 cores). Vault + vault-init initialization accounts for the extended window vs. a non-Vault baseline. Spring Boot lazy initialization (`spring.main.lazy-initialization=true`) is permitted.
   _Measurement: `time docker compose up --wait` — wall-clock time._
@@ -1376,10 +1377,10 @@ jobs:
   _Measurement: `PositionConcurrencyIntegrationTest` — 10 threads via `ExecutorService`, all futures resolved ≤ 5s._
 
 - **NFR-P5:** `@Lock(PESSIMISTIC_WRITE)` row-level lock hold time must remain ≤ 100ms under normal operating conditions.
-  _Measurement: Micrometer custom timer around the locked transaction block; logged to Actuator metrics._
+  _Measurement: Micrometer custom timer exported to Prometheus and tracked in Grafana lock-time panel._
 
 - **NFR-P6:** Error responses (`4xx`, `5xx`) must meet the same p95 latency SLA as success responses (channel ≤ 500ms, order ≤ 1,000ms). Circuit Breaker OPEN-state fallback responses must also comply.
-  _Measurement: Actuator `http.server.requests` filtered by `outcome=CLIENT_ERROR` and `outcome=SERVER_ERROR`._
+  _Measurement: Prometheus latency series filtered by `outcome=CLIENT_ERROR|SERVER_ERROR`, validated in Grafana comparison panel._
 
 ### Security
 
@@ -1498,7 +1499,7 @@ jobs:
 
 ---
 
-> **NFR Traceability summary:** 35 NFRs across 10 categories. Every NFR has a concrete, executable measurement method. Performance NFRs trace to Actuator metrics. Security NFRs trace to integration tests and Docker network configuration. Reliability NFRs trace to CI pipeline. Testability NFRs enforce JaCoCo thresholds and GitHub Actions timeouts. Data integrity verified on every CI run via `PositionIntegrityIntegrationTest`.
+> **NFR Traceability summary:** 35 NFRs across 10 categories. Every NFR has a concrete, executable measurement method. Performance NFRs trace to Prometheus/Grafana metrics. Security NFRs trace to integration tests and Docker network configuration. Reliability NFRs trace to CI pipeline. Testability NFRs enforce JaCoCo thresholds and GitHub Actions timeouts. Data integrity verified on every CI run via `PositionIntegrityIntegrationTest`.
 
 ### FR ↔ NFR Cross-Reference (Key Connections)
 

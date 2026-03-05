@@ -1,7 +1,6 @@
 # Story 10.2: [AC] Concurrency/Performance Gate
 
 Status: ready-for-dev
-
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
 ## Story
@@ -13,9 +12,16 @@ So that release does not regress runtime safety or responsiveness.
 ## Acceptance Criteria
 
 1. Given concurrency scenario suite When CI executes tests Then race/integrity assertions pass.
-2. Given p95 SLA thresholds When perf tests run Then configured targets are satisfied.
+2. Given p95 SLA thresholds When perf tests run Then configured targets are satisfied (based on Prometheus metrics and Grafana panels).
 3. Given threshold breach When observed Then release gate fails with metric evidence.
 4. Given repeated benchmark runs When compared Then unacceptable variance is reported.
+
+## Scenario Catalog (Plain Language)
+
+- `E10-CONC-001`: 동일 종목 동시 요청 100건에서도 데이터 꼬임이 없는지 확인합니다.
+- `E10-PERF-001`: 핵심 요청의 95% 응답시간 기준을 만족하는지 확인합니다.
+- `E10-PERF-002`: 성능 기준을 넘으면 배포가 자동 차단되는지 확인합니다.
+- `E10-PERF-003`: 반복 측정 시 결과 편차가 허용 범위 안인지 확인합니다.
 
 ## Tasks / Subtasks
 

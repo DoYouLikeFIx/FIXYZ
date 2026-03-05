@@ -1064,3 +1064,39 @@ server:
 - [ ] 1기기 제한 정책 사용자 약관 반영 (MA2) — Story 1.2
 
 > **[B3] Story 연결**: 각 DoD 항목 끝의 `(Story N.N)` 레이블로 스프린트 추적 가능. 미표기 항목은 Epic 1 전체에 해당.
+
+---
+
+## Password Recovery Flow Addendum (Story 1.7, 2026-03-05)
+
+### Flow A: Forgot Request (`POST /api/v1/auth/password/forgot`)
+
+1. Normalize username: `NFKC(trim(username)).toLowerCase(Locale.ROOT)`
+2. Apply rate limits (`per-IP`, `per-username`, `mail-cooldown`) and challenge gate decision
+3. If challenge-gated, require `challengeToken + challengeAnswer` validation
+4. Always return fixed `202` response envelope (no eligibility disclosure)
+5. If account is eligible and policy passes, issue reset token asynchronously and dispatch email
+
+### Flow B: Challenge Bootstrap (`POST /api/v1/auth/password/forgot/challenge`)
+
+1. Return fixed `200` contract regardless of account existence/status
+2. Issue signed challenge token (`ttl=300s`) with username-hash binding
+3. Persist nonce in Redis using atomic create (`SET NX EX 300`)
+4. Enforce challenge endpoint rate limits (`per-IP`, `per-username`, `endpoint-global`)
+
+### Flow C: Reset (`POST /api/v1/auth/password/reset`)
+
+1. Derive token hash with active+previous pepper versions
+2. Validate token state under equalized timing policy (`120ms + jitter 0~20ms`)
+3. In one DB transaction:
+   - update `members.password_hash`
+   - update `members.password_changed_at`
+   - mark reset token consumed
+4. Post-commit: invalidate active sessions; if delayed, auth filter blocks stale sessions via `AUTH-016`
+
+### Security Notes
+
+- CSRF is mandatory for forgot/challenge/reset.
+- CSRF retry policy for all password recovery submits: one re-fetch + one retry only.
+- Retry must preserve payload/idempotency fields exactly.
+- Challenge replay is blocked by Redis atomic nonce consume.

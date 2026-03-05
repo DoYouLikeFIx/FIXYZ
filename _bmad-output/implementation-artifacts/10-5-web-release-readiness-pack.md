@@ -1,7 +1,6 @@
 # Story 10.5: [FE] Web Release Readiness Pack
 
 Status: ready-for-dev
-
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
 ## Story
@@ -16,6 +15,11 @@ So that web deployment quality is auditable.
 2. Given regression in core order/auth paths When detected Then release gate fails.
 3. Given release checklist template When preparing shipment Then checklist items are completed with evidence links.
 4. Given final FE candidate build When validated Then versioned release notes are generated.
+
+## Scenario Catalog (Plain Language)
+
+- `E10-WEB-001`: 웹에서 로그인→주문→결과 확인 흐름이 정상인지 확인합니다.
+- `E10-WEB-002`: 핵심 화면 흐름에 오류가 나면 배포가 차단되는지 확인합니다.
 
 ## Tasks / Subtasks
 

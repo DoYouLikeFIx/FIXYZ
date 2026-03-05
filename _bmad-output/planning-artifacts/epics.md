@@ -73,6 +73,28 @@ Core Objectives:
 | 10 | Full Validation & Release Readiness | Integration | INT | Channel Engineer |
 | 11 | Market Data Ingestion & Virtual Execution Determinism | External + Account | FEP | FEP Owner (acting Account Engineer) |
 
+## Current Implementation Priority (Core-First)
+
+To avoid over-scoping and to produce a demonstrable working core early, implementation is prioritized in two phases.
+
+### P0 (Must-run core flow first)
+
+- Story 4.1: Order Session Create/Status + Ownership
+- Story 4.2: OTP Verify Policy
+- Story 5.2: Order Execution & Position Update
+- Story 2.2: Position & Available-Quantity API
+
+**P0 completion signal:**
+
+- One end-to-end trade flow is runnable: order request → execution result persisted → position/balance reflects the execution consistently.
+
+### P1 (Layer on top after P0 proves stable)
+
+- Story 5.3 / 6.x: external sync semantics and recovery hardening
+- Story 7.8 (new): operations monitoring dashboard MVP
+- Story 10.x: release gates and readiness evidence packaging
+- Story 11.x: market data determinism and quote freshness hardening
+
 ---
 
 ## Epic List
@@ -183,6 +205,7 @@ Completes channel notifications, admin functions, and channel security hardening
 - Story 7.5: BE Admin Session/Audit APIs
 - Story 7.6: FE Admin Console Screens
 - Story 7.7: BE Channel Security Hardening
+- Story 7.8: FE Operations Monitoring Dashboard MVP
 
 ### Epic 8: Cross-system Security, Audit, Observability
 
@@ -1700,6 +1723,29 @@ So that abuse and session attacks are mitigated.
   **When** request reaches boundary  
   **Then** blocked with security error.
 
+### Story 7.8: [FE][CH] Operations Monitoring Dashboard MVP
+
+As an **operations admin**,  
+I want a lightweight monitoring dashboard backed by Prometheus/Grafana,  
+So that I can understand system health at a glance during demo and operations review.
+
+**Depends On:** Story 7.1, Story 7.2, Story 7.5, Story 9.1
+
+**Acceptance Criteria:**
+
+- **Given** admin authenticated user  
+  **When** monitoring dashboard is opened  
+  **Then** Grafana panels show real-time execution volume, pending session count, and market-data ingest status on one screen.
+- **Given** metric data source delay or failure  
+  **When** dashboard refresh occurs  
+  **Then** stale-data indicator and last-updated timestamp are shown using Prometheus scrape freshness.
+- **Given** unauthorized user  
+  **When** monitoring route is accessed  
+  **Then** access is blocked.
+- **Given** operator review session  
+  **When** anomalies occur (spike in pending, ingest drop)  
+  **Then** operator can navigate to related admin/audit views and the underlying Grafana drill-down panel.
+
 ---
 
 ## Epic 8: Cross-system Security, Audit, Observability
@@ -2075,6 +2121,9 @@ So that deployment readiness is validated before production cut.
 - **Given** rehearsal completion  
   **When** reviewed  
   **Then** go/no-go checklist can be updated.
+- **Given** observability stack requirement  
+  **When** rehearsal verification runs  
+  **Then** Prometheus targets are UP and Grafana release dashboard is reachable.
 
 ### Story 10.5: [FE] Web Release Readiness Pack
 
@@ -2121,6 +2170,28 @@ So that mobile deployment quality is auditable.
 - **Given** final build candidate  
   **When** approved  
   **Then** release notes and handoff package are finalized.
+
+### Epic 10 Scenario Catalog (Release Gate View)
+
+The following scenario catalog is the release gate checklist for Epic 10.  
+All mandatory scenarios must pass before merge/release approval.
+
+| Category | Scenario | Primary Risk Controlled | Pass Condition |
+|---|---|---|---|
+| Core acceptance | Order request → execution → completion happy path | Broken core transaction flow | Full flow succeeds with correct final state |
+| Core acceptance | Concurrent sell (10-thread) on same position | Over-sell / race corruption | No over-sell; final quantity remains consistent |
+| Core acceptance | OTP failure blocks execution | Missing step-up auth control | Execution blocked with deterministic failure |
+| Core acceptance | Duplicate client order key replay | Double execution from retry | Idempotent response; no duplicate posting |
+| Core acceptance | Repeated external timeout opens protection circuit | Cascading external failure | Circuit opens and fallback path returns safely |
+| Core acceptance | Session invalidated after logout | Session security bypass | Subsequent protected API is rejected |
+| Core acceptance | Ledger integrity after N executions | Drift between executions and position | Buy/Sell aggregate equals final position |
+| Security boundary | Internal endpoint call without internal secret | Internal network boundary breach | Request is denied (403) |
+| Performance gate | p95 latency threshold validation | Silent performance degradation | Configured p95 thresholds are met in Grafana panels sourced from Prometheus |
+| Performance gate | Threshold breach release fail | Releasing with known SLA violation | Release gate blocks with metric evidence |
+| Resilience drill | Downstream failure/recovery drill | Unproven recovery behavior | Recovery path closes and normal flow resumes |
+| Smoke/rehearsal | Fresh environment smoke + rollback rehearsal | Deployment readiness unknown | Health/API checks pass, Prometheus targets are UP, and rollback runbook validated |
+| Web readiness | Web critical journey regression gate | Web production regressions | Critical journeys pass; regression blocks release |
+| Mobile readiness | Mobile test-matrix regression gate | Device-specific regressions | Matrix critical flows pass; regression blocks release |
 
 ## Epic 11: Market Data Ingestion & Virtual Execution Determinism
 
