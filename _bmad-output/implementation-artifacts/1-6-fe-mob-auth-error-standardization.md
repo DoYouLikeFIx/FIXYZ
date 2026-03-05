@@ -184,6 +184,6 @@ GPT-5 Codex (Codex desktop)
   - `data.recovery.challengeMayBeRequired=true`
 - On CSRF `403` for forgot/challenge/reset submit:
   - Re-fetch CSRF once
-  - Retry once with identical payload
+  - Retry once with identical payload and identical idempotency fields (no mutation)
   - Second `403` => terminal error UX
 - Unknown code fallback remains mandatory with visible correlation id.

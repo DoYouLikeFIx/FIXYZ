@@ -22,7 +22,7 @@
 | `password_hash` | Bcrypt/Argon2 해시만 저장 — 평문/복호화 가능 형태 절대 금지. |
 | `name` | 알림 제목·본문 개인화 등 업무 표시용. |
 | `role` | 인가 경계. `ROLE_USER`와 `ROLE_ADMIN` 분리 → Admin API 접근 제어 기준. |
-| `status` | 계정 가용 상태. `LOCKED`이면 인증 자체를 차단. 잠금/해제의 단일 판단 기준. |
+| `status` | 계정 가용 상태. `ACTIVE`, `LOCKED`, `WITHDRAWN`, `DEACTIVATED`, `ADMIN_SUSPENDED`, `POLICY_LOCKED`를 사용한다. `LOCKED`는 credential-failure 계열이며 나머지 비정상 상태는 비밀번호 재설정으로 복구되지 않는다. |
 | `login_fail_count` | 임계치 도달 시 `LOCKED` 전이 트리거. 성공 로그인 시 Lazy Reset. |
 | `last_fail_at` | 실패 시각. "일정 시간 후 카운터 초기화" 같은 정책 적용 기준. |
 | `locked_at` | 잠금 이벤트의 시각. 감사/CS 조회에서 "언제 잠겼나"를 바로 알 수 있음. |
@@ -274,8 +274,38 @@ Required constraints:
 - `UNIQUE(member_uuid, active_slot)`
 - `CHECK (active_slot IS NULL OR active_slot = 1)`
 
+Required columns:
+- `id BIGINT UNSIGNED PK`
+- `member_uuid CHAR(36) NOT NULL`
+- `token_hash CHAR(64) NOT NULL`
+- `pepper_version SMALLINT NOT NULL`
+- `active_slot TINYINT NULL` (`1` active, `NULL` terminal)
+- `issued_at DATETIME(6) NOT NULL`
+- `expires_at DATETIME(6) NOT NULL`
+- `consumed_at DATETIME(6) NULL`
+- `request_ip VARCHAR(45) NULL` (masked form)
+- `request_user_agent_hash CHAR(64) NULL`
+- `created_at DATETIME(6) NOT NULL`
+- `updated_at DATETIME(6) NOT NULL`
+
+Required indexes:
+- `(expires_at)`
+- `(consumed_at)`
+- `(member_uuid, active_slot)`
+
 Required operational policy:
 - no raw token persistence
 - only HMAC token hash persistence
 - retention: terminal rows 30 days then purge
 - cleanup loop bounds: `batchSize=500`, `maxBatchesPerRun=8`, `maxRunSeconds=20`
+- backlog alert threshold: `backlogAlertThresholdRows=10000`
+- cleanup ordering: oldest `expires_at` first
+
+### 9.3 password recovery audit payload
+
+For password recovery lifecycle events, event payload minimum schema is:
+- `{eventType, memberUuid|null, usernameHash, outcome, reasonCode|null, traceId, ipHash, userAgentHash, hashKeyVersion, occurredAt}`
+
+Rules:
+- `usernameHash/ipHash/userAgentHash` are keyed HMAC pseudonyms.
+- `hashKeyVersion` is mandatory for key rotation and forensic lookup.

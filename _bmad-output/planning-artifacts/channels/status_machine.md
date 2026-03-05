@@ -386,3 +386,22 @@ Transition rules:
 - `ACTIVE -> CONSUMED` on successful password reset
 - `ACTIVE -> INVALIDATED_BY_REISSUE` on new forgot issue
 - `ACTIVE -> EXPIRED` by time
+
+### Member status domain extension (Story 1.7 override)
+
+`members.status` domain is extended as:
+- `ACTIVE`
+- `LOCKED`
+- `WITHDRAWN`
+- `DEACTIVATED`
+- `ADMIN_SUSPENDED`
+- `POLICY_LOCKED`
+
+Reset effect rule:
+- Password reset only clears credential-failure lock path (`LOCKED`/`AUTH-002`).
+- `WITHDRAWN`, `DEACTIVATED`, `ADMIN_SUSPENDED`, `POLICY_LOCKED` are non-credential states and remain unchanged.
+
+### Expiry normalization note
+
+- `EXPIRED` is defined by `expires_at < now` regardless of `active_slot`.
+- Cleanup/validation path normalizes expired rows to terminal state by setting `active_slot = NULL`.

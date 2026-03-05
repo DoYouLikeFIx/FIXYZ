@@ -1825,6 +1825,11 @@ flowchart LR
 | `AUTH-006` | 403 | 권한 부족 (`ROLE_ADMIN` 필요). **CSRF 토큰 누락 시는 `AUTH-006`이 아닙**니다 — CSRF 실패는 Spring Security `CsrfFilter`가 `ApiResponse` 봉투 없이 raw `403 Forbidden`을 반환한다 (§1 공통 헤더 노트 참조). |
 | `AUTH-007` | 422 | 비밀번호 정책 위반 |
 | `AUTH-008` | 409 | username 중복 |
+| `AUTH-012` | 401 | 비밀번호 재설정 토큰이 유효하지 않거나 만료됨 |
+| `AUTH-013` | 409 | 비밀번호 재설정 토큰이 이미 사용됨 |
+| `AUTH-014` | 429 | 비밀번호 복구(forgot/challenge/reset) 레이트 리밋 초과 (`Retry-After` 포함) |
+| `AUTH-015` | 422 | 새 비밀번호가 현재 비밀번호와 동일함 |
+| `AUTH-016` | 401 | 비밀번호 변경 이후의 stale session 요청 |
 | `ORD-001` | 422 | 매수 자금 부족 |
 | `ORD-002` | 422 | 일일 매도 한도 초과 |
 | `ORD-003` | 422 | 매도 주식 부족 |
@@ -1866,13 +1871,17 @@ flowchart LR
 | 세션 TTL | **30분 슬라이딩(Sliding) TTL** — Spring Session `maxInactiveInterval=1800s`. 모든 인증된 요청 수신 시 Redis TTL이 갱신된다. 비활동(요청 없음) 상태로 30분 경과 시 자동 만료. `SESSION_EXPIRY` SSE 이벤트는 마지막 활동 기준 25분 경과 시점에 발행. |
 | OTP TTL | **TOTP 코드 유효 윈도우**: 30초 (RFC 6238 TOTP 표준). **OTP Idempotency 키 TTL**: 60초 (`ch:otp-success:{sessionId}:{windowIndex}`, 2 윈도우). **OTP 시도 TTL**: 주문 세션 TTL(600초)과 연동 — 세션 만료 시 attempt 카운터도 소멸. |
 | 주문 세션 TTL | 600초 (Redis `EXPIRE`) |
-| CSRF | Synchronizer Token (`HttpSessionCsrfTokenRepository`), 로그인 후 재조회 필수 |
+| CSRF | Synchronizer Token (`HttpSessionCsrfTokenRepository`), submit 전 `GET /api/v1/auth/csrf` bootstrap 필수 (password recovery 포함) |
 | PII 마스킹 | 계좌번호 `AccountNumber.masked()` — 로그·응답에서 전체 번호 노출 금지 |
 | Rate Limiting | Bucket4j (Redis 백엔드): 로그인 5/min/IP, 주문준비 10/min/userId, 주문실행(`POST /api/v1/orders/sessions/.../execute`) 세션당 1회(Redis NX lock), 주문취소(`POST /api/v1/orders/sessions/.../cancel`) 세션당 1회(Redis NX lock), 주문이력 조회(`GET /api/v1/orders`) 10/min/session, 알림 이력 조회(`GET /api/v1/notifications`) 10/min/session, CB 상태 조회(`GET /api/v1/orders/cb-status`) 10/min/session, 관리자 감사로그 조회(`GET /api/v1/admin/audit-logs`) · 수동재처리(`POST /api/v1/admin/orders/.../replay`) · 강제로그아웃(`DELETE /api/v1/admin/members/.../sessions`) 20/min/session; OTP 시도: 3/session (Redis 카운터 — Bucket4j 별도 아님, §2.2 attempt 카운터 기반) |
 | 429 응답 헤더 | 모든 Rate Limit 초과 응답에 HTTP 표준 `Retry-After` 헤더 포함 (단위: 초, **동적 계산값**). Bucket4j 토큰 리필 기반으로 현재 윈도우 잔여 시간을 계산하여 반환한다. 최대값: 로그인 60초, 주문 준비 60초. OTP 디바운스: 고정 `Retry-After: 1`. |
 | Cookie | `HttpOnly=true`, `Secure=true`, `SameSite=Strict` (local) / `SameSite=None; Secure` (deploy) |
 | CORS (배포) | `SameSite=None` 적용 환경에서는 `allowedOrigins`를 명시적으로 허용 오리진 목록으로 제한해야 한다. 와일드카드(`*`) 금지. 예: `https://fix.yourdomain.com`. CORS 설정 오류 시 `SameSite=None` + `allowCredentials=true` 조합으로 CSRF 방어가 무력화될 수 있다. |
 | Trace | `traceparent` + `X-Correlation-Id` 헤더 → MDC 주입 → 모든 응답 `traceId` 포함 |
+
+> Password Recovery(Story 1.7) 전용 보안 규칙은 §7.3~§7.5를 canonical로 따른다.
+> - forgot/challenge/reset는 CSRF 예외가 아니며 `403` 시 "CSRF 1회 재조회 + 1회 재시도"만 허용한다.
+> - password recovery 레이트리밋(차원별 윈도우 포함)은 §7.4를 우선 적용한다.
 
 
 ---

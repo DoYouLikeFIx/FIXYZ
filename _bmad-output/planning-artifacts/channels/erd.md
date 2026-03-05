@@ -18,7 +18,7 @@ erDiagram
         VARCHAR255 password_hash
         VARCHAR100 name
         VARCHAR20 role "ROLE_USER|ROLE_ADMIN"
-        VARCHAR20 status "ACTIVE|LOCKED"
+        VARCHAR20 status "ACTIVE|LOCKED|WITHDRAWN|DEACTIVATED|ADMIN_SUSPENDED|POLICY_LOCKED"
         INT login_fail_count
         DATETIME last_fail_at
         DATETIME locked_at
@@ -117,7 +117,7 @@ erDiagram
         BIGINT member_id FK
         BIGINT admin_member_id FK
         BIGINT order_session_id FK
-        VARCHAR50 event_type "ACCOUNT_LOCKED|OTP_MAX_ATTEMPTS|FORCED_LOGOUT|ACCOUNT_UNLOCKED|RATE_LIMIT_LOGIN|RATE_LIMIT_OTP|RATE_LIMIT_ORDER"
+        VARCHAR50 event_type "ACCOUNT_LOCKED|OTP_MAX_ATTEMPTS|FORCED_LOGOUT|ACCOUNT_UNLOCKED|RATE_LIMIT_LOGIN|RATE_LIMIT_OTP|RATE_LIMIT_ORDER|PASSWORD_FORGOT_ACCEPTED|PASSWORD_RESET_SUCCESS|PASSWORD_RESET_FAILED|PASSWORD_CHALLENGE_FAILED"
         VARCHAR20 status "OPEN|ACKNOWLEDGED|RESOLVED"
         VARCHAR10 severity "LOW|MEDIUM|HIGH|CRITICAL"
         TEXT detail
@@ -169,6 +169,7 @@ erDiagram
 - `MEMBERS.status`
   - `ACTIVE -> LOCKED` when login failure threshold is exceeded.
   - `LOCKED -> ACTIVE` only by admin unlock flow (resets `login_fail_count`).
+  - `WITHDRAWN|DEACTIVATED|ADMIN_SUSPENDED|POLICY_LOCKED` are non-credential states and are not reactivated by password reset flow.
 
 - `OTP_VERIFICATIONS.status`
   - `PENDING -> VERIFIED` on correct code input.
@@ -228,7 +229,7 @@ erDiagram
   - `member_uuid`: external-safe identifier for APIs/log correlation.
 - Important columns
   - `role`: authorization boundary (`ROLE_USER`, `ROLE_ADMIN`).
-  - `status`: account lifecycle state (`ACTIVE`, `LOCKED`).
+  - `status`: account lifecycle state (`ACTIVE`, `LOCKED`, `WITHDRAWN`, `DEACTIVATED`, `ADMIN_SUSPENDED`, `POLICY_LOCKED`).
   - `login_fail_count`, `locked_at`: lockout control source of truth.
   - `totp_enabled`, `totp_enrolled_at`: step-up auth enrollment state only (secret is in Vault).
   - `deleted_at`: member soft delete marker.
@@ -571,3 +572,10 @@ Constraints:
 
 - `MEMBERS.member_uuid 1 --- n PASSWORD_RESET_TOKENS.member_uuid`
 - At most one row can be active (`active_slot=1`) per member.
+
+### Password Recovery Audit Payload
+
+For password recovery lifecycle events (`forgot/challenge/reset`), canonical event payload MUST include:
+- `{eventType, memberUuid|null, usernameHash, outcome, reasonCode|null, traceId, ipHash, userAgentHash, hashKeyVersion, occurredAt}`
+
+And must use pseudonymized hashes (`usernameHash/ipHash/userAgentHash`) with explicit `hashKeyVersion` for rotation compatibility.

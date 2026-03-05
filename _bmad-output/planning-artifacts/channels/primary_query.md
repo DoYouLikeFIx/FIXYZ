@@ -837,17 +837,29 @@ INSERT INTO password_reset_tokens (
 ```sql
 -- transaction begin
 
--- 1) lock member row first
+-- pre-step) application resolves candidate hashes in fixed order (active, previous),
+-- then resolves member_uuid from token_hash IN (?, ?) without disclosing which hash matched.
+SELECT member_uuid
+FROM password_reset_tokens
+WHERE token_hash IN (?, ?)
+ORDER BY FIELD(token_hash, ?, ?)
+LIMIT 1;
+
+-- 1) lock member row first (fixed lock order)
 SELECT id, member_uuid, password_hash
 FROM members
 WHERE member_uuid = ?
   AND deleted_at IS NULL
 FOR UPDATE;
 
--- 2) lock candidate active token rows
+-- 2) lock candidate active token rows for this member
 SELECT id, token_hash, pepper_version, expires_at, consumed_at
 FROM password_reset_tokens
-WHERE token_hash IN (?, ?)
+WHERE member_uuid = ?
+  AND token_hash IN (?, ?)
+  AND active_slot = 1
+  AND consumed_at IS NULL
+  AND expires_at >= NOW(6) - INTERVAL 60 SECOND
 FOR UPDATE;
 
 -- 3) consume matched token row
@@ -856,7 +868,8 @@ SET consumed_at = NOW(6),
     active_slot = NULL,
     updated_at = NOW(6)
 WHERE id = ?
-  AND consumed_at IS NULL;
+  AND consumed_at IS NULL
+  AND active_slot = 1;
 
 -- 4) update password + password_changed_at in same transaction
 UPDATE members
@@ -873,11 +886,22 @@ WHERE member_uuid = ?
 
 ```sql
 -- repeat per batch while batchCount < 8 and runSeconds < 20
+
+-- 1) normalize expired active rows to terminal state
+UPDATE password_reset_tokens
+SET active_slot = NULL,
+    updated_at = NOW(6)
+WHERE active_slot = 1
+  AND expires_at < NOW(6)
+ORDER BY expires_at ASC, id ASC
+LIMIT 500;
+
+-- 2) purge only rows older than 30 days retention window
 DELETE FROM password_reset_tokens
 WHERE (
-    (expires_at < NOW(6) AND active_slot IS NULL)
+    (expires_at < NOW(6) - INTERVAL 30 DAY)
     OR (consumed_at IS NOT NULL AND consumed_at < NOW(6) - INTERVAL 30 DAY)
 )
-ORDER BY expires_at ASC
+ORDER BY expires_at ASC, id ASC
 LIMIT 500;
 ```

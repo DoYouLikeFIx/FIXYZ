@@ -83,7 +83,7 @@ DB 레벨 목표:
 | password_hash | VARCHAR(255) | N | | Bcrypt/Argon2 해시 |
 | name | VARCHAR(100) | N | | 실명 |
 | role | VARCHAR(20) | N | CHECK | ROLE_USER\|ROLE_ADMIN |
-| status | VARCHAR(20) | N | CHECK | ACTIVE\|LOCKED |
+| status | VARCHAR(20) | N | CHECK | ACTIVE\|LOCKED\|WITHDRAWN\|DEACTIVATED\|ADMIN_SUSPENDED\|POLICY_LOCKED |
 | login_fail_count | INT UNSIGNED | N | DEFAULT 0 | 연속 실패 횟수 |
 | last_fail_at | DATETIME(6) | Y | | 마지막 실패 시각 |
 | locked_at | DATETIME(6) | Y | | 잠금 시각 |
@@ -215,7 +215,7 @@ DB 레벨 목표:
 | --- | --- | --- | --- | --- |
 | id | BIGINT UNSIGNED | N | PK(AUTO) | 내부 PK |
 | security_event_uuid | CHAR(36) | N | UK | 사건 참조 ID |
-| event_type | VARCHAR(50) | N | CHECK | ACCOUNT_LOCKED\|OTP_MAX_ATTEMPTS\|FORCED_LOGOUT\|ACCOUNT_UNLOCKED\|RATE_LIMIT_LOGIN\|RATE_LIMIT_OTP\|RATE_LIMIT_ORDER |
+| event_type | VARCHAR(50) | N | CHECK | ACCOUNT_LOCKED\|OTP_MAX_ATTEMPTS\|FORCED_LOGOUT\|ACCOUNT_UNLOCKED\|RATE_LIMIT_LOGIN\|RATE_LIMIT_OTP\|RATE_LIMIT_ORDER\|PASSWORD_FORGOT_ACCEPTED\|PASSWORD_RESET_SUCCESS\|PASSWORD_RESET_FAILED\|PASSWORD_CHALLENGE_FAILED |
 | status | VARCHAR(20) | N | CHECK | OPEN\|ACKNOWLEDGED\|RESOLVED |
 | severity | VARCHAR(10) | N | CHECK | LOW\|MEDIUM\|HIGH\|CRITICAL |
 | member_id | BIGINT UNSIGNED | Y | IDX | 대상 회원 |
@@ -230,7 +230,7 @@ DB 레벨 목표:
 | updated_at | DATETIME(6) | N | | 마지막 갱신 |
 
 - **인덱스**: `UK(security_event_uuid)`, `IDX(status, severity, occurred_at)`, `IDX(member_id, occurred_at)`, `IDX(event_type, occurred_at)`, `IDX(admin_member_id)`
-- 채널 서비스가 직접 기록하는 보안 이벤트는 `members` 인증 경계(`LOCKED`/`UNLOCKED`) 중심이다. 계좌 라이프사이클(`FROZEN`/`CLOSED`)은 corebank 시스템에서 관리한다.
+- 채널 서비스가 직접 기록하는 보안 이벤트는 `members` 인증 경계(`LOCKED`/`UNLOCKED`) + password recovery lifecycle을 포함한다. 계좌 라이프사이클(`FROZEN`/`CLOSED`)은 corebank 시스템에서 관리한다.
 
 ---
 
@@ -274,3 +274,13 @@ Scheduler policy:
 - `password_changed_at DATETIME(3) NOT NULL`
 - Backfill from `updated_at` (fallback `created_at`)
 - Index: `(member_uuid, password_changed_at)`
+
+## 3.10 Password Recovery Audit Payload Contract (Story 1.7 alignment)
+
+Password recovery lifecycle events(`forgot/challenge/reset`) MUST persist the following minimum payload shape:
+- `{eventType, memberUuid|null, usernameHash, outcome, reasonCode|null, traceId, ipHash, userAgentHash, hashKeyVersion, occurredAt}`
+
+Rules:
+- `usernameHash`, `ipHash`, `userAgentHash` are keyed HMAC-SHA-256 pseudonyms (no raw token/password persistence).
+- `hashKeyVersion` is mandatory for rotation/forensics compatibility.
+- For these event types, raw `ip_address` / raw `user_agent` persistence MUST NOT be used as canonical identity evidence; pseudonymized fields in event payload are canonical.
