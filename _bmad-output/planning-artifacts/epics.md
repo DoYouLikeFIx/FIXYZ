@@ -854,7 +854,7 @@ So that parity with web is maintained.
 
 As an **account admin system**,  
 I want explicit account status contract,  
-So that lock/unlock and order eligibility can be governed consistently.
+So that freeze/close lifecycle and order eligibility can be governed consistently.
 
 **Depends On:** Story 2.1
 
@@ -862,13 +862,13 @@ So that lock/unlock and order eligibility can be governed consistently.
 
 - **Given** account status model  
   **When** status endpoint is queried  
-  **Then** `ACTIVE/LOCKED` and related metadata are returned.
-- **Given** locked account  
+  **Then** `ACTIVE/FROZEN/CLOSED` and related metadata are returned.
+- **Given** `FROZEN` or `CLOSED` account  
   **When** order flow requests eligibility  
-  **Then** denial reason code is deterministic.
+  **Then** denial reason code (`ORD-012`) is deterministic.
 - **Given** status transition event  
   **When** status changes  
-  **Then** audit/security event is emitted.
+  **Then** account-domain status event is emitted.
 
 ---
 

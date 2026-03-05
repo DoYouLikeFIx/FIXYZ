@@ -32,7 +32,7 @@ WHERE public_id = ?;
 
 ### 1.2 계좌 단건 조회(업무 키: account_number)
 
-용도: 주문 입력값 검증(계좌 상태 확인)
+용도: 조회/상세 확인용(상태 확인 포함)
 
 ```sql
 SELECT id, public_id, member_id, exchange_code, status, closed_at,
@@ -45,7 +45,39 @@ WHERE account_number = ?;
 
 ---
 
-### 1.3 회원의 활성 계좌 목록 조회
+### 1.2a 주문 입력 검증(Eligibility 전용)
+
+용도: 주문 가능 계좌 선별(허용 상태는 `ACTIVE`만)
+
+```sql
+SELECT id, public_id, member_id, exchange_code, status, closed_at,
+       balance, daily_limit, currency_code, balance_update_mode, last_synced_ledger_ref
+FROM accounts
+WHERE account_number = ?
+  AND status = 'ACTIVE';
+```
+
+- 인덱스: `UK(account_number)` (단건 lookup이라 추가 인덱스 불필요)
+- 결과가 없으면 `1.2b`로 차단 사유(`FROZEN`/`CLOSED`)를 판정한다.
+
+---
+
+### 1.2b 주문 차단 사유 판정(FROZEN/CLOSED)
+
+용도: Eligibility 실패 시 차단 원인 코드(`ORD-012`) 확정
+
+```sql
+SELECT id, public_id, status, closed_at
+FROM accounts
+WHERE account_number = ?
+  AND status IN ('FROZEN','CLOSED');
+```
+
+- 인덱스: `UK(account_number)`
+
+---
+
+### 1.3 회원의 계좌 목록 조회(화면/조회용)
 
 용도: “내 계좌 목록” 화면
 
@@ -59,6 +91,7 @@ ORDER BY updated_at DESC;
 ```
 
 - 인덱스: `IDX(member_id, status)`
+- 주의: 이 쿼리는 **조회용**이다. 주문 가능 판정은 반드시 `1.2a`를 사용한다.
 
 ---
 
@@ -71,10 +104,11 @@ SELECT id, balance, status, daily_limit, currency_code,
        balance_update_mode, last_synced_ledger_ref
 FROM accounts
 WHERE id = ?
+  AND status = 'ACTIVE'
 FOR UPDATE;
 ```
 
-- 인덱스: PK(id)
+- 인덱스: PK(id) (`status='ACTIVE'`는 단건 PK lookup 이후 필터)
 - 주의: 트랜잭션 시작 직후 잡고 커밋까지 짧게 유지
 
 ---

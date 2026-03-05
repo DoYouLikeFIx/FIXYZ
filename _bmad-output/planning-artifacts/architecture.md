@@ -113,7 +113,7 @@ Six capability domains, all implemented in `channel-service` unless noted:
 | ------------------------ | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Trace propagation        | All 4 backend services               | `traceparent` + `X-Correlation-Id` headers; MDC injection via `OncePerRequestFilter`                                                                                                                                                                                                                                                                                                        |
 | PII masking              | Channel layer (logs + API responses) | `AccountNumber.masked()` in `channel-common`; unit-tested — full number must never appear in output                                                                                                                                                                                                                                                                                         |
-| Error code taxonomy      | All services                         | API 응답: `CHANNEL-xxx` / `ORD-xxx` / `CORE-xxx` / `FEP-xxx` / `SYS-xxx` → `GlobalExceptionHandler` → standard response envelope; `AUTH-xxx`는 Spring Security 내부 코드 (RULE-031, P-F5). **FEP RC 코드**: `RC=9001 NO_ROUTE` / `RC=9002 POOL_EXHAUSTED` / `RC=9003 NOT_LOGGED_ON` / `RC=9004 TIMEOUT` / `RC=9005 KEY_EXPIRED` / `RC=9097 ORDER_REJECTED` / `RC=9098 CIRCUIT_OPEN` / `RC=9099 CONCURRENCY_FAILURE`                                                                                                                                                                                                                                                                                                |
+| Error code taxonomy      | All services                         | API 응답: `AUTH-xxx` / `CHANNEL-xxx` / `ORD-xxx` / `CORE-xxx` / `FEP-xxx` / `SYS-xxx`를 외부 계약 코드로 사용하고 `GlobalExceptionHandler` 표준 봉투로 반환한다 (RULE-031, P-F5). OTP는 `CHANNEL-002/003`, `429`는 `RATE-001`만 사용. **FEP RC 코드**: `RC=9001 NO_ROUTE` / `RC=9002 POOL_EXHAUSTED` / `RC=9003 NOT_LOGGED_ON` / `RC=9004 TIMEOUT` / `RC=9005 KEY_EXPIRED` / `RC=9097 ORDER_REJECTED` / `RC=9098 CIRCUIT_OPEN` / `RC=9099 CONCURRENCY_FAILURE`                                                                                                                                                                                                                                                                                                |
 | Docker network isolation | Compose layer                        | `external-net` (Channel only, port 8080 exposed), `core-net` (Channel↔CoreBanking), `gateway-net` (CoreBanking↔FEP Gateway:8083), `fep-net` (FEP Gateway↔FEP Simulator:8082); no ports on CoreBanking, FEP Gateway, or FEP Simulator exposed to host                                                                                                                                                                                                                                                                                                                                             |
 | Internal API secret      | Service-to-service                   | `X-Internal-Secret` header validated by `OncePerRequestFilter` (copy-paste MVP); `INTERNAL_API_SECRET` env var                                                                                                                                                                                                                                                                              |
 | Saga ownership           | Channel ↔ CoreBanking                | **Channel-service is the saga orchestrator** — owns `OrderExecutionService`, calls CoreBanking execute, and on FEP failure drives `ESCALATED` replay/requery workflow; CoreBanking executes Order Book + position mutation atomically                                                                                                                                                                |
@@ -738,11 +738,14 @@ Date format: ISO-8601 (`2026-02-23T14:32:11Z`). camelCase (not snake_case). Null
 | `BusinessException` (base)                 | 400  | from exception field |
 | `AuthenticationException`                  | 401  | `AUTH-003`           |
 | `AccessDeniedException`                    | 403  | `AUTH-006`           |
+| `OwnershipMismatchException`               | 403  | `CHANNEL-006`        |
 | `ResourceNotFoundException`                | 404  | from exception field |
 | `OptimisticLockingFailureException`        | 409  | `CORE-003`           |
 | `DataIntegrityViolationException` (UNIQUE) | 409  | `ORD-007`            |
 | `MethodArgumentNotValidException`          | 422  | `VALIDATION-001`     |
 | `Exception` (catch-all)                    | 500  | `SYS-001`            |
+
+`AccessDeniedException`은 관리자 권한 부족(`ROLE_ADMIN`)에 한정한다. `clOrdID/account` 소유권 불일치는 반드시 `OwnershipMismatchException`으로 분리하여 `CHANNEL-006`으로 매핑한다.
 
 > ⚠️ P-D1: catch-all 코드를 `SYSTEM-001` → `SYS-001`로 통일 (RULE-031 에러코드 표 기준).
 
@@ -1262,17 +1265,29 @@ public final class BusinessConstants {
 
 #### 비즈니스 에러 코드 표준 목록
 
-> ⚠️ **이중 체계 주의**: `AUTH-xxx`는 Spring Security `AuthenticationException` 슬로에서만 사용하는 내부 코드. 
-> API 응답 body의 모든 비즈니스 에러는 아래 `CHANNEL-xxx` / `CORE-xxx` / `FEP-xxx` / `SYS-xxx` 코드를 사용한다.
+`AUTH-*`는 내부 전용이 아니라 외부 API 응답에서 사용하는 계약 코드다. 아래 표를 단일 소스로 사용한다.
 
 | 코드        | HTTP | 설명                      | 발생 위치        |
 | ----------- | ---- | ------------------------- | ---------------- |
-| CHANNEL-001 | 401  | 세션 없음/만료            | channel-service  |
+| AUTH-001    | 401  | 자격증명 불일치 | channel-service  |
+| AUTH-002    | 401  | 계정 잠금 | channel-service  |
+| AUTH-003    | 401  | 미인증(세션 쿠키 없음/무효) | channel-service  |
+| AUTH-004    | 401  | 탈퇴 계정 | channel-service  |
+| AUTH-005    | 404  | 대상 회원 없음(관리자 API) | channel-service  |
+| AUTH-006    | 403  | 권한 부족(`ROLE_ADMIN` 필요) | channel-service  |
+| AUTH-007    | 422  | 비밀번호 정책 위반 | channel-service  |
+| AUTH-008    | 409  | username 중복 | channel-service  |
+| CHANNEL-001 | 410  | 세션 쿠키는 있으나 Redis TTL 만료 | channel-service  |
 | CHANNEL-002 | 422  | OTP 불일치                | channel-service  |
-| CHANNEL-003 | 429  | OTP 시도 초과 (3회 초과 시) | channel-service  |
+| CHANNEL-003 | 403  | OTP 시도 초과(터미널 실패) | channel-service  |
 | CHANNEL-004 | 409  | 이미 진행 중인 주문 세션  | channel-service  |
 | CHANNEL-005 | 400  | 주문 수량 유효성 오류     | channel-service  |
-| RATE-001    | 429  | OTP 시도 디바운스 (1s burst guard 활성, 시도 횟수 미차감) | channel-service  |
+| CHANNEL-006 | 403  | 소유권 불일치(`clOrdID`/`accountId`) | channel-service  |
+| RATE-001    | 429  | 레이트 리밋/OTP 디바운스 (`Retry-After` 포함) | channel-service  |
+| ORD-001     | 422  | 매수 자금 부족 | corebank-service |
+| ORD-002     | 422  | 일일 매도 한도 초과 | corebank-service |
+| ORD-003     | 422  | 매도 주식 부족 | corebank-service |
+| ORD-012     | 422  | 계좌 상태 차단(`FROZEN`/`CLOSED`) | corebank-service |
 | CORE-001    | 404  | 종목 없음                 | corebank-service |
 | CORE-002    | 422  | 보유수량 부족                 | corebank-service |
 | CORE-003    | 409  | 포지션 잠금 획득 실패       | corebank-service |

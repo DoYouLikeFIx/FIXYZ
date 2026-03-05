@@ -524,14 +524,24 @@ Long todaySold = query
 | ---------- | ----------------------------------- |
 | `AUTH-001` | Invalid credentials                 |
 | `AUTH-002` | Account locked (max login attempts) |
-| `AUTH-003` | Session expired (Spring Session TTL)       |
-| `AUTH-004` | TOTP code invalid (±1 window mismatch)     |
-| `AUTH-005` | Maximum OTP attempts exceeded (session locked after 3 failures) |
+| `AUTH-003` | Unauthenticated (missing/invalid session cookie) |
+| `AUTH-004` | Withdrawn account                   |
+| `AUTH-005` | Target member not found (admin operations) |
 | `AUTH-006` | Insufficient privilege                     |
-| `AUTH-007` | Access denied (clOrdID ownership mismatch) |
+| `AUTH-007` | Password policy violation            |
+| `AUTH-008` | Username already exists              |
 | `AUTH-009` | TOTP not enrolled — enrollment required    |
 | `AUTH-010` | TOTP confirm code invalid (enrollment verification failure) |
 | `AUTH-011` | TOTP code already used (replay prevention) |
+
+**CHANNEL — Channel Service:**
+
+| Code          | Meaning |
+| ------------- | ------- |
+| `CHANNEL-001` | Session cookie exists but Redis TTL expired (`410`) |
+| `CHANNEL-002` | OTP mismatch |
+| `CHANNEL-003` | OTP max attempts exceeded (terminal failure, `403`) |
+| `CHANNEL-006` | Ownership mismatch (`clOrdID` / `accountId`) |
 
 **ORD — Order Flow (Channel):**
 
@@ -540,6 +550,7 @@ Long todaySold = query
 | `ORD-001` | Insufficient cash (BUY)                          |
 | `ORD-002` | Daily sell limit exceeded                        |
 | `ORD-003` | Insufficient position qty (SELL)                 |
+| `ORD-012` | Account status blocked (`FROZEN`/`CLOSED`)       |
 | `ORD-004` | Invalid symbol or price                          |
 | `ORD-005` | Order session not found (expired/404) or not authorized for execution (not in AUTHED state) |
 | `ORD-006` | Order session already in terminal state (FAILED or COMPLETED)  |
@@ -588,7 +599,7 @@ Long todaySold = query
 | ---------- | ------------------------------------------------------- | ---------------------------------------- |
 | TC-ORD-01  | Buy order E2E happy path → `FILLED`                   | 200, position updated                    |
 | TC-ORD-02  | OTP wrong 1× — session stays `PENDING_NEW`            | 4xx, session intact                      |
-| TC-ORD-03  | OTP wrong 3× — session → `FAILED`                    | 401 AUTH-005, session locked             |
+| TC-ORD-03  | OTP wrong 3× — session → `FAILED`                    | 403 CHANNEL-003, session terminal failure |
 | TC-ORD-04  | Execute on `PENDING_NEW` (skip OTP)                     | 409 ORD-005 Session not authed           |
 | TC-ORD-05  | Execute on `COMPLETED` (already done)                   | 409 ORD-006 Already confirmed            |
 | TC-ORD-06  | Session TTL expired (>600s) — status call              | 404 ORD-005 Session not found            |
@@ -955,12 +966,12 @@ services:
 | Endpoint                                        | Limit                  | Error Response                                       |
 | ----------------------------------------------- | ---------------------- | ---------------------------------------------------- |
 | `POST /api/v1/auth/login`                                   | 5 req/min per IP       | 429 + `Retry-After` header                           |
-| `POST /api/v1/orders/sessions/{sessionId}/otp/verify`      | 3 attempts per session | 429 (app-layer AUTH-004/005 fires first in practice) |
+| `POST /api/v1/orders/sessions/{sessionId}/otp/verify`      | 3 attempts per session | 422 `CHANNEL-002` / 403 `CHANNEL-003`; 429는 `RATE-001`만 사용 |
 | `POST /api/v1/orders/sessions`                              | 10 req/min per userId  | 429 + remaining quota in body                        |
 
 **Not rate-limited in MVP:** all `GET` endpoints, `/internal/v1/`, `/fep-internal/`.
 
-**OTP / rate limit interaction:** App-layer 3-attempt OTP lockout (`session → FAILED`) fires before Bucket4j bucket empties. TC-RATE-03 documents this intentional ordering.
+**OTP / rate limit interaction:** 앱 계층 OTP 실패(불일치/초과)는 `CHANNEL-002/003`로 반환한다. `429 + Retry-After`는 디바운스/레이트리밋(`RATE-001`)에서만 사용한다.
 
 ---
 
@@ -1385,7 +1396,7 @@ jobs:
   _Measurement: `curl localhost:8081/actuator/health` → `Connection refused`; `curl localhost:8083/actuator/health` → `Connection refused`; `curl localhost:8082/actuator/health` → `Connection refused`; Docker Compose `ports:` omitted for corebank, fep-gateway, and fep-simulator._
 
 - **NFR-S5:** TOTP step-up authentication must enforce a 3-attempt lockout per order session. Order session TTL must be ≤ 600 seconds. Both enforced server-side via Redis (`ch:otp-attempts:{sessionId}` counter + `ch:order-session:{sessionId}` TTL).
-  _Measurement: Submit 3 incorrect TOTP codes → session → `FAILED`, execute call returns 409 ORD-006. Submit 4th OTP attempt on the same (now FAILED) session → HTTP 409 ORD-006 (session is in terminal FAILED state; OTP verify endpoint returns ORD-006, not AUTH-005). Session TTL: create session, wait 601s, status query → 404 ORD-005._
+  _Measurement: Submit 3 incorrect TOTP codes → session → `FAILED`, 3rd OTP failure returns HTTP 403 `CHANNEL-003`. Submit 4th OTP attempt on the same (now FAILED) session → HTTP 409 ORD-006 (terminal state). OTP mismatch is HTTP 422 `CHANNEL-002`, and 429는 RATE-001에서만 발생. Session TTL: create session, wait 601s, status query → 404 ORD-005._
 
 - **NFR-S6:** GitHub Dependabot or OWASP Dependency-Check must be active. No dependency with CVSS score ≥ 7.0 may exist on the `main` branch.
   _Measurement: GitHub Security tab → Dependabot alerts → 0 critical/high alerts._

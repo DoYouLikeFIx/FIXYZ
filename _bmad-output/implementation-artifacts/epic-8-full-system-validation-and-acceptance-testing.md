@@ -50,7 +50,7 @@ So that the system's correctness claims are continuously verified.
 
 **Given** Scenario #4b (Different member + Duplicate clOrdID) — `IdempotencyIntegrationTest.CrossMemberSecurity`  
 **When** Different member attempts session creation using another's `clOrdID`  
-**Then** HTTP 403 `{ code: "AUTH-007" }` (Security Boundary)  
+**Then** HTTP 403 `{ code: "CHANNEL-006" }` (Security Boundary)  
 **And** Only 1 session record in DB
 
 **Given** Scenario #5 (FEP timeout → CB OPEN) — `FepCircuitBreakerIntegrationTest`  

@@ -67,6 +67,7 @@ DB 레벨 목표:
 - 계정 잠금(`MEMBERS.status → LOCKED`)과 `SECURITY_EVENTS(ACCOUNT_LOCKED)` 삽입은 원자적으로 커밋
 - OTP 소진(`OTP_VERIFICATIONS.status → EXHAUSTED`)과 `SECURITY_EVENTS(OTP_MAX_ATTEMPTS)` 삽입도 동일 트랜잭션
 - 레이트 리밋 이벤트는 인메모리(Redis) 카운터 기반이므로 **비동기(이벤트 큐)** 허용 — 단, 손실 가능성을 명시적으로 허용한 경우에만
+- `ACCOUNT_FROZEN`/`ACCOUNT_UNFROZEN`/`ACCOUNT_CLOSED`는 **corebank(account) 도메인 소유 이벤트**다. channel_db가 직접 생성/저장하지 않고, 필요 시 API/메시지 릴레이로만 소비한다.
 
 ---
 
@@ -229,3 +230,4 @@ DB 레벨 목표:
 | updated_at | DATETIME(6) | N | | 마지막 갱신 |
 
 - **인덱스**: `UK(security_event_uuid)`, `IDX(status, severity, occurred_at)`, `IDX(member_id, occurred_at)`, `IDX(event_type, occurred_at)`, `IDX(admin_member_id)`
+- 채널 서비스가 직접 기록하는 보안 이벤트는 `members` 인증 경계(`LOCKED`/`UNLOCKED`) 중심이다. 계좌 라이프사이클(`FROZEN`/`CLOSED`)은 corebank 시스템에서 관리한다.

@@ -622,15 +622,15 @@
 - BR-2.6-01
   - Given: account status model  
   - When: status endpoint is queried  
-  - Then: `ACTIVE/LOCKED` and related metadata are returned.
+  - Then: `ACTIVE/FROZEN/CLOSED` and related metadata are returned.
 - BR-2.6-02
-  - Given: locked account  
+  - Given: `FROZEN` or `CLOSED` account  
   - When: order flow requests eligibility  
-  - Then: denial reason code is deterministic.
+  - Then: denial reason code (`ORD-012`) is deterministic.
 - BR-2.6-03
   - Given: status transition event  
   - When: status changes  
-  - Then: audit/security event is emitted.
+  - Then: account-domain status event is emitted.
 
 ### Story 3.1: [BE][FEP] FEP DTO/Client Contract
 

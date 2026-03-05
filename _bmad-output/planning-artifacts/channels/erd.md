@@ -514,6 +514,7 @@ erDiagram
 - Integration policy
   - Channel layer calls Core API; account row locks and ledger writes happen inside `core_db`.
   - Cross-schema link is logical (service boundary), enforced by API/business checks, not DB FK.
+  - `FROZEN`/`CLOSED` 상태 전이는 corebank가 소유한다. channel은 해당 상태를 직접 쓰거나 `channel_db.security_events` enum으로 확장하지 않는다(릴레이 계약 확정 전까지).
 
 #### Field Specifications
 
