@@ -136,7 +136,7 @@ curl -X POST .../orders/sessions → sessionId
 curl -X POST .../otp/verify (Valid TOTP)
 curl -X POST .../execute → COMPLETED
 # 2. OTP Failure x3 → FAILED
-curl -X POST .../otp/verify (Wrong Code) ×3 → AUTH-005
+curl -X POST .../otp/verify (Wrong Code) ×3 → CHANNEL-003
 # 3. Admin Session Invalidation
 curl -X DELETE .../admin/members/{memberId}/sessions (admin@fix.com)
 ```

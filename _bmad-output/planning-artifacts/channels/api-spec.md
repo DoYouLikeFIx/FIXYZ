@@ -1,4 +1,4 @@
-# FIX — 채널계 API 명세 (v1.0)
+﻿# FIX — 채널계 API 명세 (v1.0)
 
 > **기준 서비스**: `channel-service:8080`  
 > **버전 정책**: `/api/v1/` 고정 (MVP), 파괴적 변경 시만 v2 발행  
@@ -378,12 +378,13 @@ POST /api/v1/orders/sessions
 **오류 코드**
 | 코드 | HTTP | 설명 |
 |---|---|---|
-| `AUTH-003` | 401 | 인증 세션 만료 또는 미인증 |
+| `AUTH-003` | 401 | 미인증 (세션 쿠키 없거나 유효하지 않음) |
 | `CHANNEL-001` | 410 | 쿠키는 존재하나 Redis TTL로 세션 만료 |
-| `ORD-001` | 403 | 계좌 소유권 불일치 |
+| `CHANNEL-006` | 403 | 계좌 소유권 불일치 |
 | `ORD-004` | 422 | 종목코드 형식 오류 |
 | `ORD-005` | 422 | 수량 초과 (보유수량 또는 매도 한도) |
 | `ORD-006` | 422 | 잔액 부족 |
+| `ORD-012` | 422 | 계좌 상태 차단 (`FROZEN`/`CLOSED`) |
 | `ORD-007` | 409 | `X-ClOrdID` 중복 (DB UNIQUE 위반 — 동일 clOrdId가 이미 존재) |
 | `VALIDATION-001` | 422 | 요청 필드 유효성 실패 (예: `MARKET` 주문 시 `price` 필드 포함, 또는 필수 필드 누락) |
 | `VALIDATION-003` | 422 | `STALE_QUOTE` — MARKET 사전검증용 quote snapshot이 staleness 임계치(`maxQuoteAgeMs`) 초과 또는 내부 전달 필드 누락 |
@@ -422,7 +423,7 @@ POST /api/v1/orders/sessions/{orderSessionId}/otp
 **Debounce**: `SET ch:otp-attempt-ts:{sessionId} 1 NX EX 1` — 1초 이내 재시도 차단
 
 > **OTP Debounce Idempotency 정책**: 동일 `orderSessionId` 내에서 **동일 TOTP 30초 윈도우** 내에 이미 **성공한** OTP와 동일 코드를 재전송하면 **idempotent 200** 응답을 리턴한다. `attempt` 카운터가 추가 소비되지 않는다.  
-> **실패한 OTP 코드는 idempotent 대상이 아니다**: 동일 윈도우 내에서라도 이전에 `ORD-002`로 실패한 코드를 재전송하면 `attempt`이 추가 소비되며 `ORD-002`를 다시 리턴한다.  
+> **실패한 OTP 코드는 idempotent 대상이 아니다**: 동일 윈도우 내에서라도 이전에 `CHANNEL-002`로 실패한 코드를 재전송하면 `attempt`이 추가 소비되며 `CHANNEL-002`를 다시 리턴한다.  
 > 다음 TOTP 윈도우(T+31s 이후)의 요청은 이전 윈도우에 저장된 idempotency 키와 구분되므로 정상 처리(attempt 소비).
 
 > **OTP 성공 Idempotency Redis 키 스키마**: 성공한 TOTP 코드를 `ch:otp-success:{sessionId}:{windowIndex}` 키로 저장한다 (`windowIndex` = `floor(unixTimestamp / 30)`, 즉 TOTP 30초 윈도우 인덱스). TTL은 60초(2 윈도우)로 설정한다. 동일 키가 존재하면 `attempt` 소비 없이 idempotent 200을 반환한다. 다음 윈도우(`windowIndex` 변경) 요청은 키 불일치로 정상 처리(attempt 소비)된다. replay attack 방지를 위해 성공 마크는 세션 상태가 `AUTHED`로 전환된 이후에만 설정된다.  
@@ -434,9 +435,9 @@ POST /api/v1/orders/sessions/{orderSessionId}/otp
 >    AUTHED 이상이 아닌 경우에만 아래 단계 진행
 > 3. **TOTP 등록 여부 확인** — `totpEnrolled = false` → `ORD-011 403`
 > 4. **디바운스** — `SET ch:otp-attempt-ts:{sessionId} 1 NX EX 1` 실패 → `RATE-001 429`
-> 5. **시도 횟수 확인** — attempt ≥ 3 → `ORD-003 403` (세션 FAILED 전환)
+> 5. **시도 횟수 확인** — attempt ≥ 3 → `CHANNEL-003 403` (세션 FAILED 전환)
 > 6. **Idempotency 확인** — `ch:otp-success:{sessionId}:{windowIndex}` 존재 → `200 OK` (attempt 소비 없음)
-> 7. **TOTP 코드 검증** — 불일치 → `ORD-002 422` (attempt 증가), 일치 → `200 OK` + 성공 키 설정
+> 7. **TOTP 코드 검증** — 불일치 → `CHANNEL-002 422` (attempt 증가), 일치 → `200 OK` + 성공 키 설정
 
 **경로 파라미터**
 | 파라미터 | 설명 |
@@ -463,13 +464,13 @@ POST /api/v1/orders/sessions/{orderSessionId}/otp
 }
 ```
 
-> OTP 검증 성공 시 `remainingAttempts` 필드는 응답에서 제외된다. 실패(`ORD-002`) 시 오류 응답의 **`error.remainingAttempts`** 에 잔여 시도 횟수가 포함된다. 공통 봉투의 `data`는 `success: false` 시 항상 `null`이므로 `data.remainingAttempts`로 접근하지 않는다.
+> OTP 검증 성공 시 `remainingAttempts` 필드는 응답에서 제외된다. 실패(`CHANNEL-002`) 시 오류 응답의 **`error.remainingAttempts`** 에 잔여 시도 횟수가 포함된다. 공통 봉투의 `data`는 `success: false` 시 항상 `null`이므로 `data.remainingAttempts`로 접근하지 않는다.
 > ```json
 > {
 >   "success": false,
 >   "data": null,
 >   "error": {
->     "code": "ORD-002",
+>     "code": "CHANNEL-002",
 >     "message": "OTP 코드가 일치하지 않습니다.",
 >     "field": null,
 >     "remainingAttempts": 1
@@ -477,15 +478,15 @@ POST /api/v1/orders/sessions/{orderSessionId}/otp
 >   "traceId": "trace-007"
 > }
 > ```
-> 잔여 시도 횟수 값은 `2` → `1` 두 가지만 클라이언트에 노출된다. 세 번째 실패(attempt=3)는 `ORD-003 403`으로 처리되어 `remainingAttempts: 0`은 반환되지 않는다.
+> 잔여 시도 횟수 값은 `2` → `1` 두 가지만 클라이언트에 노출된다. 세 번째 실패(attempt=3)는 `CHANNEL-003 403`으로 처리되어 `remainingAttempts: 0`은 반환되지 않는다.
 
 **오류 코드**
 | 코드 | HTTP | 설명 |
 |---|---|---|
 | `AUTH-003` | 401 | 미인증 (세션 쿠키 없거나 유효하지 않음) |
 | `CHANNEL-001` | 410 | 쿠키는 존재하나 Redis TTL로 세션 만료 |
-| `ORD-002` | 422 | OTP 코드 불일치 |
-| `ORD-003` | 403 | OTP 시도 횟수 초과 (세션 FAILED 전환). SSE `ORDER_FAILED`(`failureReason: "OTP_EXCEEDED"`) 이벤트 발행 |
+| `CHANNEL-002` | 422 | OTP 코드 불일치 |
+| `CHANNEL-003` | 403 | OTP 시도 횟수 초과 (세션 FAILED 전환). SSE `ORDER_FAILED`(`failureReason: "OTP_EXCEEDED"`) 이벤트 발행 |
 | `ORD-008` | 404 | 세션 없음 또는 만료 |
 | `ORD-009` | 409 | 세션 상태 전이 불가 — **이미 AUTHED 이상** (전진 차단). 동일 sessionId로 OTP를 재제출 시 반환. |
 | `ORD-011` | 403 | TOTP 미등록 (`enrollUrl` 포함) |
@@ -589,13 +590,14 @@ POST /api/v1/orders/sessions/{orderSessionId}/execute
 **오류 코드**
 | 코드 | HTTP | 설명 | Retry-After(초) |
 |---|---|---|---|
-| `AUTH-003` | 401 | 인증 세션 만료 또는 미인증 | — |
+| `AUTH-003` | 401 | 미인증 (세션 쿠키 없거나 유효하지 않음) | — |
 | `ORD-008` | 404 | 세션 없음 또는 만료 — Step B 처리 중 TTL 만료 시나리오 포함 | — |
 | `ORD-009` | 409 | 세션 상태 전이 불가 — **AUTHED 아님** (전제 조건 미충족, PENDING_NEW 상태에서 execute 호출 시) | — |
 | `ORD-010` | 409 | 동시 실행 중 (Redis 락 충돌) | — |
 | `CORE-003` | 409 | CoreBanking 동시성 충돌 (position lock) | — |
+| `ORD-012` | 422 | 계좌 상태 차단 (`FROZEN`/`CLOSED`) | — |
 
-> **`CORE-003` → `failureReason: "POSITION_LOCK"` 연결 정책**: `CORE-003 409`는 **포지션 락 경합**에만 사용한다. 사전 잔액/포지션/한도 검증 실패는 `ORD-001/ORD-002/ORD-003` 또는 `CORE-002`로 반환한다. `CORE-003` 수신 시 채널계는 `failureReason: "POSITION_LOCK"`로 저장하고 짧은 지연 후 1회 재시도할 수 있다.
+> **`CORE-003` → `failureReason: "POSITION_LOCK"` 연결 정책**: `CORE-003 409`는 **포지션 락 경합**에만 사용한다. 사전 잔액/포지션/한도/계좌상태 검증 실패는 `ORD-001/ORD-002/ORD-003/ORD-012` 또는 `CORE-002`로 반환한다. `CORE-003` 수신 시 채널계는 `failureReason: "POSITION_LOCK"`로 저장하고 짧은 지연 후 1회 재시도할 수 있다.
 
 | `FEP-001` | 503 | FEP 서비스 불가 — 아래 4가지 RC가 모두 `FEP-001`로 통합 반환됨: **RC=9098 CIRCUIT_OPEN** (차단기 열림, `Retry-After: 10`), **RC=9002 POOL_EXHAUSTED** (SIGNED_ON FIX 세션 없음), **RC=9003 NOT_LOGGED_ON** (선택 세션 미로그인), **RC=9005 KEY_EXPIRED** (키 만료, 긴급 갱신 필요, 재시도 불가). `Retry-After: 10`은 CIRCUIT_OPEN 전용. 9002·9003·9005는 `retryAfterSeconds: null` | CIRCUIT_OPEN: 10 / 나머지: — |
 | `FEP-002` | 504 | FEP 타임아웃 — canonical fill 유지. 세션은 즉시 종결하지 않고 `EXECUTING` 유지 후 복구 워커에 의해 `REQUERYING`으로 진입, `COMPLETED`/`CANCELED` 또는 `ESCALATED`로 수렴 (`ESCALATED` 이후 운영자 Replay 결과로 `FAILED` 가능) | — |
@@ -1404,7 +1406,7 @@ GET /api/v1/notifications?page=0&size=20&since=
 **오류 코드**
 | 코드 | HTTP | 설명 |
 |---|---|---|
-| `AUTH-003` | 401 | 세션 만료 또는 미인증 |
+| `AUTH-003` | 401 | 미인증 (세션 쿠키 없거나 유효하지 않음) |
 | `CHANNEL-001` | 410 | 쿠키는 존재하나 Redis TTL로 세션 만료 |
 | `VALIDATION-001` | 422 | `since` 파라미터 형식 불량 (ISO-8601 UTC 아님) |
 | `RATE-001` | 429 | Rate Limit 초과 (10 req/min/session). `Retry-After` 헤더 포함 |
@@ -1477,6 +1479,8 @@ GET /api/v1/admin/audit-logs?page=0&size=20&from=2026-03-01T00:00:00Z&to=2026-03
 | `to` | ❌ | ISO-8601 종료 시각 |
 | `memberId` | ❌ | 특정 회원 필터 |
 | `eventType` | ❌ | 이벤트 타입 필터. 가능한 값: `LOGIN_SUCCESS` · `LOGIN_FAIL` · `LOGOUT` · `ADMIN_FORCE_LOGOUT` · `ORDER_SESSION_CREATE` · `ORDER_OTP_SUCCESS` · `ORDER_OTP_FAIL` · `ORDER_EXECUTE` · `ORDER_CANCEL` · `MANUAL_REPLAY` · `TOTP_ENROLL` · `TOTP_CONFIRM` |
+
+> `ACCOUNT_FROZEN`/`ACCOUNT_UNFROZEN`/`ACCOUNT_CLOSED`는 corebank 도메인 이벤트이므로 본 채널 감사로그 API의 `eventType` 허용값에 포함하지 않는다. 채널 반영은 별도 릴레이 계약 확정 후 추가한다.
 
 > **`ADMIN_FORCE_LOGOUT` 발생 조건**: 관리자가 `DELETE /api/v1/admin/members/{memberUuid}/sessions`(§4.3)를 호출하면 해당 회원의 모든 세션이 무효화되고 `ADMIN_FORCE_LOGOUT` 이벤트가 감사 로그에 기록된다. `ip`, `userAgent` 컬럼에는 호출한 **관리자**의 정보가 기록된다. `clOrdId`·`orderSessionId`는 `null`이다.
 
@@ -1815,15 +1819,15 @@ flowchart LR
 |---|---|---|
 | `AUTH-001` | 401 | 자격증명 불일치 |
 | `AUTH-002` | 401 | 계정 잠금 |
-| `AUTH-003` | 401 | 미인증 / 세션 만료 |
+| `AUTH-003` | 401 | 미인증 (세션 쿠키 없거나 유효하지 않음) |
 | `AUTH-004` | 401 | 탈퇴 계정 |
 | `AUTH-005` | 404 | 대상 `memberUuid` 회원 없음 (강제 로그아웃 대상 회원이 DB에 존재하지 않음 — §4.3) |
 | `AUTH-006` | 403 | 권한 부족 (`ROLE_ADMIN` 필요). **CSRF 토큰 누락 시는 `AUTH-006`이 아닙**니다 — CSRF 실패는 Spring Security `CsrfFilter`가 `ApiResponse` 봉투 없이 raw `403 Forbidden`을 반환한다 (§1 공통 헤더 노트 참조). |
 | `AUTH-007` | 422 | 비밀번호 정책 위반 |
 | `AUTH-008` | 409 | username 중복 |
-| `ORD-001` | 403 | 계좌 소유권 불일치 |
-| `ORD-002` | 422 | OTP 코드 불일치 |
-| `ORD-003` | 403 | OTP 시도 횟수 초과 |
+| `ORD-001` | 422 | 매수 자금 부족 |
+| `ORD-002` | 422 | 일일 매도 한도 초과 |
+| `ORD-003` | 422 | 매도 주식 부족 |
 | `ORD-004` | 422 | 종목코드 형식 오류 |
 | `ORD-005` | 422 | 수량 초과 |
 | `ORD-006` | 422 | 잔액 부족 |
@@ -1832,12 +1836,16 @@ flowchart LR
 | `ORD-009` | 409 | 세션 상태 전이 불가 (§2.2: "이미 AUTHED 이상" / §2.3: "AUTHED 아님" / §4.2: "ESCALATED 아님" — 동일 코드가 컨텍스트에 따라 상이. 클라이언트는 호출 엔드포인트 기준으로 분기 처리) |
 | `ORD-010` | 409 | 동시 실행 중 |
 | `ORD-011` | 403 | TOTP 미등록 사용자 (주문 OTP 검증 불가) |
+| `ORD-012` | 422 | 계좌 상태 차단 (`FROZEN`/`CLOSED`) |
 | `CORE-001` | 503 | CoreBanking 조회 실패 |
 | `CORE-003` | 409 | CoreBanking 동시성 충돌 |
 | `FEP-001` | 503 | FEP 서비스 불가 — RC=9098 CIRCUIT_OPEN (`retryAfterSeconds: 10`) / RC=9002 POOL_EXHAUSTED / RC=9003 NOT_LOGGED_ON (`retryAfterSeconds: null`) / RC=9005 KEY_EXPIRED(키 만료, 재시도 불가 — 긴급 키 갱신 필요. `retryAfterSeconds: null`) |
 | `FEP-002` | 504 | FEP 타임아웃 (복구 후 SSE 알림 수신) |
 | `FEP-003` | 400 | FEP 거래 거절 |
 | `CHANNEL-001` | 410 | 채널 세션 만료 (Redis TTL). 쿠키는 존재하나 세션이 Redis에서 비활동 TTL(30분)로 만료된 경우 **모든 인증 필요 엔드포인트**에서 반환. `AUTH-003(401)`과의 차이: `AUTH-003`은 세션 쿠키 자체가 없거나 유효하지 않음, `CHANNEL-001`은 쿠키는 있으나 Redis TTL 만료(세션 키 삭제됨). |
+| `CHANNEL-002` | 422 | OTP 코드 불일치 |
+| `CHANNEL-003` | 403 | OTP 시도 횟수 초과 (세션 FAILED 전환) |
+| `CHANNEL-006` | 403 | 계좌/주문 세션 소유권 불일치 |
 | `CHANNEL-009` | 400 | FEP 라우팅 설정 오류 (NO_ROUTE) |
 | `CHANNEL-010` | 409 | 취소 거절 (`OrderCancelReject`, FEP RC 9006) — 거래소 CxlRejReason 값과 무관하게 정규화. 사유: 취소 불가 시점 초과(TOO_LATE_TO_CANCEL), 알 수 없는 주문(UNKNOWN_ORDER), 이미 체결된 주문(ORDER_ALREADY_FILLED) 모두 포함 |
 | `RATE-001` | 429 | Rate Limit 초과 |
@@ -1847,7 +1855,7 @@ flowchart LR
 | `VALIDATION-004` | 422 | 수동재처리 dual-control/evidence/reason 규칙 위반 |
 | `SYS-001` | 500 | 내부 서버 오류 |
 
-> **CHANNEL 코드 범위 안내**: `CHANNEL-002`~`CHANNEL-008`은 예약 범위이다. 현재 사용하지 않으며 향후 오류 유형 확장 시 순차 할당 예정.
+> **CHANNEL 코드 범위 안내**: 현재 사용 코드는 `CHANNEL-001`, `CHANNEL-002`, `CHANNEL-003`, `CHANNEL-006`, `CHANNEL-009`, `CHANNEL-010`이다. 미사용 코드는 확장 시 재할당할 수 있다.
 
 ---
 
@@ -1865,3 +1873,4 @@ flowchart LR
 | Cookie | `HttpOnly=true`, `Secure=true`, `SameSite=Strict` (local) / `SameSite=None; Secure` (deploy) |
 | CORS (배포) | `SameSite=None` 적용 환경에서는 `allowedOrigins`를 명시적으로 허용 오리진 목록으로 제한해야 한다. 와일드카드(`*`) 금지. 예: `https://fix.yourdomain.com`. CORS 설정 오류 시 `SameSite=None` + `allowCredentials=true` 조합으로 CSRF 방어가 무력화될 수 있다. |
 | Trace | `traceparent` + `X-Correlation-Id` 헤더 → MDC 주입 → 모든 응답 `traceId` 포함 |
+

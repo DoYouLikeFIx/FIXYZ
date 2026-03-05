@@ -20,7 +20,7 @@ so that order decisions can be made safely.
 ## Tasks / Subtasks
 
 - [ ] Implement owned-account balance inquiry endpoint (AC: 1)
-  - [ ] Return current and available balance fields in stable contract
+  - [ ] Return canonical `balance` field and optional alias `availableBalance` (`== balance`) in stable contract
   - [ ] Preserve currency/as-of semantics consistently
 - [ ] Enforce ownership authorization on account reads (AC: 2)
   - [ ] Deny non-owned account access deterministically
@@ -45,8 +45,10 @@ so that order decisions can be made safely.
 ### Technical Requirements
 
 - Contract:
-  - Response must include both `balance` and `availableBalance` semantics.
-  - Field meanings must remain stable across clients.
+  - `balance` is the canonical field and means available cash (already net of pending reservations).
+  - If `availableBalance` is exposed externally, it must be an alias (`availableBalance == balance`) with no recomputation.
+  - `pendingAmount` is reservation context only; do not derive `availableBalance = balance - pendingAmount`.
+  - Amount serialization must use DECIMAL(19,4) scale consistently across API/examples/tests.
 - Security:
   - Ownership verification is mandatory before balance disclosure.
 - Consistency:
@@ -70,7 +72,7 @@ so that order decisions can be made safely.
 ### Testing Requirements
 
 - Required checks:
-  - Owned account returns current and available balance.
+  - Owned account returns canonical `balance` and optional alias `availableBalance` (`== balance`).
   - Non-owned account access returns forbidden response.
   - Concurrent write/read scenario keeps deterministic balance contract.
   - Downstream failure maps to normalized retriable/non-retriable code.

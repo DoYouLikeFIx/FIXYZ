@@ -14,6 +14,12 @@ AI Agent가 즉각적으로 코드를 스캐폴딩(Scaffolding)하고 기능을 
 | `X-Internal-Secret` | **Yes** | 내부 API 호출 권한 증명. `InternalSecretFilter`를 통해 검증되며 미포함 시 `403 Access Denied`. |
 | `X-Correlation-Id` | **Yes** | 3-Tier 전체(채널-계정-FEP) 로그 추적을 위한 UUID. 로그의 MDC(Mapped Diagnostic Context)에 주입 필수. |
 
+### 금액 직렬화/연산 규칙 (고정)
+- 모든 금액 필드(`balance`, `pendingAmount`, `price`, `executedPrice`, `dailyLimit` 등)는 **DECIMAL(19,4)** 스케일을 사용한다.
+- 서버 연산은 `BigDecimal` scale=4, rounding=`HALF_UP`으로 고정한다.
+- `balance`, `pendingAmount`는 음수로 내려가지 않는다(`>= 0`).
+- API 예시/테스트 스냅샷/직렬화 출력은 소수 4자리로 통일한다.
+
 ---
 
 ## 📱 Part 1. 채널계 호출 API (Inbound from Channel)
@@ -43,7 +49,7 @@ AI Agent가 즉각적으로 코드를 스캐폴딩(Scaffolding)하고 기능을 
     {
       "accountId": "1",
       "accountNumber": "110-1234-567890",
-      "balance": 10000000,
+      "balance": 10000000.0000,
       "currency": "KRW",
       "createdAt": "2026-03-03T10:00:00Z"
     }
@@ -58,8 +64,12 @@ AI Agent가 즉각적으로 코드를 스캐폴딩(Scaffolding)하고 기능을 
 * **Purpose:** 매수(BUY) 주문 시 계좌의 현금이 충분한지 검증.
 * **Response (200 OK):**
   ```json
-  { "accountId": "1", "balance": 10000000, "pendingAmount": 0, "currency": "KRW" }
+  { "accountId": "1", "balance": 10000000.0000, "pendingAmount": 0.0000, "currency": "KRW" }
   ```
+* **Contract Rule (중요):**
+  * `balance`는 **canonical 필드**이며 이미 주문 가능 금액(available cash) 의미다.
+  * 외부(채널) API에서 `availableBalance`를 노출해야 하면 `availableBalance == balance` alias로만 제공한다.
+  * `availableBalance = balance - pendingAmount` 재계산 규칙은 사용하지 않는다.
 
 #### [API-CH-04] 매도 가용 포지션(주식) 조회 (단건)
 * **Endpoint:** `GET /internal/v1/accounts/{accountId}/positions?symbol={symbol}`
@@ -70,12 +80,12 @@ AI Agent가 즉각적으로 코드를 스캐폴딩(Scaffolding)하고 기능을 
     "symbol": "005930",
     "quantity": 50,
     "availableQty": 50,
-    "avgPrice": 75000,
-    "marketPrice": 70200,
+    "avgPrice": 75000.0000,
+    "marketPrice": 70200.0000,
     "quoteAsOf": "2026-03-04T09:10:00Z",
     "quoteSourceMode": "DELAYED",
-    "unrealizedPnl": -240000,
-    "realizedPnlDaily": 120000
+    "unrealizedPnl": -240000.0000,
+    "realizedPnlDaily": 120000.0000
   }
   ```
 
@@ -106,7 +116,7 @@ OTP 검증 통과 후, 로컬 canonical 체결을 먼저 확정하고 외부 동
     "orderType": "MARKET", // OR "LIMIT"
     "qty": 50,
     "price": null, // LIMIT일 때 필수
-    "preTradePrice": 70200, // MARKET 사전검증 기준 가격
+    "preTradePrice": 70200.0000, // MARKET 사전검증 기준 가격
     "quoteSnapshotId": "qsnap-20260301-001122", // MARKET 시 필수
     "quoteAsOf": "2026-03-04T09:10:00Z", // MARKET 시 필수
     "quoteSourceMode": "DELAYED" // LIVE | DELAYED | REPLAY (MARKET 시 필수)
@@ -127,12 +137,12 @@ OTP 검증 통과 후, 로컬 canonical 체결을 먼저 확정하고 외부 동
     "status": "COMPLETED", // or FAILED
     "orderId": "ORD-12345ABCD",
     "executedQty": 50,
-    "executedPrice": 75000,
+    "executedPrice": 75000.0000,
     "positionQty": 100
   }
   ```
 * **Error Specs:**
-  * `422 (ORD-001)` 매수 자금 부족 / `422 (ORD-002)` 일일 매도 한도 초과 / `422 (ORD-003)` 매도 주식 부족
+  * `422 (ORD-001)` 매수 자금 부족 / `422 (ORD-002)` 일일 매도 한도 초과 / `422 (ORD-003)` 매도 주식 부족 / `422 (ORD-012)` 계좌 상태 차단(`FROZEN`/`CLOSED`)
   * `422 (VALIDATION-003)` `STALE_QUOTE` (MARKET 사전검증용 snapshot age 초과 또는 내부 전달 필드 누락)
   * `503 (FEP-001)` FEP 서비스 불가(CB OPEN, 세션 풀/로그온 문제) / `504 (FEP-002)` FEP 타임아웃 / `400 (FEP-003)` FEP 거래소 거절
   * `409 (CORE-003)` 포지션 락 경합(동시성 충돌)

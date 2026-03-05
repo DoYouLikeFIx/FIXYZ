@@ -69,7 +69,7 @@ So that I can proceed through the OTP verification step before the order is exec
 
 **Given** request with same value as `clOrdID` owned by **another member**  
 **When** UNIQUE INDEX conflict + ownership verification fails (memberId mismatch)  
-**Then** HTTP 403 `{ code: "AUTH-007", message: "Access denied." }`
+**Then** HTTP 403 `{ code: "CHANNEL-006", message: "Access denied." }`
 
 **Given** `GET /api/v1/orders/sessions/{sessionId}/status` (valid JSESSIONID cookie)  
 **When** ownership confirmed via `SessionOwnershipValidator`  
@@ -150,8 +150,8 @@ for (long w = windowIndex - 1; w <= windowIndex + 1; w++) {
 **Given** Incorrect TOTP code entry (±1 window mismatch)  
 **When** TOTP mismatch  
 **Then** `ch:otp-attempts:{sessionId}` DECR executed atomically  
-**And** HTTP 401 `{ code: "AUTH-004", remainingAttempts: N }` (N > 0)  
-**And** remainingAttempts == 0 → session status `FAILED`, HTTP 401 `{ code: "AUTH-005", message: "Maximum authentication attempts exceeded. Please restart the order." }` (FR-16)
+**And** HTTP 422 `{ code: "CHANNEL-002", remainingAttempts: N }` (N > 0)  
+**And** remainingAttempts == 0 → session status `FAILED`, HTTP 403 `{ code: "CHANNEL-003", message: "Maximum authentication attempts exceeded. Please restart the order." }` (FR-16)
 
 **Given** Verify request when session status is not `PENDING_NEW`  
 **When** FSM state validation failure  
@@ -256,11 +256,11 @@ So that the order flow feels fast and consistent with Korean HTS (Home Trading S
 **When** response received  
 **Then** FSM dispatch `{ type: 'OTP_VERIFIED' }` → step transitions to `'CONFIRM'` (implemented in Epic 4 Story 4.4)
 
-**Given** TOTP code mismatch or replay prevention (HTTP 401)  
+**Given** TOTP code mismatch (`422 CHANNEL-002`) or replay prevention (`401 AUTH-011`)  
 **When** error received  
 **Then** red border on each input box + `data-testid="otp-error-msg"`: "Code is incorrect. Remaining attempts: {remainingAttempts}"
 
-**Given** attempts exceeded (HTTP 401 AUTH-005)  
+**Given** attempts exceeded (HTTP 403 CHANNEL-003)  
 **When** error received  
 **Then** "Authentication attempts exceeded. Please restart the order." + [Start over] button
 

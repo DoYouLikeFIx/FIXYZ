@@ -165,8 +165,9 @@ So that I know how much money I have before initiating an order.
 
 **Given** `GET /api/v1/portfolio/{accountId}/balance` call (own account)  
 **When** request processed  
-**Then** HTTP 200: `{ accountId, balance, pendingAmount, currency, balanceAsOf }`  
-**And** `balance` is available balance after deducting PENDING orders, `pendingAmount` is the amount reserved for pending orders
+**Then** HTTP 200: `{ accountId, balance, pendingAmount, currency, balanceAsOf }` (DECIMAL(19,4) scale)  
+**And** `balance` is canonical available balance, `pendingAmount` is reservation context for pending orders  
+**And** if external contract exposes `availableBalance`, it is alias-only (`availableBalance == balance`)
 
 **Given** query by account ID owned by another member  
 **When** ownership verification fails  

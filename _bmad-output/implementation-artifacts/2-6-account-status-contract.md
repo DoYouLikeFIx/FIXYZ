@@ -8,21 +8,21 @@ Status: ready-for-dev
 
 As an account admin system,
 I want explicit account status contract,
-so that lock/unlock and order eligibility can be governed consistently.
+so that freeze/close lifecycle and order eligibility can be governed consistently.
 
 ## Acceptance Criteria
 
-1. Given account status model, when status endpoint is queried, then `ACTIVE/LOCKED` and related metadata are returned.
-2. Given locked account, when order flow requests eligibility, then denial reason code is deterministic.
-3. Given status transition event, when status changes, then audit/security event is emitted.
+1. Given account status model, when status endpoint is queried, then `ACTIVE/FROZEN/CLOSED` and related metadata are returned.
+2. Given `FROZEN` or `CLOSED` account, when order flow requests eligibility, then denial reason code (`ORD-012`) is deterministic.
+3. Given status transition event, when status changes, then account-domain status event is emitted.
 
 ## Tasks / Subtasks
 
 - [ ] Implement account status query contract (AC: 1)
   - [ ] Expose status response with metadata fields required by callers
-  - [ ] Keep enum/value semantics stable (`ACTIVE`, `LOCKED`)
+  - [ ] Keep enum/value semantics stable (`ACTIVE`, `FROZEN`, `CLOSED`)
 - [ ] Implement order-eligibility evaluation contract (AC: 2)
-  - [ ] Return deterministic denial reason code for locked/non-eligible states
+  - [ ] Return deterministic denial reason code (`ORD-012`) for non-eligible states
   - [ ] Ensure caller-visible behavior is consistent across repeated checks
 - [ ] Emit audit/security event on status transitions (AC: 3)
   - [ ] Record transition actor/context/reason in structured event payload
@@ -65,8 +65,8 @@ so that lock/unlock and order eligibility can be governed consistently.
 ### Testing Requirements
 
 - Required checks:
-  - Status endpoint returns `ACTIVE/LOCKED` and metadata correctly.
-  - Locked-account eligibility check returns deterministic denial code.
+  - Status endpoint returns `ACTIVE/FROZEN/CLOSED` and metadata correctly.
+  - `FROZEN/CLOSED` eligibility check returns deterministic denial code (`ORD-012`).
   - Status transitions emit expected audit/security event payload.
 
 ### Quinn Reinforcement Checks
