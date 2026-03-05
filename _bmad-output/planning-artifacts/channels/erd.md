@@ -579,3 +579,5 @@ For password recovery lifecycle events (`forgot/challenge/reset`), canonical eve
 - `{eventType, memberUuid|null, usernameHash, outcome, reasonCode|null, traceId, ipHash, userAgentHash, hashKeyVersion, occurredAt}`
 
 And must use pseudonymized hashes (`usernameHash/ipHash/userAgentHash`) with explicit `hashKeyVersion` for rotation compatibility.
+- Audit hash key rotation policy: active + previous key dual-read window is 30 days.
+- Retired keys are read-restricted (for forensic verification only) and not used for new writes.

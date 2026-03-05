@@ -405,3 +405,4 @@ Reset effect rule:
 
 - `EXPIRED` is defined by `expires_at < now` regardless of `active_slot`.
 - Cleanup/validation path normalizes expired rows to terminal state by setting `active_slot = NULL`.
+- Terminal token rows are retained for 30 days and purged by bounded cleanup policy.
