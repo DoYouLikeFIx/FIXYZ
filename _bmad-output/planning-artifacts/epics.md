@@ -343,7 +343,7 @@ So that mobile features follow the same contract and architecture.
   **Then** mobile persists no raw credentials/password/OTP in app storage and uses OS-approved secure storage controls for any sensitive client-side secret material.
 - **Given** cookie-session + CSRF contract for state-changing API calls  
   **When** mobile sends non-GET request  
-  **Then** client includes credentials and `X-XSRF-TOKEN` header derived from `XSRF-TOKEN` cookie after explicit CSRF bootstrap/refresh (`GET /api/v1/auth/csrf`) on app start/login/resume.
+  **Then** client includes credentials and `X-CSRF-TOKEN` header using the token acquired from explicit CSRF bootstrap/refresh (`GET /api/v1/auth/csrf`) on app start/login/resume.
 - **Given** foundation CI runs bundle-only checks  
   **When** PR is prepared for merge  
   **Then** AC1 is satisfied only after manual simulator/device smoke evidence (boot log/screenshot + health-call capture) is attached in PR checklist.
@@ -790,7 +790,7 @@ So that I can inspect recent order activity.
 
 - **Given** owned account with order records  
   **When** order history API is called  
-  **Then** results are paginated, include symbol/qty/status/clOrdID, and ordered by created time desc.
+  **Then** results are paginated, include symbol/qty/status/clOrdId, and ordered by created time desc.
 - **Given** order history table columns  
   **When** rendered  
   **Then** columns are: 종목명(symbolName), 구분(side: BUY/SELL), 수량(qty), 체결단가(unitPrice), 체결금액(totalAmount), 상태(status), ClOrdID.
@@ -886,7 +886,7 @@ So that channel-to-FEP integration is deterministic.
 
 - **Given** outbound order payload  
   **When** mapped to FEP DTO  
-  **Then** required fields (clOrdID, symbol, qty, side) are validated before send.
+  **Then** required fields (clOrdId, symbol, qty, side) are validated before send.
 - **Given** response payload from FEP  
   **When** parsed  
   **Then** internal contract is mapped with explicit status values.
@@ -1267,7 +1267,7 @@ So that local position state stays consistent with FEP execution lifecycle.
 
 - **Given** FEP-routed order execution request  
   **When** pre-execution position reservation occurs  
-  **Then** order state records FEP reference and clOrdID metadata.
+  **Then** order state records FEP reference and clOrdId metadata.
 - **Given** simulator mode execution  
   **When** local Order Book match commits  
   **Then** local `executions` is treated as canonical position truth and FEP report is used for confirmation/recovery only.
@@ -1279,7 +1279,7 @@ So that local position state stays consistent with FEP execution lifecycle.
   **Then** position state remains reconcilable for later recovery.
 - **Given** FEP order FILLED  
   **When** finalized  
-  **Then** final order status (FILLED) and clOrdID references are consistent.
+  **Then** final order status (FILLED) and clOrdId references are consistent.
 
 ### Story 5.4: [BE][AC] Idempotent Posting
 
@@ -1458,7 +1458,7 @@ So that ambiguous orders can converge to terminal states.
 
 - **Given** order in UNKNOWN/EXECUTING timeout state  
   **When** scheduler runs  
-  **Then** clOrdID status requery is executed with backoff policy.
+  **Then** clOrdId status requery is executed with backoff policy.
 - **Given** requery returns accepted/completed  
   **When** reconciliation runs  
   **Then** order state converges to terminal success (FILLED).
@@ -1854,7 +1854,7 @@ So that all sell orders are consistently routed to KRX via FEP Gateway.
 
 - **Given** AUTHED order session  
   **When** execute command issued  
-  **Then** `OrderExecutionService` initiates FEP-routed execution and records clOrdID.
+  **Then** `OrderExecutionService` initiates FEP-routed execution and records clOrdId.
 - **Given** FEP execution completed  
   **When** FILLED/REJECTED received from FEP simulator  
   **Then** order session state reflects terminal outcome deterministically.
