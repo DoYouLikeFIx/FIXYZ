@@ -1,0 +1,55 @@
+services:
+  channel-service:
+    ports: !reset []
+    networks: !override
+      - dmz-app-net
+      - core-private-net
+
+  corebank-service:
+    networks: !override
+      - core-private-net
+
+  fep-gateway:
+    networks: !override
+      - core-private-net
+
+  fep-simulator:
+    networks: !override
+      - core-private-net
+
+  mysql:
+    networks: !override
+      - core-private-net
+
+  redis:
+    networks: !override
+      - core-private-net
+
+  redis-recovery-probe:
+    networks: !override
+      - core-private-net
+
+  vault:
+    networks: !override
+      - core-private-net
+
+  vault-init:
+    networks: !override
+      - core-private-net
+
+  edge-gateway:
+    environment:
+      EDGE_NGINX_TEMPLATE: /etc/nginx/templates/fixyz-edge-dmz.conf.template
+      EDGE_TRUSTED_PROXY_CIDR_1: ${EDGE_TRUSTED_PROXY_CIDR_1:-127.0.0.1/32}
+      EDGE_TRUSTED_PROXY_CIDR_2: "${EDGE_TRUSTED_PROXY_CIDR_2:-::1/128}"
+    networks: !override
+      - dmz-edge-net
+      - dmz-app-net
+
+networks:
+  dmz-edge-net:
+    driver: bridge
+  dmz-app-net:
+    driver: bridge
+  core-private-net:
+    driver: bridge

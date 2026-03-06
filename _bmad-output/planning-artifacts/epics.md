@@ -1,8 +1,8 @@
 ---
-stepsCompleted: [1, 2, "3-epic0", "3-epic1", "3-epic2", "3-epic3", "3-epic4", "3-epic5", "3-epic6", "3-epic7", "3-epic8", "3-epic9", "3-epic10", "3-epic11"]
-step3Progress: "Bottom-up detailed epics complete (Epic 0~11, BE/FE/MOB ownership)"
+stepsCompleted: [1, 2, "3-epic0", "3-epic1", "3-epic2", "3-epic3", "3-epic4", "3-epic5", "3-epic6", "3-epic7", "3-epic8", "3-epic9", "3-epic10", "3-epic11", "3-epic12"]
+step3Progress: "Bottom-up detailed epics complete (Epic 0~12, BE/FE/MOB ownership)"
 version: "v2-detailed-bottom-up"
-updated: "2026-03-04"
+updated: "2026-03-06"
 inputDocuments:
   - "_bmad-output/planning-artifacts/prd.md"
   - "_bmad-output/planning-artifacts/architecture.md"
@@ -11,6 +11,9 @@ inputDocuments:
   - "_bmad-output/planning-artifacts/accounts/db_schema.md"
   - "_bmad-output/planning-artifacts/channels/api-spec.md"
   - "_bmad-output/planning-artifacts/fep-gateway/api-spec.md"
+  - "docs/ops/adr/adr-0001-edge-gateway-nginx.md"
+  - "docker-compose.yml"
+  - "docker/nginx/templates/fixyz-edge.conf.template"
   - "_bmad-output/implementation-artifacts/epic-0-project-foundation.md"
   - "_bmad-output/implementation-artifacts/epic-1-user-authentication-and-account-access.md"
   - "_bmad-output/implementation-artifacts/epic-2-order-session-and-otp.md"
@@ -32,7 +35,7 @@ Core Objectives:
 
 1. Anchor the common Foundation in `Epic 0`.
 2. Mature the Channel, Account, and External systems independently before integration.
-3. Maintain Epic numbering starting from 0, extending the final structure to `Epic 0~11`.
+3. Maintain Epic numbering starting from 0, extending the final structure to `Epic 0~12`.
 4. Explicitly define the `FEP Owner` role in the ownership model.
 5. Break down Stories into BE/FE/MOB units to enable actual team distribution.
 
@@ -46,6 +49,7 @@ Core Objectives:
 - `AC`: Account Owner
 - `FEP`: External/FEP Owner
 - `INT`: Integration Owner
+- `SEC`: Security/Operations Owner
 - `FE`: Web Frontend Owner
 - `MOB`: Mobile Owner
 
@@ -72,6 +76,7 @@ Core Objectives:
 | 9 | Integration Orchestration & End-to-End Recovery | Integration | INT | Channel Engineer |
 | 10 | Full Validation & Release Readiness | Integration | INT | Channel Engineer |
 | 11 | Market Data Ingestion & Virtual Execution Determinism | External + Account | FEP | FEP Owner (acting Account Engineer) |
+| 12 | Financial DMZ Boundary and Perimeter Hardening | Edge + Ops + Security | SEC | Security Engineer (with Channel support) |
 
 ## Current Implementation Priority (Core-First)
 
@@ -94,6 +99,7 @@ To avoid over-scoping and to produce a demonstrable working core early, implemen
 - Story 7.8 (new): operations monitoring dashboard MVP
 - Story 10.x: release gates and readiness evidence packaging
 - Story 11.x: market data determinism and quote freshness hardening
+- Story 12.x: DMZ boundary hardening and controlled-exposure operations (planning default Medium; move to Low only with explicit risk-acceptance record)
 
 ---
 
@@ -253,6 +259,23 @@ Defines simulator-grade market data contracts (LIVE/DELAYED/REPLAY), quote fresh
 - Story 11.3: BE Replay Timeline Controller
 - Story 11.4: BE MARKET Order Sweep Matching Validation
 - Story 11.5: FE/MOB Quote Freshness & Source Visibility UX
+
+### Epic 12: Financial DMZ Boundary and Perimeter Hardening
+
+Defines finance-grade DMZ boundary controls to enforce strict ingress/egress segmentation, protected internal exposure, and auditable perimeter operations.
+
+**Execution Boundary:** Story 0.7 remains the baseline owner for TLS termination, basic security headers, and route forwarding. Epic 12 extends that baseline with DMZ segmentation profiles, abuse controls, trust-boundary hardening, and drill gates.
+
+**Deployment Transition Policy:** Preserve current baseline contract (`default compose`: channel-service host exposure) and add DMZ contract (`dmz profile`: edge-only host exposure). Promotion to DMZ contract is explicit and reversible.
+
+**Priority Policy (planning metadata):** Default Medium. Move to Low only with an explicit risk-acceptance record in `docs/ops/risk-acceptance/<YYYYMMDD>-epic12.md`.
+
+**Story Hints:**
+- Story 12.1: BE/OPS DMZ Network Segmentation Profile
+- Story 12.2: BE/OPS Edge Perimeter Policy Hardening
+- Story 12.3: BE/OPS Service Boundary Trust Hardening (Internal Secret Rotation + mTLS Readiness)
+- Story 12.4: OPS Admin Access Control Path for DMZ Operations
+- Story 12.5: BE/OPS DMZ Security Drill and Evidence Gate
 
 ---
 
@@ -2300,3 +2323,135 @@ So that I understand valuation confidence before execution.
 - **Given** replay mode demo  
   **When** screen capture reviewed  
   **Then** source-mode visibility is clear in both web and mobile clients.
+
+## Epic 12: Financial DMZ Boundary and Perimeter Hardening
+
+> **Scope note:** Story 0.7 already owns baseline edge functions (TLS termination, base headers, upstream forwarding, and internal/admin path blocking). Epic 12 adds hardening layers and DMZ operating controls only.
+> **Transition note:** Default profile and PRD baseline remain valid during migration. DMZ profile is introduced as an explicit rollout mode.
+
+### Story 12.1: [BE/OPS][CH] DMZ Network Segmentation Profile
+
+As a **platform security owner**,  
+I want explicit DMZ network segmentation profiles,  
+So that public ingress, internal service traffic, and operations paths are isolated by design.
+
+**Depends On:** Story 0.7, Story 0.9
+
+**Acceptance Criteria:**
+
+- **Given** default runtime profile  
+  **When** host exposure is inspected  
+  **Then** baseline contract is preserved (`channel-service:8080` exposed; corebank/fep-gateway/fep-simulator non-exposed) to remain compatible with existing PRD scope.
+- **Given** DMZ deployment profile `docker-compose.dmz.yml`  
+  **When** service-to-network membership is inspected  
+  **Then** logical zone mapping is enforced (`edge zone`, `application zone`, `core private zone`) and no service is attached to all zones simultaneously.
+- **Given** architecture network-isolation baseline  
+  **When** DMZ profile documentation is reviewed  
+  **Then** logical zone mapping explicitly traces to architecture isolation lanes (`external-net`, `core-net`, `gateway-net`, `fep-net`) to avoid naming drift.
+- **Given** network mapping evidence document  
+  **When** review is executed  
+  **Then** `docs/ops/dmz-network-mapping.md` maps default `fix-net` and DMZ profile zones with explicit migration steps.
+- **Given** DMZ profile host exposure inventory  
+  **When** compose config is rendered  
+  **Then** only `edge-gateway` publishes `80/443` and `channel-service`, `corebank-service`, `fep-gateway`, `fep-simulator` publish no host ports.
+- **Given** boundary verification drill from host network  
+  **When** probes are executed for `localhost:8080/8081/8082/8083` under DMZ profile  
+  **Then** all direct probes fail and only edge-routed channel APIs remain reachable.
+
+### Story 12.2: [BE/OPS][CH] Edge Perimeter Policy Hardening
+
+As a **security engineer**,  
+I want hardened edge perimeter policies,  
+So that only approved routes and methods are reachable from external clients.
+
+**Depends On:** Story 0.7, Story 7.7, Story 12.1
+
+**Acceptance Criteria:**
+
+- **Given** explicit route-method matrix in `docs/ops/dmz-route-policy.md`  
+  **When** a request targets disallowed path or method  
+  **Then** edge returns deterministic deny mapping (`404` for unknown path or disallowed method, `403` for internal namespace).
+- **Given** abuse-control thresholds  
+  **When** traffic exceeds limits (`unknown routes: 60 req/min/IP, burst 20`; `sensitive routes: 20 req/min/IP, burst 5`)  
+  **Then** edge returns `429` with retry metadata and request-id for audit trace.
+- **Given** repeated abuse from same source  
+  **When** an IP triggers at least 5 rate-limit violations within 5 minutes  
+  **Then** temporary deny rule is applied for 10 minutes via `docs/ops/dmz-abuse-response.md` procedure and a security event is recorded.
+- **Given** client identity extraction for abuse controls  
+  **When** request source is evaluated  
+  **Then** limiter key uses trusted proxy chain policy (`X-Forwarded-For` only from trusted ingress, otherwise `remote_addr`).
+- **Given** trusted ingress allowlist source  
+  **When** runtime configuration is inspected  
+  **Then** trusted CIDR sources come only from `EDGE_TRUSTED_PROXY_CIDR_*` environment variables managed in DMZ profile configuration and documented in `docs/ops/dmz-trusted-proxies.md`.
+
+### Story 12.3: [BE/OPS][SEC] Service Boundary Trust Hardening (Internal Secret Rotation + mTLS Readiness)
+
+As a **service trust owner**,  
+I want hardened service-boundary trust controls with rotation safety,  
+So that east-west traffic is resilient to spoofing and stale credential risk.
+
+**Depends On:** Story 0.8, Story 8.3, Story 12.1
+
+**Acceptance Criteria:**
+
+- **Given** internal secret rotation runbook  
+  **When** rotation starts  
+  **Then** dual-secret overlap window of 15 minutes allows safe cutover without rejecting valid in-flight service calls.
+- **Given** rotation cutover completion  
+  **When** overlap window expires  
+  **Then** previous secret is fully invalidated within 10 minutes and stale-secret requests are rejected.
+- **Given** rotation availability SLO  
+  **When** rotation drill is executed for a 15-minute window with at least 500 service-to-service requests  
+  **Then** 5xx rate stays at or below 0.5% and no continuous outage exceeds 30 seconds.
+- **Given** phase-2 trust roadmap  
+  **When** architecture artifacts are reviewed  
+  **Then** mTLS readiness ADR and one service-pair PoC profile exist as non-blocking MVP outputs.
+
+### Story 12.4: [OPS][SEC] Admin Access Control Path for DMZ Operations
+
+As a **security operations lead**,  
+I want controlled DMZ administration access paths,  
+So that privileged operations are restricted, temporary, and fully auditable.
+
+**Depends On:** Story 0.8, Story 7.5, Story 8.1
+
+**Acceptance Criteria:**
+
+- **Given** privileged DMZ maintenance requests  
+  **When** access is granted  
+  **Then** access uses Vault short-lived credentials with TTL at or below 30 minutes and least-privilege policy scope.
+- **Given** credential TTL expiry  
+  **When** TTL elapses  
+  **Then** privileged access is auto-revoked without Keycloak dependency within 60 seconds and subsequent privileged calls are denied.
+- **Given** privileged action execution  
+  **When** audit/security events are queried  
+  **Then** actor, action, target, timestamp, correlation-id, reason, and ticket-id are all mandatory fields.
+
+### Story 12.5: [BE/OPS][INT] DMZ Security Drill and Evidence Gate
+
+As a **release governance owner**,  
+I want repeatable DMZ security drills as a delivery gate,  
+So that perimeter controls are proven before deployment promotion.
+
+**Depends On:** Story 10.1, Story 10.4, Story 12.1, Story 12.2, Story 12.3, Story 12.4
+
+**Acceptance Criteria:**
+
+- **Given** DMZ drill scenarios (`blocked direct internal access`, `route-method deny`, `abuse rate-limit`, `stale-secret rejection`, `admin credential TTL expiry`)  
+  **When** scheduled validation runs  
+  **Then** any failed scenario blocks promotion with explicit failure reason and owner assignment.
+- **Given** Story 12.3 or Story 12.4 is still `backlog`  
+  **When** weekly scheduled DMZ drill runs  
+  **Then** `stale-secret rejection` and `admin credential TTL expiry` may be recorded as `pending`, and promotion enforcement must rerun with trust-scenario enforcement enabled.
+- **Given** drill evidence packaging  
+  **When** artifacts are generated  
+  **Then** artifacts are stored under `docs/ops/evidence/dmz/<YYYYMMDD>/` with naming `dmz-<scenario>-<YYYYMMDDTHHMMSSZ>.json` plus `summary-index.json`.
+- **Given** first DMZ promotion gate  
+  **When** release readiness is reviewed  
+  **Then** at least one full successful DMZ drill result within the last 7 days and unresolved findings are linked from the release checklist.
+- **Given** steady-state DMZ operation after first promotion  
+  **When** periodic governance review runs  
+  **Then** rolling last four weekly drill results are retained and linked.
+- **Given** DMZ drill automation ownership  
+  **When** operations controls are reviewed  
+  **Then** `.github/workflows/dmz-security-drill.yml` exists with weekly schedule and explicit `SEC` owner metadata.

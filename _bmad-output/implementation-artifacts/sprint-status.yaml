@@ -1,4 +1,4 @@
-# generated: 2026-03-02 04:35
+# generated: 2026-03-06 15:00
 # project: fix
 # project_key: FIX
 # tracking_system: file-system
@@ -28,7 +28,7 @@
 # - SM typically creates next story ONLY after previous one is done to incorporate learnings
 # - Dev moves story to review, then code-review sets done/in-progress
 
-generated: 2026-03-02 04:35
+generated: 2026-03-06 15:00
 project: fix
 project_key: FIX
 tracking_system: file-system
@@ -154,3 +154,11 @@ development_status:
   11-4-market-order-sweep-matching-validation: ready-for-dev
   11-5-web-mob-quote-freshness-and-source-visibility-ux: ready-for-dev
   epic-11-retrospective: optional
+
+  epic-12: in-progress
+  12-1-dmz-network-segmentation-profile: review
+  12-2-edge-perimeter-policy-hardening: review
+  12-3-service-boundary-trust-hardening-secret-rotation-mtls-readiness: backlog
+  12-4-admin-access-control-path-for-dmz-operations: backlog
+  12-5-dmz-security-drill-and-evidence-gate: in-progress
+  epic-12-retrospective: optional
