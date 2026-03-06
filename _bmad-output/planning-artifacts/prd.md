@@ -188,7 +188,7 @@ All seven must pass in CI before the MVP is considered complete:
 
 **Persona:** 지수 (Jisu), 28, retail investor using a KB증권-style web HTS (Home Trading System). Wants to buy 100 shares of a listed stock.
 
-**Opening Scene:** 지수 opens the FIX web app on her laptop. She logs in with her credentials — the session establishes instantly (JSESSIONID stored in Redis, HttpOnly cookie set). The Portfolio View screen loads her holdings: 현금 ₩5,000,000, 보유 종목 없음.
+**Opening Scene:** 지수 opens the FIX web app on her laptop. She logs in with her credentials — the session establishes instantly (SESSION stored in Redis, HttpOnly cookie set). The Portfolio View screen loads her holdings: 현금 ₩5,000,000, 보유 종목 없음.
 
 **Rising Action:** She clicks "주문 입력" and selects 매수(Buy), enters 종목코드 005930(삼성전자), 수량 100주, 가격 ₩75,000(지정가). The Prepare step validates available cash against CoreBanking — ₩7,500,000 required, ₩5,000,000 available → insufficient. She adjusts to 60주 (₩4,500,000). Prepare succeeds — `orderSessionId` returned and stored in Redis with 10-minute TTL. UI advances to Step B.
 
@@ -224,8 +224,8 @@ All seven must pass in CI before the MVP is considered complete:
 
 ```bash
 curl -X POST https://fix-channel/api/v1/admin/sessions/force-invalidate \
-  -b "JSESSIONID={admin-session-id}" \
-  -H "X-XSRF-TOKEN: {csrf-token}" \
+  -b "SESSION={admin-session-id}" \
+  -H "X-CSRF-TOKEN: {csrf-token}" \
   -d '{"userId": "jisu-001", "reason": "suspicious_concurrent_login"}'
 ```
 
@@ -295,7 +295,7 @@ Real KYC/AML, KRX/KSD integration, and 금융투자협회 reporting are explicit
 | Standard                         | Application in FIX                                                                     |
 | -------------------------------- | -------------------------------------------------------------------------------------- |
 | OWASP Authentication Cheat Sheet | Step-up re-authentication (OTP) required for order execution                           |
-| OWASP CSRF                       | Signed Double-Submit Cookie (`XSRF-TOKEN` cookie → `X-XSRF-TOKEN` header)               |
+| OWASP CSRF                       | Synchronizer Token (`GET /api/v1/auth/csrf` 응답 토큰 → `X-CSRF-TOKEN` header)               |
 | OWASP Logging Cheat Sheet        | No tokens/passwords/PII in logs; account/member numbers masked to last 4 digits        |
 | Spring Security Cookie           | HttpOnly + Secure + SameSite=Strict cookie attributes                                  |
 
@@ -541,7 +541,7 @@ Long todaySold = query
 | `CHANNEL-001` | Session cookie exists but Redis TTL expired (`410`) |
 | `CHANNEL-002` | OTP mismatch |
 | `CHANNEL-003` | OTP max attempts exceeded (terminal failure, `403`) |
-| `CHANNEL-006` | Ownership mismatch (`clOrdID` / `accountId`) |
+| `CHANNEL-006` | Ownership mismatch (`clOrdId` / `accountId`) |
 
 **ORD — Order Flow (Channel):**
 
@@ -617,7 +617,7 @@ INDEX idx_order_exec_account_date (account_id, side, created_at);
 
 -- orders (core_db)
 -- Defense-in-depth idempotency guarantee at DB level (beyond app-layer check)
-UNIQUE INDEX idx_clordid (clOrdID);
+UNIQUE INDEX idx_clordid (clOrdId);
 
 -- order_sessions (channel_db)
 -- UNIQUE INDEX idx_order_session_id (session_id);  -- enforces session_id uniqueness at DB level
@@ -871,7 +871,7 @@ GET    /internal/v1/orders/{orderId}/executions      → execution history
 
 ```
 POST   /fep/v1/orders                               → FIX 4.2 NewOrderSingle(35=D) forwarding
-GET    /fep/v1/orders/{clOrdID}/status              → order processing result (ACCEPTED|REJECTED|UNKNOWN) — used by Recovery Service (Story 4.3)
+GET    /fep/v1/orders/{clOrdId}/status              → order processing result (ACCEPTED|REJECTED|UNKNOWN) — used by Recovery Service (Story 4.3)
 GET    /fep-internal/health
 ```
 
@@ -892,7 +892,7 @@ PUT    /fep-internal/rules                           → chaos config update; bo
 
 | Layer                    | Mechanism                                    | Detail                                                                                    |
 | ------------------------ | -------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Channel ↔ User           | Spring Security session cookie               | JSESSIONID, HttpOnly + Secure + SameSite=Strict, stored in Redis                          |
+| Channel ↔ User           | Spring Security session cookie               | SESSION, HttpOnly + Secure + SameSite=Strict, stored in Redis                          |
 | Channel ↔ CoreBanking    | `X-Internal-Secret` header + Docker network  | `INTERNAL_API_SECRET` env var; `OncePerRequestFilter` validates on every internal request |
 | CoreBanking ↔ FEP Gateway | `X-Internal-Secret` header + Docker network  | Same secret; FEP Gateway verifies on inbound requests                                     |
 | FEP Gateway ↔ FEP Sim    | FIX 4.2 TCP session (QuickFIX/J)             | SocketInitiator(Gateway) ↔ SocketAcceptor(Simulator); `HeartBeat=30`                     |
@@ -923,7 +923,7 @@ services:
     networks: [core-net]               # shared by channel-service session + order cache
 ```
 
-**CSRF:** Double Submit Cookie pattern — `CookieCsrfTokenRepository.withHttpOnlyFalse()`; React axios interceptor reads `XSRF-TOKEN` cookie and injects `X-XSRF-TOKEN` header on all non-GET requests.
+**CSRF:** Synchronizer Token pattern — `HttpSessionCsrfTokenRepository`; React axios interceptor는 `GET /api/v1/auth/csrf` 응답 토큰을 보관하고 모든 non-GET 요청에 `X-CSRF-TOKEN` 헤더를 주입한다.
 
 ---
 
@@ -938,7 +938,7 @@ services:
 | `security_events`   | MySQL   | id, user_id, event_type, detail, ip, created_at              |
 | `notifications`     | MySQL   | id, user_id, message, type, read, created_at                 |
 | `order_sessions`    | MySQL   | id, session_id (UUID UNIQUE), user_id (FK→users.id), account_id (cross-DB ref→core_db.accounts.id; no InnoDB FK — same-schema FK not possible across `channel_db`/`core_db`), symbol, side (BUY/SELL), qty, price, cl_ord_id, status (ENUM: PENDING_NEW/AUTHED/EXECUTING/REQUERYING/ESCALATED/COMPLETED/FAILED/CANCELED/EXPIRED), execution_snapshot (JSON nullable — orderId/executedQty/executedPrice/positionQty after completion), created_at, updated_at |
-| `sessions`          | Redis   | Spring Session — JSESSIONID, TTL 30 min                      |
+| `sessions`          | Redis   | Spring Session — SESSION, TTL 30 min                      |
 | `totp_keys`         | Redis   | key: `ch:totp-used:{memberId}:{windowIndex}:{code}`, TTL 60s (replay prevention) |
 | `otp_attempts`      | Redis   | key: `ch:otp-attempts:{sessionId}`, TTL 600s (attempt counter, init=3) |
 | `order_session_cache` | Redis   | key: `ch:order-session:{sessionId}`, TTL 600s — fast-read cache; authoritative state in MySQL `order_sessions` |
@@ -952,7 +952,7 @@ services:
 | ----------------------------- | ------- | -------------------------------------------------------------------------------------------------------- |
 | `accounts`                    | MySQL   | id, user_id, account_number, balance, daily_limit (default: env DAILY_SELL_LIMIT_DEFAULT=500), status(ACTIVE/FROZEN/CLOSED), balance_update_mode(EAGER/DEFERRED) |
 | `positions`                   | MySQL   | id, account_id, symbol, quantity, avg_cost, updated_at                                                   |
-| `orders`                      | MySQL   | id, clOrdID(**UNIQUE**), account_id, symbol, side, qty, price, status(NEW/PENDING_NEW/EXECUTING/PARTIALLY_FILLED/FILLED/CANCELED/REJECTED), external_sync_status(CONFIRMED/FAILED/ESCALATED, pre-sync NULL), created_at, updated_at |
+| `orders`                      | MySQL   | id, clOrdId(**UNIQUE**), account_id, symbol, side, qty, price, status(NEW/PENDING_NEW/EXECUTING/PARTIALLY_FILLED/FILLED/CANCELED/REJECTED), external_sync_status(CONFIRMED/FAILED/ESCALATED, pre-sync NULL), created_at, updated_at |
 | `executions`                  | MySQL   | id, order_id (FK → orders.id), account_id, symbol, side, **executed_qty**, **executed_price**, created_at |
 | `position_pnl_snapshots`      | MySQL   | id, account_id, symbol, mark_price, unrealized_pnl, realized_pnl_daily, as_of, source_mode(LIVE/DELAYED/REPLAY) |
 | `order_record_diagnostics`    | MySQL   | order_record_id, detail (TEXT) — long error messages/stack traces separated to optimize row size       |
@@ -1082,7 +1082,7 @@ Fast tests (`@WebMvcTest`) and slow tests (`@SpringBootTest` + Testcontainers) r
 
 | Test Case  | Scenario                  | Expected                        |
 | ---------- | ------------------------- | ------------------------------- |
-| TC-AUTH-01 | 정상 로그인               | 200, JSESSIONID HttpOnly cookie |
+| TC-AUTH-01 | 정상 로그인               | 200, SESSION HttpOnly cookie |
 | TC-AUTH-02 | 잘못된 비밀번호 5회       | AUTH-002 account locked         |
 | TC-AUTH-03 | 잠긴 계정 로그인          | AUTH-002                        |
 | TC-AUTH-04 | 로그아웃 후 `/auth/me`    | 401                             |
@@ -1104,7 +1104,7 @@ Fast tests (`@WebMvcTest`) and slow tests (`@SpringBootTest` + Testcontainers) r
 src/api/
   apiClient.ts         → axios instance, baseURL from VITE_API_BASE_URL,
                           withCredentials:true, response envelope unwrapping,
-                          XSRF-TOKEN → X-XSRF-TOKEN interceptor,
+                          `/api/v1/auth/csrf` bootstrap token → `X-CSRF-TOKEN` interceptor,
                           AUTH-003 auto-redirect to /login
   authApi.ts           → login, logout, me
   accountApi.ts        → getAccounts, getAccount
@@ -1141,7 +1141,7 @@ The MVP is complete when every architectural claim in FIX is backed by a passing
 | Auth           | Login, logout, session (Redis), OTP step-up, force-logout                    |
 | Orders         | sessions → otp/verify → execute state machine (PENDING_NEW → AUTHED → EXECUTING → COMPLETED)|
 | Position       | Position update record per order execution                                   |
-| Idempotency    | `clOrdID` UNIQUE index + app-layer check                             |
+| Idempotency    | `clOrdId` UNIQUE index + app-layer check                             |
 | Resilience     | Resilience4j circuit breaker (FEP path); distributed retry via OrderSessionRecoveryService |
 | Rate Limiting  | Bucket4j — 3 endpoints (login, OTP, sessions)                                |
 | Observability  | Spring Actuator, Micrometer, `traceparent` propagation                       |
@@ -1163,7 +1163,7 @@ All seven must pass in CI before MVP is complete:
 | 1   | Order execution E2E happy path                                  | Channel → CoreBanking | State machine, trace propagation   |
 | 2   | Concurrent sell (10 threads) — exactly 5 FILLED (Order status), final positions.quantity = 0 | CoreBanking         | `SELECT FOR UPDATE` InnoDB locking |
 | 3   | OTP failure blocks order execution                              | Channel               | Step-up re-auth enforcement        |
-| 4   | Duplicate `clOrdID` returns idempotent result           | CoreBanking           | No double-fill on retry            |
+| 4   | Duplicate `clOrdId` returns idempotent result           | CoreBanking           | No double-fill on retry            |
 | 5   | FEP timeout → circuit breaker OPEN after 3 failures             | CoreBanking + Channel | Resilience4j sliding window        |
 | 6   | Session invalidated after logout — subsequent API call rejected | Channel + Redis       | Redis session security             |
 | 7   | After N orders — no negative position quantity                  | CoreBanking           | Atomic position update, no oversell|
@@ -1235,7 +1235,7 @@ All seven must pass in CI before MVP is complete:
 | ----------------------------------------------- | ---- | ------------------------------------------- |
 | QueryDSL Gradle APT 설정 1주 초과               | 낮음 | JPQL `@Query` fallback — 타임라인 영향 0일  |
 | Testcontainers 로컬 Docker 환경 미비            | 낮음 | Week 1에 Docker 환경 먼저 검증              |
-| React `EventSource` + JSESSIONID CORS 조합 이슈 | 중간 | Week 5 초 POC; 실패 시 5초 polling fallback |
+| React `EventSource` + SESSION CORS 조합 이슈 | 중간 | Week 5 초 POC; 실패 시 5초 polling fallback |
 | Resilience4j sliding window 설정 오류           | 낮음 | 공식 문서 설정 그대로; test로 검증          |
 
 **QueryDSL spike fallback (확률 < 20%):**

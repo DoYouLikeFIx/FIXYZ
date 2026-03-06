@@ -154,7 +154,7 @@ Target platform: React Web (SPA), desktop browser, local Docker Compose environm
 | FEP Gateway CB (기관별 임계치)  | Order Flow C (FEP 장애) | RC=9098 fallback 메시지 즉시 표시 + `/actuator/circuitbreakers`에서 OPEN 상태 확인 가능 | `[data-testid="cb-fallback-msg"]`             |
 | FIX 4.2 프로토콜 변환          | Order Flow C (완료)     | trace ID + FEP Gateway `fep_order_log` 연결 — FinTech interviewer가 "FIX 4.2 뉴오더싱글 필드 변환이 보이네"를 인지 | `[data-testid="order-trace-id"]` 존재      |
 | SSE real-time notification      | Notification Feed          | 주문 체결 후 알림 자동 표시         | `[data-testid="notification-item"]` count > 0 |
-| Idempotency (ClOrdID)           | Order Flow C            | 동일 ClOrdID 재시도 시 동일 결과   | response `clOrdID` 동일                    |
+| Idempotency (ClOrdID)           | Order Flow C            | 동일 ClOrdID 재시도 시 동일 결과   | response `clOrdId` 동일                    |
 
 ### Accessibility Minimum Standards
 
@@ -1303,7 +1303,7 @@ for (const screen of screens) {
 
 | #   | Journey            | 엔트리                         | 성공 정의                         | 연결 NFR               |
 | --- | ------------------ | ------------------------------ | --------------------------------- | ---------------------- |
-| J1  | Authentication     | `/login`                       | 세션 발급 (JSESSIONID) + PortfolioList 렌더링 | NFR-02, NFR-03         |
+| J1  | Authentication     | `/login`                       | 세션 발급 (SESSION) + PortfolioList 렌더링 | NFR-02, NFR-03         |
 | J2  | Portfolio Discovery  | PortfolioList                  | PortfolioDetail 포지션·주문 내역 확인 | NFR-01, NFR-06         |
 | J3  | **Order A→B→C**  | "매도하기" 버튼                | traceparent 포함 체결 화면        | NFR-04, NFR-05, NFR-06 |
 | J4  | Error Recovery     | Order 실패 / CB / 세션 만료 | 사용자가 정상 경로 복귀           | NFR-05, NFR-08         |
@@ -1316,7 +1316,7 @@ flowchart TD
     B --> C["아이디/비밀번호 입력\n(login-username, login-password)"]
     C --> D["로그인 버튼 클릭\n(login-submit)"]
     D --> E{API 응답}
-    E -->|200 OK + Set-Cookie| F["JSESSIONID HttpOnly Cookie 자동설정\nmember 정보 useAuthStore 저장"]
+    E -->|200 OK + Set-Cookie| F["SESSION HttpOnly Cookie 자동설정\nmember 정보 useAuthStore 저장"]
     F --> G["/portfolio 리다이렉트"]
     G --> H([PortfolioList 화면])
     E -->|401 Unauthorized| I["ErrorMessage (role=alert, break-keep)\n'아이디 또는 비밀번호가 올바르지 않습니다'"]
@@ -1340,7 +1340,7 @@ flowchart TD
 **최적화:**
 
 - submit 시 버튼 `disabled + aria-busy="true"` → 중복 요청 방지
-- 페이지 새로고침: JSESSIONID 유효 → `/login` 스킵, 마지막 경로 복원 (FR-11)
+- 페이지 새로고침: SESSION 유효 → `/login` 스킵, 마지막 경로 복원 (FR-11)
 - 세션 만료 경고 5분 전 SSE 알림 — 사용자 저장 기회
 
 ### J2 — Account Discovery
@@ -1500,7 +1500,7 @@ flowchart TD
 ```
 
 - `OrderDialog`는 PortfolioDetail 내 상태 — URL 변경 없음 (P2: `?modal=order`)
-- `useAuthStore` (Zustand) → `member: MemberInfo | null` 만 관리; JSESSIONID는 브라우저 쿠키 자동 처리
+- `useAuthStore` (Zustand) → `member: MemberInfo | null` 만 관리; SESSION는 브라우저 쿠키 자동 처리
 
 ### Journey Patterns
 

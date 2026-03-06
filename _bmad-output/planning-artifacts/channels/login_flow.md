@@ -1,7 +1,7 @@
 # FIX — Login Flow Reference
 
 > **기준**: Party Mode Round 2~3 결론 반영 (2026-02-24) / Round 4 검토 반영  
-> **인증 방식**: Spring Session Redis (JSESSIONID) — JWT AT stateless 방식 폐기  
+> **인증 방식**: Spring Session Redis (SESSION) — JWT AT stateless 방식 폐기  
 > **타협 범위**: Let's Encrypt TLS + nginx, Redis AUTH, FDS 기초 룰  
 > **세션 타임아웃**: 30분 비활성 (UX 타협 — 금감원 권고 10~15분 대비 완화, MVP 단계 적용. 실 운영 시 단축 검토 필요)  
 > **MVP 제약**: 단일 Redis 인스턴스 (SPOF) — P2 Sentinel 전환 예정  
@@ -12,7 +12,7 @@
 ## 전체 흐름 요약
 
 ```
-[회원가입] ──▶ [로그인] ──▶ [세션 발급 (JSESSIONID)] ──▶ [API 호출]
+[회원가입] ──▶ [로그인] ──▶ [세션 발급 (SESSION)] ──▶ [API 호출]
                    │                                         │
             [TOTP 등록]                               [세션 비활성 30분]
         (Google Authenticator)                               │
@@ -152,7 +152,7 @@ nginx (Let's Encrypt TLS) → channel-service
   └─ HTTP 200
       Response body: { memberId, email, name }
       ※ tokenType / accessToken / expiresIn 없음
-      Set-Cookie: JSESSIONID={sessionId}; HttpOnly; Secure; SameSite=Strict; Path=/
+      Set-Cookie: SESSION={sessionId}; HttpOnly; Secure; SameSite=Strict; Path=/
 ```
 
 ### 성공 응답
@@ -242,11 +242,11 @@ public class SecurityConfig {
 
 > **[M1] 세션 고정 방어 검증 시나리오 (OWASP A07)**:
 > ```gherkin
-> Scenario: 로그인 후 JSESSIONID 교체 확인
->   Given  GET /api/v1/auth/csrf 호출 → 임시 세션 쿠키 JSESSIONID=A 발급
+> Scenario: 로그인 후 SESSION 교체 확인
+>   Given  GET /api/v1/auth/csrf 호출 → 임시 세션 쿠키 SESSION=A 발급
 >   When   POST /api/v1/auth/login 성공 (changeSessionId() 실행)
->   Then   응답 Set-Cookie의 JSESSIONID != A  ← 새 ID 발급 확인 (세션 고정 방어)
->   And    구 JSESSIONID=A로 API 호출 시 401 반환
+>   Then   응답 Set-Cookie의 SESSION != A  ← 새 ID 발급 확인 (세션 고정 방어)
+>   And    구 SESSION=A로 API 호출 시 401 반환
 > ```
 
 > **[Q7] 중복 로그인 kick-out 검증 시나리오**:
@@ -267,13 +267,13 @@ public class SecurityConfig {
 Client
   │
   ├─ GET /api/v1/accounts
-  │   Cookie: JSESSIONID={sessionId}  ← 브라우저 자동 첨부 (코드 없음)
+  │   Cookie: SESSION={sessionId}  ← 브라우저 자동 첨부 (코드 없음)
   │
   ▼
 nginx → channel-service
   │
   ├─ HttpSessionSecurityContextRepository (Spring Security 내장)
-  │   ├─ JSESSIONID 쿠키 추출
+  │   ├─ SESSION 쿠키 추출
   │   ├─ Redis 조회: spring:session:sessions:{sessionId}
   │   │   세션 없음 (만료/로그아웃) → HTTP 401 { code: "UNAUTHORIZED" }
   │   ├─ maxInactiveInterval 슬라이딩 갱신 (요청마다 TTL 30분 재설정)
@@ -412,7 +412,7 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
-// withCredentials: true → JSESSIONID 자동 전송 (변경 없음)
+// withCredentials: true → SESSION 자동 전송 (변경 없음)
 ```
 
 ### SSE 세션 만료 경고 UX
@@ -442,7 +442,7 @@ api.interceptors.response.use(
 
 ```
 POST /api/v1/auth/logout
-Cookie: JSESSIONID={sessionId}  ← 브라우저 자동 첨부
+Cookie: SESSION={sessionId}  ← 브라우저 자동 첨부
   │
   ▼
 channel-service
@@ -450,11 +450,11 @@ channel-service
   ├─ SecurityContextHolder.clearContext()
   ├─ HttpSession.invalidate()  → Redis KEY 즉시 삭제 (Spring Session)
   │   spring:session:sessions:{sessionId} 삭제
-  ├─ Set-Cookie: JSESSIONID=; Max-Age=0; Path=/  (쿠키 즉시 만료)
+  ├─ Set-Cookie: SESSION=; Max-Age=0; Path=/  (쿠키 즉시 만료)
   └─ HTTP 204
 ```
 
-> **로그아웃 후 동일 JSESSIONID 재사용**: Redis key 없음 → Spring Session 조회 실패 → HTTP 401 즉시 (JWT AT 방식과 달리 30분 대기 없음)
+> **로그아웃 후 동일 SESSION 재사용**: Redis key 없음 → Spring Session 조회 실패 → HTTP 401 즉시 (JWT AT 방식과 달리 30분 대기 없음)
 
 ---
 
@@ -484,7 +484,7 @@ channel-service
 
 | 방식 | 허용 여부 | 이유 |
 |------|----------|------|
-| `JSESSIONID` (HttpOnly Cookie) | ✅ 허용 | 브라우저 자동 관리, JS 접근 불가 |
+| `SESSION` (HttpOnly Cookie) | ✅ 허용 | 브라우저 자동 관리, JS 접근 불가 |
 | `localStorage` | ❌ 금지 | XSS 취약 (NFR-S1) |
 | `sessionStorage` | ❌ 금지 | XSS 취약 (NFR-S1) |
 | AT 메모리 변수 | **삭제됨** | Spring Session으로 불필요 |
@@ -500,7 +500,7 @@ interface AuthState {
 }
 
 // 로그인 성공 시: response body { memberId, email, name } → store에 저장
-// JSESSIONID: 브라우저가 자동으로 모든 요청에 첨부 (코드 0줄)
+// SESSION: 브라우저가 자동으로 모든 요청에 첨부 (코드 0줄)
 
 // 보호된 라우트
 <PrivateRoute>   → member === null 이면 /login redirect
@@ -513,7 +513,7 @@ interface AuthState {
 // src/lib/axios.ts
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL,
-  withCredentials: true,  // JSESSIONID + CSRF 쿠키 자동 전송
+  withCredentials: true,  // SESSION + CSRF 쿠키 자동 전송
 });
 // Authorization 헤더 설정 코드 없음 — 쿠키가 자동 처리
 ```
@@ -537,7 +537,7 @@ const api = axios.create({
 | `HttpOnly` | true | JavaScript에서 `document.cookie` 접근 불가 — XSS 방어 |
 | `Secure` | true | HTTPS 전송만 허용 (Let's Encrypt TLS 필수) |
 | `SameSite` | Strict (로컬) / None; Secure (배포 cross-origin) | CSRF 1차 방어 |
-| `Path` | `/` | 모든 경로에 JSESSIONID 첨부 (RT와 달리 경로 제한 없음) |
+| `Path` | `/` | 모든 경로에 SESSION 첨부 (RT와 달리 경로 제한 없음) |
 | `Max-Age` | 미설정 → 브라우저 세션 쿠키 | 탭 닫으면 쿠키 삭제 |
 
 ```yaml
@@ -564,7 +564,7 @@ Synchronizer Token 패턴 (HttpSessionCsrfTokenRepository):
   5. 외부 사이트는 서버 세션에 접근 불가 → 위조 불가
 
 적용 대상: 모든 non-GET 요청 (POST, PUT, PATCH, DELETE)
-구현체: HttpSessionCsrfTokenRepository (세션 연동 — Double-Submit Cookie보다 강력)
+구현체: HttpSessionCsrfTokenRepository (세션 저장소 연동 기반, 쿠키 미러링 방식보다 강력)
 ```
 
 ```java
@@ -601,7 +601,7 @@ Browser     nginx(TLS)    channel-service      Redis          corebank
    │             │                │◀────OK──────  │               │
    │◀────────────│◀───────────────│               │               │
    │  200 { memberId, email, name }               │               │
-   │  Set-Cookie: JSESSIONID=...; HttpOnly        │               │
+   │  Set-Cookie: SESSION=...; HttpOnly        │               │
 ```
 
 ### 세션 만료 경고 (SSE)
@@ -631,14 +631,14 @@ Browser          channel-service       Redis
 Browser          channel-service       Redis
    │                    │                │
    │ POST /auth/logout  │                │
-   │ Cookie: JSESSIONID │                │
+   │ Cookie: SESSION │                │
    │────────────────────▶│               │
    │                    │ session.invalidate()
    │                    │ DEL spring:session:sessions:{id}
    │                    │────────────────▶│
    │                    │◀────OK──────── │
    │◀── 204             │                │
-   │  Set-Cookie: JSESSIONID=; Max-Age=0 │
+   │  Set-Cookie: SESSION=; Max-Age=0 │
    │                    │                │
    │ GET /api/accounts  │                │  ← 로그아웃 후 재시도
    │────────────────────▶│               │
@@ -749,7 +749,7 @@ spring:
 
 > **[S4] enroll 이탈 처리**: `POST /totp/enroll`은 idempotent — 기존 미확인 Secret을 덮어쓰기 허용 (`totp_enabled=false` 상태에서 재호출 가능). `confirm` 없이 이탈해도 다음 `enroll` 호출로 재시도 가능.
 
-> **[MA6] enroll 호출 인증 수준**: 현재 유효 세션(JSESSIONID)만으로 enroll 허용 — **비밀번호 재확인 없음** (MVP 결정). 세션 탈취 시 TOTP 교체 위협이 존재하나, 세션 탈취 자체가 선제 조건이므로 MVP 범위에서 허용. 보안 강화 시 enroll 전 비밀번호 step-up 인증 추가 권고.
+> **[MA6] enroll 호출 인증 수준**: 현재 유효 세션(SESSION)만으로 enroll 허용 — **비밀번호 재확인 없음** (MVP 결정). 세션 탈취 시 TOTP 교체 위협이 존재하나, 세션 탈취 자체가 선제 조건이므로 MVP 범위에서 허용. 보안 강화 시 enroll 전 비밀번호 step-up 인증 추가 권고.
 
 ### 엔드포인트 목록
 
@@ -768,7 +768,7 @@ spring:
 Browser                channel-service                  Vault
    │                         │                             │
    │ POST /totp/enroll        │                             │
-   │ Cookie: JSESSIONID={id} │                             │
+   │ Cookie: SESSION={id} │                             │
    │────────────────────────▶│                             │
    │                         │ Spring Session 검증          │
    │                         │ (세션 유효 → 인증 통과)       │
@@ -790,7 +790,7 @@ Browser                channel-service                  Vault
    │ [사용자: Google Authenticator 앱에서 QR 스캔]        │
    │                         │                             │
    │ POST /totp/confirm       │                             │
-   │ Cookie: JSESSIONID={id} │                             │
+   │ Cookie: SESSION={id} │                             │
    │ { totpCode: "123456" }  │                             │
    │────────────────────────▶│                             │
    │                         │ GET secret/fix/member/      │

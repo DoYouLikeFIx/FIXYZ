@@ -1,4 +1,4 @@
-﻿# FIX — 채널계 API 명세 (v1.0)
+# FIX — 채널계 API 명세 (v1.0)
 
 > **기준 서비스**: `channel-service:8080`  
 > **버전 정책**: `/api/v1/` 고정 (MVP), 파괴적 변경 시만 v2 발행  
@@ -8,7 +8,7 @@
 | 헤더 | 필수 | 설명 |
 |---|---|---|
 | `Content-Type` | POST/PUT | `application/json` |
-| `X-CSRF-TOKEN` | 모든 non-GET | 로그인 전후 `/auth/csrf`에서 획득 |
+| `X-CSRF-TOKEN` | 모든 non-GET | 로그인 전후 `/api/v1/auth/csrf` bootstrap에서 획득 |
 | `Cookie: SESSION` | 인증 필요 엔드포인트 | Spring Session 쿠키 (HTTP-only, Secure, SameSite) |
 
 > **공통 응답 봉투 (ApiResponse\<T\>)**:
