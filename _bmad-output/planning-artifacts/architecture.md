@@ -37,7 +37,7 @@ Six capability domains, all implemented in `channel-service` unless noted:
 | Orders        | 3-phase state machine: Prepare → OTP Verify → Execute; Order Book matching (CoreBanking); FEP Gateway routing (FIX 4.2) |
 | Notification  | SSE `EventSource` stream — order execution results, position updates, security alerts; session-expiry push event      |
 | Admin         | Force-logout (Redis bulk purge), audit log query (`ROLE_ADMIN` only)                                                  |
-| Observability | Structured JSON logs, W3C `traceparent` propagation, Actuator metrics/circuit breaker exposure                        |
+| Observability | Structured JSON logs, W3C `traceparent` propagation, Prometheus scrape + Grafana dashboards, Actuator health/circuit breaker exposure |
 
 7 non-negotiable acceptance scenarios drive CI gate:
 
@@ -72,7 +72,7 @@ Six capability domains, all implemented in `channel-service` unless noted:
 | Idempotency                 | `ClOrdID` UNIQUE at DB level                                                             | `UNIQUE INDEX idx_clordid (cl_ord_id)` in `core_db.orders`                                          |
 | Execution source of truth   | Local CoreBanking Order Book match is canonical in simulator mode                        | `executions`/`positions` are committed from local matcher; FEP `ExecutionReport` used for confirmation/recovery only |
 | Market Data                 | `LIVE` / `DELAYED` / `REPLAY` source modes with quote freshness bound                    | `quoteSnapshotId` + `quoteAsOf` + `quoteSourceMode` required for MARKET pre-check and valuation; stale snapshots are rejected deterministically |
-| Observability (Demo)        | Actuator selectively exposed for screenshare demo                                        | `circuitbreakers` + `health` endpoints accessible without auth; FEP chaos endpoint robustly designed |
+| Observability (Demo)        | Grafana dashboard + selected Actuator endpoints for drill/demo                            | Grafana panels (execution/pending/latency) are primary; `circuitbreakers` + `health` remain accessible for targeted drill evidence |
 | Rate Limiting               | Login: 5 req/min/IP; OTP: 3/session; Order Prepare: 10 req/min/userId                   | Bucket4j + Redis-backed `Filter` on 3 endpoints only                                                |
 | Test Coverage               | CoreBanking ≥ 80%, Channel ≥ 70%, FEP Gateway ≥ 60%, FEP Simulator ≥ 60%                 | JaCoCo in Gradle; real MySQL + Redis via Testcontainers (H2 disqualified for runtime/integration, OpenAPI generation-only profile exception) |
 | Cold Start (Demo Guarantee) | `docker compose up` → first API call ≤ 120s (Vault + vault-init initialization accounts for extended window vs. non-Vault baseline) | `depends_on: condition: service_healthy` mandatory; Flyway DDL targeting < 3s total migration time  |
@@ -114,7 +114,7 @@ Six capability domains, all implemented in `channel-service` unless noted:
 | Trace propagation        | All 4 backend services               | `traceparent` + `X-Correlation-Id` headers; MDC injection via `OncePerRequestFilter`                                                                                                                                                                                                                                                                                                        |
 | PII masking              | Channel layer (logs + API responses) | `AccountNumber.masked()` in `channel-common`; unit-tested — full number must never appear in output                                                                                                                                                                                                                                                                                         |
 | Error code taxonomy      | All services                         | API 응답: `AUTH-xxx` / `CHANNEL-xxx` / `ORD-xxx` / `CORE-xxx` / `FEP-xxx` / `SYS-xxx`를 외부 계약 코드로 사용하고 `GlobalExceptionHandler` 표준 봉투로 반환한다 (RULE-031, P-F5). OTP는 `CHANNEL-002/003`, `429`는 `RATE-001`만 사용. **FEP RC 코드**: `RC=9001 NO_ROUTE` / `RC=9002 POOL_EXHAUSTED` / `RC=9003 NOT_LOGGED_ON` / `RC=9004 TIMEOUT` / `RC=9005 KEY_EXPIRED` / `RC=9097 ORDER_REJECTED` / `RC=9098 CIRCUIT_OPEN` / `RC=9099 CONCURRENCY_FAILURE`                                                                                                                                                                                                                                                                                                |
-| Docker network isolation | Compose layer                        | `external-net` (Channel only, port 8080 exposed), `core-net` (Channel↔CoreBanking), `gateway-net` (CoreBanking↔FEP Gateway:8083), `fep-net` (FEP Gateway↔FEP Simulator:8082); no ports on CoreBanking, FEP Gateway, or FEP Simulator exposed to host                                                                                                                                                                                                                                                                                                                                             |
+| Docker network isolation | Compose layer                        | Current repository runtime baseline uses single `fix-net` with host-exposed `channel-service:8080` and `edge-gateway:80/443` for local/demo use; no host ports on CoreBanking, FEP Gateway, or FEP Simulator. Canonical hardened lane model for future review remains `external-net` (ingress + channel edge side), `core-net` (channel↔corebank), `gateway-net` (corebank↔FEP Gateway), `fep-net` (FEP Gateway↔FEP Simulator).                                                                                                                                                                                                                                  |
 | Internal API secret      | Service-to-service                   | `X-Internal-Secret` header validated by `OncePerRequestFilter` (copy-paste MVP); `INTERNAL_API_SECRET` env var                                                                                                                                                                                                                                                                              |
 | Saga ownership           | Channel ↔ CoreBanking                | **Channel-service is the saga orchestrator** — owns `OrderExecutionService`, calls CoreBanking execute, and on FEP failure drives `ESCALATED` replay/requery workflow; CoreBanking executes Order Book + position mutation atomically                                                                                                                                                                |
 | Audit logging            | Channel layer                        | `audit_logs` + `security_events` tables; scheduled purge (90/180 days)                                                                                                                                                                                                                                                                                                                      |
@@ -331,13 +331,38 @@ export const formatKRW = (amount: number): string =>
 | Local dev | `pnpm dev` (:5173, Vite proxy) | `docker compose up` (:8080)              | `Strict`        | Not needed (proxy)         |
 | Deployed  | Vercel (`fix-xxx.vercel.app`)  | AWS EC2 t3.small (`fix-api.example.com`) | `None; Secure`  | Required, explicit origins |
 
+### Channel DMZ / Internal Zone Summary (Interview-Friendly)
+
+To make the network model explainable to non-project stakeholders:
+
+- **Frontend is in the DMZ-facing channel zone** (web/mobile entry).
+- **Current local compose baseline exposes `edge-gateway:80/443` and `channel-service:8080` on host** for developer convenience.
+- **Current Story 0.7 edge configuration still carries legacy proxy paths to internal health/API namespaces plus a gateway-specific `/api/v1/channel/*` path shape**; those are baseline exceptions, not the Epic 12 hardened target, and `/api/v1/channel/*` must be removed from hardened public ingress unless a reviewed migration ADR carries it temporarily.
+- **Current Story 0.7 controller scaffold is intentionally not endpoint-complete**; product-level endpoint contracts in PRD/API/UX artifacts may lead the runtime scaffold and must be read together with the explicit scaffold-divergence inventory in Epic 12 docs.
+- **Public ingress contract is edge-first**; Epic 12 hardening aims to remove direct host exposure from `channel-service` in hardened mode.
+- **Privileged DMZ operator access is out-of-band from the public edge allowlist** and must live on a private admin/control-plane surface when Story 12.4 is implemented.
+- **Epic 12 review zones (`edge/application/core-private`) are governance groupings over the canonical lane model**, not a replacement for the architecture lane mapping.
+
+### Cookie/Session Request Chain (Terminal → Backend)
+
+The authentication path is intentionally documented in business terms:
+
+1. User terminal sends request through frontend.
+2. Session cookie is attached to the channel request.
+3. Channel validates session/CSRF and enforces auth policy.
+4. Channel calls internal backend services with internal trust headers.
+5. Backend returns execution/account data; channel returns user-facing response.
+
+This chain is the canonical explanation model for reviews:  
+**terminal → cookie → frontend/channel → session validation → backend processing**.
+
 **AWS EC2 deployment:**
 
 - Instance: t3.small (~$15-20/mo)
 - Same `docker-compose.yml` used locally runs on EC2 via SSH
 - `docker compose up -d` on EC2 — no translation layer, no task definitions
 - MySQL + Redis run as compose services on EC2 (sufficient for portfolio traffic)
-- Security group: port 8080 open to internet (or behind reverse proxy); ports 8081/8082/8083 internal only
+- Security group: public ingress contract is `80/443` on `edge-gateway`; `8080` remains local/dev convenience or private-to-edge only, and ports `8081/8082/8083` stay internal only
 
 **Vercel deployment:**
 
@@ -1004,7 +1029,7 @@ Trunk-based with short-lived feature branches:
 | RULE-065 | React Hook Form + Zod 폼 패턴             |
 | RULE-066 | Tailwind 반응형 breakpoint 기준           |
 | RULE-067 | 접근성(a11y) 최소 요건                    |
-| RULE-068 | Actuator 보안 및 포트 분리                |
+| RULE-068 | Actuator/Prometheus 보안 및 포트 분리     |
 | RULE-069 | Graceful Shutdown 패턴                    |
 | RULE-070 | HikariCP 커넥션 풀 설정                   |
 | RULE-071 | 주문 요청 Idempotency 패턴 (ClOrdID)      |
@@ -1823,7 +1848,7 @@ const {
 // ❌ 금지: 색상만으로 정보 전달
 ```
 
-### RULE-068: Actuator 보안 설정
+### RULE-068: Actuator + Prometheus 보안 설정
 
 ```yaml
 management:
@@ -1832,7 +1857,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics   # MVP: prometheus 제외 (post-MVP Future Enhancement)
+        include: health,info,metrics,prometheus,circuitbreakers
   endpoint:
     health:
       show-details: when-authorized
@@ -1841,6 +1866,8 @@ management:
 # ❌ 금지: include: "*"
 # ❌ 금지: management.port = 8080 (동일 포트)
 # ❌ 금지: management.port = 8081 (corebank-service 앱 포트와 충돌)
+# Prometheus는 내부 네트워크 스크레이퍼만 접근
+# Grafana는 Prometheus를 단일 메트릭 소스로 사용
 ```
 
 ### RULE-069: Graceful Shutdown
@@ -2126,7 +2153,7 @@ RULE 위반이 정당화되는 경우 (성능 최적화, 외부 라이브러리 
 - ❌ Saga 오케스트레이터
 - ❌ OAuth2 외부 제공자 (Keycloak — Step 2 결정)
 - ❌ Kubernetes (EC2 Docker Compose로 충분)
-- ❌ 전문 APM (Datadog/NewRelic — Actuator+prometheus로 충분)
+- ❌ 전문 APM (Datadog/NewRelic — Prometheus+Grafana+Actuator로 MVP 충분)
 - ❌ JPA Multi-tenancy
 
 ---
@@ -2463,7 +2490,7 @@ fix/                                          # 모노레포 루트
     ├── vitest.config.ts
     └── src/
         ├── main.tsx
-        ├── App.tsx                            # BrowserRouter + NotificationProvider; useEffect → GET /api/v1/auth/me로 Zustand 초기화 (새로고침 시 쿠키 유효 판별)
+        ├── App.tsx                            # BrowserRouter + NotificationProvider; target-contract flow uses GET /api/v1/auth/session for Zustand initialization (current Story 0.7 scaffold parity tracked separately)
         ├── pages/
         │   ├── LoginPage.tsx                  # useAuthStore.login(), Zod 검증
         │   ├── PortfolioPage.tsx              # usePortfolio(), useNotification()
@@ -2534,7 +2561,8 @@ fix/                                          # 모노레포 루트
 
 | 경계                               | 통신 방식       | 인증               | 네트워크     |
 | ---------------------------------- | --------------- | ------------------ | ------------ |
-| Vercel → channel-service           | HTTPS REST      | Spring Session Cookie | external-net |
+| Vercel → edge-gateway             | HTTPS REST      | TLS + forwarded session cookie | external-net |
+| edge-gateway → channel-service    | HTTP REST       | forwarded session/csrf headers | external-net |
 | channel-service → corebank-service | HTTP REST       | X-Internal-Secret  | core-net     |
 | corebank-service → fep-gateway     | HTTP REST       | X-Internal-Secret  | gateway-net  |
 | fep-gateway → fep-simulator (data plane)    | FIX 4.2 TCP (QuickFIX/J) | FIX Logon credentials | fep-net |
@@ -2546,7 +2574,7 @@ fix/                                          # 모노레포 루트
 
 ```yaml
 networks:
-  external-net: # channel-service ↔ 외부
+  external-net: # edge-gateway ↔ 외부, edge-gateway ↔ channel-service
   core-net: # channel-service ↔ corebank-service
   gateway-net: # corebank-service ↔ fep-gateway
   fep-net: # fep-gateway ↔ fep-simulator
@@ -2816,7 +2844,7 @@ Phase 4 — 프론트엔드:
 | Q-7-14  | docker-compose.override.yml 최소 내용: mysql:3306, redis:6379, 8081, 8082, 8083 호스트 노출                       | Important    | R5     |
 | Q-7-15  | OrderService.execute() 트랜잭션 경계: FEP 호출 트랜잭션 외부, DB 기록 트랜잭션 내부                              | **Critical** | R6     |
 | Q-7-16  | 매도 한도 검증 위치: channel-service OrderSessionService.initiate() (세션 생성 전)                               | Important    | R6     |
-| Q-7-17  | GET /api/v1/orders/{sessionId} — 세션 상태 조회 엔드포인트 (SessionStatusResponse)                               | Important    | R7     |
+| Q-7-17  | GET /api/v1/orders/sessions/{orderSessionId} — 세션 상태 조회 엔드포인트 (SessionStatusResponse)                | Important    | R7     |
 | Q-7-18  | Integration Test 격리: @Transactional 금지, @Sql cleanup 또는 deleteAll()                                         | **Critical** | R7     |
 | Q-7-19B | ~~JWT Refresh Token (Option B)~~ **폐기** — Spring Session Redis로 대체 (login-flow.md 참조)                              | 구조 변경  | R8/R9  |
 | Q-7-20  | ~~Silent Refresh~~ **폐기** — SSE 세션 만료 알림 + 401 핸들러로 대체 (login-flow.md 참조)                             | 구조 변경  | R9     |
@@ -2940,7 +2968,7 @@ Option B: @BeforeEach void cleanup() { repository.deleteAll(); }
 권장: Option B (간단, 대부분의 통합 테스트에 충분)
 ```
 
-#### Actuator 보안 설정 (Q-7-13)
+#### Actuator + Prometheus 보안 설정 (Q-7-13)
 
 ```yaml
 # 전 서비스 application.yml 공통
@@ -2948,13 +2976,13 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
+        include: health,info,metrics,prometheus,circuitbreakers
   endpoint:
     health:
       show-details: when-authorized
 
 # SecurityConfig: Spring Security 설정
-.requestMatchers("/actuator/health").permitAll()
+.requestMatchers("/actuator/health", "/actuator/prometheus").permitAll()
 .requestMatchers("/actuator/**").hasRole("ADMIN")
 ```
 
@@ -3156,7 +3184,7 @@ eventsource.onerror = () => {
 
 1. Kafka 기반 비동기 알림 파이프라인 (SSE 대체)
 2. 타사 증권사 라우팅 (현재 설계 범위 밖, 의도적 제외)
-3. Grafana + Prometheus 관찰가능성 스택
+3. Grafana Alerting/Alertmanager 연계 및 SLO burn-rate 알림 고도화
 
 ---
 

@@ -1,5 +1,7 @@
 # Story 4.2: [CH] OTP Verification Policy
 
+> Historical artifact. This story file preserves prior implementation context and may diverge from the current canonical target contract. For active design truth, refer to `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/prd.md`, `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/channels/api-spec.md`, and Epic 12 documentation for scaffold-divergence handling.
+
 Status: ready-for-dev
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->

@@ -1,5 +1,7 @@
 # Epic 1: User Authentication & Account Access
 
+> Historical artifact. This document preserves prior implementation context and may diverge from the current canonical target contract. For active design truth, refer to `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/prd.md`, `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/channels/api-spec.md`, `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/ux-design-specification.md`, and Epic 12 documentation for scaffold-divergence handling.
+
 ## Summary
 
 Users can log in and maintain their session via Spring Session Redis (JSESSIONID HttpOnly cookie with 30-minute sliding TTL), safely view their account list and balances, and receive an SSE warning notification 5 minutes before session expiry to extend the session. On logout, the session is immediately invalidated. The React app's Router + PrivateRoute + NavigationBar are built.

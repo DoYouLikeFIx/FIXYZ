@@ -35,6 +35,8 @@
 }
 ```
 
+> **Canonical contract note**: This document is the channel product/API target contract. The current Story 0.7 scaffold is intentionally partial and does not provide endpoint parity yet. Direct scaffold exposure is presently limited to `GET /api/v1/auth/csrf`, `POST /api/v1/auth/login`, `POST /api/v1/auth/otp/verify`, `POST /api/v1/orders/sessions`, `GET /api/v1/orders/sessions`, and `GET /api/v1/notifications/stream`; the public edge baseline still uses legacy `/api/v1/channel/*` aliases rather than canonical auth/order paths. Epic 12 documents those divergences separately and they must not be read back into this target contract.
+
 > **CSRF 유효성 실패 응답 형식**: Spring Security CSRF 필터(`CsrfFilter`)는 `@ControllerAdvice`나 `ApiResponse` 봉투에  도달하기 전 단계에서 동작한다. 따라서 X-CSRF-TOKEN 누락·오류 시 **공통 `ApiResponse` 봉투가 아닌** Spring Security 기본 `403 Forbidden` 응답이 반환된다. HTTP Status=`403`, Body=`{"status":403,"error":"Forbidden","message":"Forbidden"}` 형태. 클라이언트는 `403` 수신 시  `response.status === 403`으로 분기하여 CSRF 토큰을 재조회한 후 요청을 재시도해야 한다. non-GET 요청 전 **항상 CSRF 토큰을 선행 조회**하는 것이 권장된 구현 패턴이다.
 
 ---
@@ -1868,9 +1870,112 @@ flowchart LR
 | 주문 세션 TTL | 600초 (Redis `EXPIRE`) |
 | CSRF | Synchronizer Token (`HttpSessionCsrfTokenRepository`), 로그인 후 재조회 필수 |
 | PII 마스킹 | 계좌번호 `AccountNumber.masked()` — 로그·응답에서 전체 번호 노출 금지 |
-| Rate Limiting | Bucket4j (Redis 백엔드): 로그인 5/min/IP, 주문준비 10/min/userId, 주문실행(`POST /api/v1/orders/sessions/.../execute`) 세션당 1회(Redis NX lock), 주문취소(`POST /api/v1/orders/sessions/.../cancel`) 세션당 1회(Redis NX lock), 주문이력 조회(`GET /api/v1/orders`) 10/min/session, 알림 이력 조회(`GET /api/v1/notifications`) 10/min/session, CB 상태 조회(`GET /api/v1/orders/cb-status`) 10/min/session, 관리자 감사로그 조회(`GET /api/v1/admin/audit-logs`) · 수동재처리(`POST /api/v1/admin/orders/.../replay`) · 강제로그아웃(`DELETE /api/v1/admin/members/.../sessions`) 20/min/session; OTP 시도: 3/session (Redis 카운터 — Bucket4j 별도 아님, §2.2 attempt 카운터 기반) |
+| Rate Limiting | Bucket4j (Redis 백엔드): 로그인 5/min/IP, 주문준비 10/min/userId, 주문실행(`POST /api/v1/orders/sessions/.../execute`) 세션당 1회(Redis NX lock), 주문취소(`POST /api/v1/orders/sessions/.../cancel`) 세션당 1회(Redis NX lock), 주문이력 조회(`GET /api/v1/orders`) 10/min/session, 알림 이력 조회(`GET /api/v1/notifications`) 10/min/session, CB 상태 조회(`GET /api/v1/orders/cb-status`) 10/min/session, 관리자 감사로그 조회(`GET /api/v1/admin/audit-logs`) · 수동재처리(`POST /api/v1/admin/orders/.../replay`) · 강제로그아웃(`DELETE /api/v1/admin/members/.../sessions`) 20/min/session; OTP 시도: 3/session (Redis 카운터 — Bucket4j 별도 아님, §2.2 attempt 카운터 기반). 애플리케이션 레이어 한도/OTP 차단 증적에는 `enforcement_layer=application`과 `limit_key_type`(`session_id`, `user_id`, `order_session_id`)가 포함되어야 하며, Epic 12 edge 한도와 혼동되면 안 된다. |
 | 429 응답 헤더 | 모든 Rate Limit 초과 응답에 HTTP 표준 `Retry-After` 헤더 포함 (단위: 초, **동적 계산값**). Bucket4j 토큰 리필 기반으로 현재 윈도우 잔여 시간을 계산하여 반환한다. 최대값: 로그인 60초, 주문 준비 60초. OTP 디바운스: 고정 `Retry-After: 1`. |
 | Cookie | `HttpOnly=true`, `Secure=true`, `SameSite=Strict` (local) / `SameSite=None; Secure` (deploy) |
 | CORS (배포) | `SameSite=None` 적용 환경에서는 `allowedOrigins`를 명시적으로 허용 오리진 목록으로 제한해야 한다. 와일드카드(`*`) 금지. 예: `https://fix.yourdomain.com`. CORS 설정 오류 시 `SameSite=None` + `allowCredentials=true` 조합으로 CSRF 방어가 무력화될 수 있다. |
 | Trace | `traceparent` + `X-Correlation-Id` 헤더 → MDC 주입 → 모든 응답 `traceId` 포함 |
 
+
+---
+
+## 7. Password Recovery Addendum (Story 1.7, 2026-03-05)
+
+### 7.1 Endpoints
+
+1. `POST /api/v1/auth/password/forgot`
+
+- Request
+```json
+{
+  "username": "user01",
+  "challengeToken": "<optional>",
+  "challengeAnswer": "<optional>"
+}
+```
+
+- Response `202 Accepted` (fixed across all outcomes)
+```json
+{
+  "success": true,
+  "data": {
+    "accepted": true,
+    "message": "If the account is eligible, a reset email will be sent.",
+    "recovery": {
+      "challengeEndpoint": "/api/v1/auth/password/forgot/challenge",
+      "challengeMayBeRequired": true
+    }
+  },
+  "error": null,
+  "traceId": "trace-001"
+}
+```
+
+2. `POST /api/v1/auth/password/forgot/challenge`
+
+- Request
+```json
+{
+  "username": "user01"
+}
+```
+
+- Response `200 OK` (anti-enumeration parity required)
+```json
+{
+  "success": true,
+  "data": {
+    "challengeToken": "<signed blob>",
+    "challengeType": "proof-of-work|captcha",
+    "challengeTtlSeconds": 300
+  },
+  "error": null,
+  "traceId": "trace-001"
+}
+```
+
+3. `POST /api/v1/auth/password/reset`
+
+- Request
+```json
+{
+  "token": "<raw token>",
+  "newPassword": "Test1234!"
+}
+```
+
+- Success: `204 No Content`
+
+### 7.2 Error Code Mapping
+
+| Code | HTTP | Meaning |
+|---|---|---|
+| `AUTH-012` | 401 | reset token invalid or expired |
+| `AUTH-013` | 409 | reset token already consumed |
+| `AUTH-014` | 429 | forgot/challenge/reset rate limit exceeded (`Retry-After` required) |
+| `AUTH-015` | 422 | new password equals current password |
+| `AUTH-016` | 401 | stale session after password change |
+
+### 7.3 CSRF and Retry Rules
+
+- `forgot/challenge/reset` are non-GET endpoints and MUST remain CSRF-protected.
+- On CSRF `403`, client behavior is fixed:
+  - Re-fetch CSRF once (`GET /api/v1/auth/csrf`)
+  - Retry submit once with identical payload/idempotency fields
+  - If second `403`, stop and surface terminal UX error
+
+### 7.4 Rate Limits
+
+- `forgot`: `per-IP 5/min`, `per-username 3/15min`, `mail-cooldown-key(usernameHash) 1/5min`
+- `forgot/challenge`: `per-IP 5/min`, `per-username 3/10min`, `endpoint-global 60/min`
+- `reset`: `per-IP 10/5min`, `per-tokenHash 5/15min`, `endpoint-global 60/min`
+
+### 7.5 Security and Timing Constraints
+
+- Forgot path anti-enumeration envelope: floor `400ms`, jitter `0~50ms`, p95 delta (`existent/non-existent/challenge`) <= `80ms`.
+- Reset token validation timing equalization: floor `120ms`, jitter `0~20ms` across valid/invalid/expired/consumed paths.
+- Reset token persistence:
+  - Table: `channel_db.password_reset_tokens`
+  - Only HMAC token hash persisted (no raw token)
+  - One-active-token invariant: unique `(member_uuid, active_slot)` and domain guard `active_slot IS NULL OR active_slot = 1`
+- Successful reset MUST update `members.password_changed_at` in same DB transaction as password hash update and token consume.

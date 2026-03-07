@@ -1,4 +1,4 @@
-# generated: 2026-03-02 04:35
+# generated: 2026-03-07 10:30
 # project: fix
 # project_key: FIX
 # tracking_system: file-system
@@ -28,7 +28,7 @@
 # - SM typically creates next story ONLY after previous one is done to incorporate learnings
 # - Dev moves story to review, then code-review sets done/in-progress
 
-generated: 2026-03-02 04:35
+generated: 2026-03-07 10:30
 project: fix
 project_key: FIX
 tracking_system: file-system
@@ -58,6 +58,7 @@ development_status:
   1-4-mob-mobile-auth-flow: ready-for-dev
   1-5-be-auth-guardrails-lockout-rate-limit: ready-for-dev
   1-6-fe-mob-auth-error-standardization: ready-for-dev
+  1-7-be-password-forgot-reset-api: ready-for-dev
   epic-1-retrospective: optional
 
   epic-2: backlog
@@ -153,3 +154,11 @@ development_status:
   11-4-market-order-sweep-matching-validation: ready-for-dev
   11-5-web-mob-quote-freshness-and-source-visibility-ux: ready-for-dev
   epic-11-retrospective: optional
+
+  epic-12: backlog
+  12-1-dmz-network-segmentation-profile: ready-for-dev
+  12-2-edge-perimeter-policy-hardening: ready-for-dev
+  12-3-service-boundary-trust-hardening-secret-rotation-mtls-readiness: ready-for-dev
+  12-4-admin-access-control-path-for-dmz-operations: ready-for-dev
+  12-5-dmz-security-drill-and-evidence-gate: ready-for-dev
+  epic-12-retrospective: optional

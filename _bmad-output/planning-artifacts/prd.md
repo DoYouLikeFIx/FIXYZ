@@ -133,8 +133,8 @@ FIX is the gap between "I know Spring Boot" and "I understand why a 은행계 �
 
 | Metric                      | Target                                                | How Verified                                             |
 | --------------------------- | ----------------------------------------------------- | -------------------------------------------------------- |
-| Channel p95 response time   | Visible in Actuator, documented in README             | Spring Boot Actuator `/actuator/metrics`                 |
-| Order execution failure rate | Circuit breaker demo scenario scripted and runnable   | Resilience4j OPEN state observable in Actuator           |
+| Channel p95 response time   | Visible in Grafana latency panel, documented in README | Prometheus scrape (`/actuator/prometheus`) + Grafana panel |
+| Order execution failure rate | Circuit breaker demo scenario scripted and runnable   | Grafana error-rate panel + circuit breaker drill evidence |
 | Concurrent sell integrity   | 0 over-sell events under 10-thread simultaneous sell  | `@SpringBootTest` + `ExecutorService` test passing in CI |
 | Docker cold start           | `docker compose up` → first successful API call ≤ 120s | Documented in README Quick Start (Vault + vault-init initialization accounts for extended window) |
 | CoreBanking test coverage   | ≥ 80% line coverage                                   | JaCoCo report in CI                                      |
@@ -164,6 +164,7 @@ All seven must pass in CI before the MVP is considered complete:
 - `docker compose up` cold start ≤ 120s to first API response
 - Four deployable services wired: `channel-service`, `corebank-service`, `fep-gateway`, `fep-simulator`
 - React Web 5-screen demo functional (Login, Portfolio View, Order Entry, Order Flow, Notification Feed)
+- Prometheus + Grafana observability stack running with core operational panels
 - README with architecture diagram, dual-audience demo script, Quick Start section, CI badge
 - Flyway migration history: `V1__init.sql` through final schema version across 3 schemas
 - Audit log, PII masking, and session security documented with OWASP references
@@ -171,9 +172,10 @@ All seven must pass in CI before the MVP is considered complete:
 ### Growth Features (Post-MVP)
 
 - React Native mobile view (responsive demo for mobile-first interviewers)
-- Prometheus + Grafana dashboard (visual observability demo)
+- Grafana alert tuning + Alertmanager integration (pager/webhook routing)
 - Keycloak SSO integration (demonstrates enterprise IDP awareness)
 - Advanced rate limiting and fraud detection simulation
+- DMZ perimeter hardening design package and promotion evidence gate for future hardened ingress mode
 
 ### Vision (Future)
 
@@ -309,24 +311,24 @@ The order flow uses a three-phase protocol with TOTP (RFC 6238) step-up authenti
 Phase 1 — Prepare
   POST /api/v1/orders/sessions
   → Validates available cash / available_qty against CoreBanking
-  → Creates OrderSession (Redis key: ch:order-session:{sessionId})
+  → Creates OrderSession (Redis key: ch:order-session:{orderSessionId})
   → TTL: 600 seconds (10 min)
   → Status: PENDING_NEW
-  → Initializes ch:otp-attempts:{sessionId} = 3 (NX EX 600)
-  → Returns: sessionId + expiresAt
+  → Initializes ch:otp-attempts:{orderSessionId} = 3 (NX EX 600)
+  → Returns: orderSessionId + expiresAt
 
 Phase 2 — TOTP Verify
-  POST /api/v1/orders/sessions/{sessionId}/otp/verify
+  POST /api/v1/orders/sessions/{orderSessionId}/otp
   → Validates TOTP code (RFC 6238, ±1 window, Google Authenticator compatible)
   → Secret: Vault key: secret/fix/member/{memberId}/totp-secret
   → Replay prevention: ch:totp-used:{memberId}:{windowIndex}:{code} TTL 60s
-  → Attempt tracking: ch:otp-attempts:{sessionId} (DECR; lockout at 0)
-  → Debounce: ch:otp-attempt-ts:{sessionId} NX EX 1 (1s burst guard)
+  → Attempt tracking: ch:otp-attempts:{orderSessionId} (DECR; lockout at 0)
+  → Debounce: ch:otp-attempt-ts:{orderSessionId} NX EX 1 (1s burst guard)
   → On success: OrderSession status → AUTHED
   → On failure (≥ 3 attempts): session → FAILED
 
 Phase 3 — Execute
-  POST /api/v1/orders/sessions/{sessionId}/execute
+  POST /api/v1/orders/sessions/{orderSessionId}/execute
   → Requires session in AUTHED state:
      - PENDING_NEW → 409 ORD-005 (session not in AUTHED state; OTP step not yet completed)
      - EXECUTING (with active ch:txn-lock) → 409 ORD-010 (concurrent execute; lock NX failure)
@@ -831,7 +833,7 @@ FIX is a `distributed-backend-system` — three independently deployable Spring 
 # Authentication
 POST   /api/v1/auth/login
 POST   /api/v1/auth/logout
-GET    /api/v1/auth/me
+GET    /api/v1/auth/session
 GET    /api/v1/auth/csrf                           → CSRF token (required before login)
 
 # Accounts / Portfolio
@@ -842,9 +844,9 @@ GET    /api/v1/accounts/{accountId}/cash             → available cash
 
 # Orders (3-phase: Prepare → OTP Verify → Execute)
 POST   /api/v1/orders/sessions                      → create OrderSession (PENDING_NEW)
-POST   /api/v1/orders/sessions/{sessionId}/otp/verify → validate TOTP → AUTHED
-POST   /api/v1/orders/sessions/{sessionId}/execute   → execute order → NEW/FILLED/FAILED
-GET    /api/v1/orders/sessions/{sessionId}/status    → session status query
+POST   /api/v1/orders/sessions/{orderSessionId}/otp        → validate TOTP → AUTHED
+POST   /api/v1/orders/sessions/{orderSessionId}/execute   → execute order → NEW/FILLED/FAILED
+GET    /api/v1/orders/sessions/{orderSessionId}           → session status query
 GET    /api/v1/orders                               → order history (authenticated user)
 
 # Notifications (SSE)
@@ -855,6 +857,8 @@ POST   /api/v1/admin/sessions/force-invalidate
 GET    /api/v1/admin/audit-logs
 DELETE /api/v1/admin/members/{memberId}/sessions  → force-invalidate specific member session
 ```
+
+> **Canonical contract vs current Story 0.7 scaffold**: The endpoint list above is the product-level target contract. The current Story 0.7 scaffold remains partial: direct `channel-service` currently exposes `GET /api/v1/auth/csrf`, `POST /api/v1/auth/login`, `POST /api/v1/auth/otp/verify`, `POST /api/v1/orders/sessions`, `GET /api/v1/orders/sessions`, and `GET /api/v1/notifications/stream`. The current `edge-gateway` baseline exposes legacy `/api/v1/channel/*` aliases and internal exceptions rather than the canonical public auth/order namespaces. Epic 12 documentation preserves the canonical contract and separately inventories these scaffold divergences; they must not be mistaken for product-level API approval.
 
 **CoreBanking Service (port 8081) — 계정계 — Channel-internal only**
 
@@ -902,7 +906,7 @@ PUT    /fep-internal/rules                           → chaos config update; bo
 
 ```yaml
 networks:
-  external-net:  # Channel only — port 8080 exposed
+  external-net:  # edge-gateway + channel-service ingress side
   core-net:      # Channel ↔ CoreBanking
   gateway-net:   # CoreBanking ↔ FEP Gateway:8083
   fep-net:       # FEP Gateway ↔ FEP Simulator:8082
@@ -966,12 +970,14 @@ services:
 | Endpoint                                        | Limit                  | Error Response                                       |
 | ----------------------------------------------- | ---------------------- | ---------------------------------------------------- |
 | `POST /api/v1/auth/login`                                   | 5 req/min per IP       | 429 + `Retry-After` header                           |
-| `POST /api/v1/orders/sessions/{sessionId}/otp/verify`      | 3 attempts per session | 422 `CHANNEL-002` / 403 `CHANNEL-003`; 429는 `RATE-001`만 사용 |
+| `POST /api/v1/orders/sessions/{orderSessionId}/otp`             | 3 attempts per session | 422 `CHANNEL-002` / 403 `CHANNEL-003`; 429는 `RATE-001`만 사용 |
 | `POST /api/v1/orders/sessions`                              | 10 req/min per userId  | 429 + remaining quota in body                        |
 
 **Not rate-limited in MVP:** all `GET` endpoints, `/internal/v1/`, `/fep-internal/`.
 
 **OTP / rate limit interaction:** 앱 계층 OTP 실패(불일치/초과)는 `CHANNEL-002/003`로 반환한다. `429 + Retry-After`는 디바운스/레이트리밋(`RATE-001`)에서만 사용한다.
+
+**Epic 12 perimeter interaction (future hardened mode):** Epic 12 may add pre-auth edge IP-based limits for unknown/sensitive routes and temporary deny controls. Those perimeter controls do not replace the application/session/user-level limits above. The stricter rejecting layer wins at runtime, and evidence must record whether rejection occurred at the edge or application layer. Edge-generated denials must emit `enforcement_layer=edge` and the applied `limit_key_type`; application throttles must emit `enforcement_layer=application` with their session/user/object key type in audit or security-event evidence.
 
 ---
 
@@ -1027,7 +1033,7 @@ services:
 **CORS policy:**
 
 - Development: `allowedOrigins("http://localhost:5173")` + `allowCredentials=true` (Vite dev server)
-- Production (Docker Compose): Nginx reverse proxy — `/api/` → `channel-service:8080`; React served same-origin; CORS not needed
+- Production (Docker Compose): `edge-gateway` (Nginx reverse proxy) fronts `/api/` → `channel-service:8080`; React served same-origin; CORS not needed. Legacy internal proxy paths in the Story 0.7 baseline are baseline exceptions, not the Epic 12 hardened target.
 
 **Environment variables (`.env.example` — committed to repo; `.env` — gitignored):**
 
@@ -1144,7 +1150,7 @@ The MVP is complete when every architectural claim in FIX is backed by a passing
 | Idempotency    | `clOrdId` UNIQUE index + app-layer check                             |
 | Resilience     | Resilience4j circuit breaker (FEP path); distributed retry via OrderSessionRecoveryService |
 | Rate Limiting  | Bucket4j — 3 endpoints (login, OTP, sessions)                                |
-| Observability  | Spring Actuator, Micrometer, `traceparent` propagation                       |
+| Observability  | Prometheus + Grafana + Micrometer, `traceparent` propagation                 |
 | Notifications  | SSE stream + DB persistence (`notifications` table)                          |
 | Admin          | Force-invalidate session API (ROLE_ADMIN)                                    |
 | Documentation  | Swagger UI (Channel + CoreBanking + FEP Gateway + FEP Simulator), dual-audience README |
@@ -1212,7 +1218,7 @@ All seven must pass in CI before MVP is complete:
 **Phase 2 — Growth (Post-MVP):**
 
 - React Native mobile view (responsive demo for mobile-first interviewers)
-- Prometheus + Grafana dashboard (visual observability demo)
+- Grafana alert tuning + Alertmanager integration (pager/webhook routing)
 - Keycloak SSO integration (enterprise IDP awareness)
 - Bucket4j advanced: user-level rate limit (현재 IP-level)
 - 알림 읽음 처리 클릭 이벤트 + 필터링 UI
@@ -1331,6 +1337,7 @@ jobs:
 - **FR-45:** System can record security-significant events (account lockout, forced session invalidation, OTP exhaustion) separately from general audit logs with an extended retention period
 - **FR-46:** System can enforce separate retention policies for audit logs and security events
 - **FR-50:** System can record the identity of an administrator who performs privileged actions (session invalidation, audit log access) in the audit trail
+- **FR-57:** System can maintain a reviewed perimeter hardening design package covering network segmentation, route/method policy, trusted proxy rules, service-boundary trust controls, privileged DMZ operator access, and validation evidence rules before any hardened ingress mode is introduced
 
 ### Administration & Operations
 
@@ -1339,6 +1346,7 @@ jobs:
 - **FR-40:** System can generate and serve interactive API documentation for the Channel Service
 - **FR-51:** System can apply a configurable daily sell limit per account with a defined default value (SELL orders only; BUY orders have no daily limit)
 - **FR-53:** System can expose health status and operational metrics for each service via a dedicated monitoring endpoint
+- **FR-58:** System can require fresh perimeter validation evidence, owner assignment, and unresolved-finding review before promoting any hardened ingress mode
 
 ### Domain Rules
 
@@ -1359,15 +1367,15 @@ jobs:
 
 ## Non-Functional Requirements
 
-35 NFRs across 10 categories. Each NFR includes a concrete measurement method to enable objective verification.
+37 NFRs across 10 categories. Each NFR includes a concrete measurement method to enable objective verification.
 
 ### Performance
 
 - **NFR-P1:** Channel-service read endpoints (account list, balance inquiry) must achieve p95 response time ≤ 500ms under normal load.
-  _Measurement: Spring Boot Actuator `http.server.requests` metric filtered by `uri` and `outcome=SUCCESS`._
+  _Measurement: Prometheus `http_server_requests_seconds` queried via PromQL and visualized in Grafana p95 panel (`uri`, `outcome=SUCCESS` filters)._
 
 - **NFR-P2:** Order Prepare endpoint (OTP issuance) must achieve p95 response time ≤ 1,000ms under normal load.
-  _Measurement: Actuator `http.server.requests` metric for `/api/v1/orders/sessions`._
+  _Measurement: Prometheus metric query for `/api/v1/orders/sessions` latency series in Grafana._
 
 - **NFR-P3:** Full system cold start (`docker compose up` from clean state) must complete within 120 seconds on a developer laptop (8GB RAM, 4 cores). Vault + vault-init initialization accounts for the extended window vs. a non-Vault baseline. Spring Boot lazy initialization (`spring.main.lazy-initialization=true`) is permitted.
   _Measurement: `time docker compose up --wait` — wall-clock time._
@@ -1376,10 +1384,10 @@ jobs:
   _Measurement: `PositionConcurrencyIntegrationTest` — 10 threads via `ExecutorService`, all futures resolved ≤ 5s._
 
 - **NFR-P5:** `@Lock(PESSIMISTIC_WRITE)` row-level lock hold time must remain ≤ 100ms under normal operating conditions.
-  _Measurement: Micrometer custom timer around the locked transaction block; logged to Actuator metrics._
+  _Measurement: Micrometer custom timer exported to Prometheus and tracked in Grafana lock-time panel._
 
 - **NFR-P6:** Error responses (`4xx`, `5xx`) must meet the same p95 latency SLA as success responses (channel ≤ 500ms, order ≤ 1,000ms). Circuit Breaker OPEN-state fallback responses must also comply.
-  _Measurement: Actuator `http.server.requests` filtered by `outcome=CLIENT_ERROR` and `outcome=SERVER_ERROR`._
+  _Measurement: Prometheus latency series filtered by `outcome=CLIENT_ERROR|SERVER_ERROR`, validated in Grafana comparison panel._
 
 ### Security
 
@@ -1392,8 +1400,8 @@ jobs:
 - **NFR-S3:** CSRF tokens must be validated on all state-changing HTTP requests (POST, PUT, PATCH, DELETE).
   _Measurement: Integration test — submit state-changing request without CSRF token → expect `403 Forbidden`._
 
-- **NFR-S4:** Internal service endpoints (corebank-service:8081, fep-gateway:8083, fep-simulator:8082) must be unreachable from outside the Docker Compose network. Only channel-service:8080 is exposed on host.
-  _Measurement: `curl localhost:8081/actuator/health` → `Connection refused`; `curl localhost:8083/actuator/health` → `Connection refused`; `curl localhost:8082/actuator/health` → `Connection refused`; Docker Compose `ports:` omitted for corebank, fep-gateway, and fep-simulator._
+- **NFR-S4:** Internal service endpoints (corebank-service:8081, fep-gateway:8083, fep-simulator:8082) must be unreachable from outside the Docker Compose network. The current local/dev baseline may expose `channel-service:8080` and `edge-gateway:80/443` on host, but no internal service may publish a host port.
+  _Measurement: `curl localhost:8081/actuator/health` → `Connection refused`; `curl localhost:8083/actuator/health` → `Connection refused`; `curl localhost:8082/actuator/health` → `Connection refused`; Docker Compose `ports:` omitted for corebank, fep-gateway, and fep-simulator. Future hardened mode review also verifies public ingress through `edge-gateway` as the intended contract._
 
 - **NFR-S5:** TOTP step-up authentication must enforce a 3-attempt lockout per order session. Order session TTL must be ≤ 600 seconds. Both enforced server-side via Redis (`ch:otp-attempts:{sessionId}` counter + `ch:order-session:{sessionId}` TTL).
   _Measurement: Submit 3 incorrect TOTP codes → session → `FAILED`, 3rd OTP failure returns HTTP 403 `CHANNEL-003`. Submit 4th OTP attempt on the same (now FAILED) session → HTTP 409 ORD-006 (terminal state). OTP mismatch is HTTP 422 `CHANNEL-002`, and 429는 RATE-001에서만 발생. Session TTL: create session, wait 601s, status query → 404 ORD-005._
@@ -1403,6 +1411,12 @@ jobs:
 
 - **NFR-S7:** All state-changing endpoints must require authenticated session. Requests without a valid session must receive an authentication-required response — not a data response or server error.
   _Measurement: Integration test — call state-changing endpoint with no session cookie → `401 Unauthorized`._
+
+- **NFR-S8:** Any hardened perimeter mode must have a versioned design package defining topology mapping, public route/method contract, trusted proxy extraction rules, service-boundary trust policy, privileged operator access policy, and drill governance before rollout approval.
+  _Measurement: Epic 12 documentation package exists, is linked from the Epic 12 index, and is referenced by the rollout proposal or story package._
+
+- **NFR-S9:** Any hardened perimeter promotion must use a full perimeter validation evidence set from the last 7 days. A scenario marked `not-implemented` invalidates the promotion package.
+  _Measurement: Release checklist links a DMZ drill summary containing `drill_set_id`, `review_window_id`, owner, environment, execution mode, scenario statuses, rerun lineage (`supersedes_drill_set_id` when applicable), and a rolling four-week same-environment drill history keyed by `week_of`, `review_window_id`, `environment`, latest non-superseded `drill_set_id`, and linked summary. The promotion package must also include unresolved finding review (`finding_id`, severity, owner, `scenario_ids`, disposition, reviewer, risk-acceptance link or mitigation due date). Any required scenario with status `not-implemented` or `fail`, any missing rerun lineage, any missing consecutive four-week linkage, any weekly row that does not use the latest non-superseded set for that window, or any unresolved finding without review disposition blocks promotion._
 
 ### Reliability
 
@@ -1498,7 +1512,7 @@ jobs:
 
 ---
 
-> **NFR Traceability summary:** 35 NFRs across 10 categories. Every NFR has a concrete, executable measurement method. Performance NFRs trace to Actuator metrics. Security NFRs trace to integration tests and Docker network configuration. Reliability NFRs trace to CI pipeline. Testability NFRs enforce JaCoCo thresholds and GitHub Actions timeouts. Data integrity verified on every CI run via `PositionIntegrityIntegrationTest`.
+> **NFR Traceability summary:** 37 NFRs across 10 categories. Every NFR has a concrete, executable measurement method. Performance NFRs trace to Prometheus/Grafana metrics. Security NFRs trace to integration tests, perimeter design package rules, and Docker network configuration. Reliability NFRs trace to CI pipeline and release evidence freshness. Testability NFRs enforce JaCoCo thresholds and GitHub Actions timeouts. Data integrity verified on every CI run via `PositionIntegrityIntegrationTest`.
 
 ### FR ↔ NFR Cross-Reference (Key Connections)
 
@@ -1515,3 +1529,4 @@ jobs:
 | FR-33~37, FR-50 (Security & Audit)         | NFR-S2, NFR-L1                                       | Audit log correctness requires PII masking + JSON log structure            |
 | FR-41~42 (Portfolio & Observability)       | NFR-O1 (GitHub Pages API docs 200), NFR-L1 (JSON logs) | Observability claims require both API docs and structured log verification |
 | FR-51, FR-53 (Admin operations)            | NFR-S6 (Dependabot), NFR-M2 (Architecture Decisions) | Admin endpoints require supply chain security + documented rationale       |
+| FR-57~58 (Perimeter hardening governance)  | NFR-S8, NFR-S9                                       | Hardened perimeter rollout requires a complete design package and fresh promotion evidence |

@@ -1,5 +1,7 @@
 # Epic 8: Full System Validation & Acceptance Testing
 
+> Historical artifact. This document preserves prior implementation context and may diverge from the current canonical target contract. For active design truth, refer to `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/prd.md`, `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/channels/api-spec.md`, and Epic 12 documentation for current perimeter validation governance.
+
 > **⚠️ Epic Numbering Note**: This supplemental file was numbered from the securities-order domain and corresponds to **Epic 10 in epics.md: Full Validation & Release Readiness**. The canonical story authority is always `_bmad-output/planning-artifacts/epics.md`.
 
 
@@ -33,7 +35,7 @@ So that the system's correctness claims are continuously verified.
 ### Acceptance Criteria
 
 **Given** Scenario #1 (Standard order E2E happy path) — `OrderControllerIntegrationTest`  
-**When** `POST /api/v1/orders/sessions` → `POST /api/v1/orders/sessions/{sessionId}/otp/verify` → `POST /api/v1/orders/sessions/{sessionId}/execute` full flow (TOTP 3-phase protocol)  
+**When** `POST /api/v1/orders/sessions` → `POST /api/v1/orders/sessions/{sessionId}/otp` → `POST /api/v1/orders/sessions/{sessionId}/execute` full flow (TOTP 3-phase protocol)
 **Then** `ChannelIntegrationTestBase @BeforeEach` performs login + obtains JSESSIONID cookie  
 **And** HTTP 200 COMPLETED, returns `orderId`, verifies DB `executions` record (`executed_qty`, `executed_price`) + `positions.quantity` updated (NFR-R1)
 
