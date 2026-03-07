@@ -11,7 +11,7 @@ AI Agent가 즉각적으로 코드를 스캐폴딩(Scaffolding)하고 기능을 
 
 | Header Name | Required | Description |
 | :--- | :---: | :--- |
-| `X-Internal-Secret` | **Yes** | 내부 API 호출 권한 증명. `InternalSecretFilter`를 통해 검증되며 미포함 시 `403 Access Denied`. |
+| `X-Internal-Secret` | **Yes** | 내부 API 호출 권한 증명. `InternalSecretFilter`를 통해 검증되며 미포함 또는 불일치 시 `401 CORE-9401`. |
 | `X-Correlation-Id` | **Yes** | 3-Tier 전체(채널-계정-FEP) 로그 추적을 위한 UUID. 로그의 MDC(Mapped Diagnostic Context)에 주입 필수. |
 | `X-ClOrdID` | 주문 API에서 **Yes** | 주문 식별 헤더. 주문 계열 API에서는 `X-ClOrdID == body/path clOrdId` 계약을 강제하며 불일치 시 `VALIDATION-001`. |
 

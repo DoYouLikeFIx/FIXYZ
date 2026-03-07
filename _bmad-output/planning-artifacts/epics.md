@@ -2,7 +2,7 @@
 stepsCompleted: [1, 2, "3-epic0", "3-epic1", "3-epic2", "3-epic3", "3-epic4", "3-epic5", "3-epic6", "3-epic7", "3-epic8", "3-epic9", "3-epic10", "3-epic11", "3-epic12"]
 step3Progress: "Bottom-up detailed epics complete (Epic 0~12, BE/FE/MOB ownership)"
 version: "v2-detailed-bottom-up"
-updated: "2026-03-06"
+updated: "2026-03-07"
 inputDocuments:
   - "_bmad-output/planning-artifacts/prd.md"
   - "_bmad-output/planning-artifacts/architecture.md"
@@ -262,13 +262,15 @@ Defines simulator-grade market data contracts (LIVE/DELAYED/REPLAY), quote fresh
 
 ### Epic 12: Financial DMZ Boundary and Perimeter Hardening
 
-Defines finance-grade DMZ boundary controls to enforce strict ingress/egress segmentation, protected internal exposure, and auditable perimeter operations.
+Defines the documentation package for future finance-grade DMZ boundary controls.
 
-**Execution Boundary:** Story 0.7 remains the baseline owner for TLS termination, basic security headers, and route forwarding. Epic 12 extends that baseline with DMZ segmentation profiles, abuse controls, trust-boundary hardening, and drill gates.
+**Execution Boundary:** Story 0.7 remains the active runtime owner for TLS termination, basic security headers, and route forwarding. Epic 12 currently carries design, governance, and handoff documents only.
 
-**Deployment Transition Policy:** Preserve current baseline contract (`default compose`: channel-service host exposure) and add DMZ contract (`dmz profile`: edge-only host exposure). Promotion to DMZ contract is explicit and reversible.
+**Deployment Transition Policy:** Any future DMZ runtime rollout must be introduced through new reviewed runtime artifacts. No Epic 12-specific runtime overlay or drill automation is currently active in this repository.
 
 **Priority Policy (planning metadata):** Default Medium. Move to Low only with an explicit risk-acceptance record in `docs/ops/risk-acceptance/<YYYYMMDD>-epic12.md`.
+
+**PRD Anchors:** `FR-57`, `FR-58`, `NFR-S8`, `NFR-S9`
 
 **Story Hints:**
 - Story 12.1: BE/OPS DMZ Network Segmentation Profile
@@ -2326,37 +2328,31 @@ So that I understand valuation confidence before execution.
 
 ## Epic 12: Financial DMZ Boundary and Perimeter Hardening
 
-> **Scope note:** Story 0.7 already owns baseline edge functions (TLS termination, base headers, upstream forwarding, and internal/admin path blocking). Epic 12 adds hardening layers and DMZ operating controls only.
-> **Transition note:** Default profile and PRD baseline remain valid during migration. DMZ profile is introduced as an explicit rollout mode.
+> **Scope note:** Story 0.7 remains the active runtime baseline. Epic 12 is currently documentation-only and exists to preserve a complete DMZ design package without keeping partial runtime code in the repository.
+> **Transition note:** Future Epic 12 implementation must reintroduce runtime assets through a new reviewed change set that updates the design documents at the same time.
 
 ### Story 12.1: [BE/OPS][CH] DMZ Network Segmentation Profile
 
 As a **platform security owner**,  
 I want explicit DMZ network segmentation profiles,  
-So that public ingress, internal service traffic, and operations paths are isolated by design.
+So that public ingress, channel traffic, and private dependencies are isolated by design before code is reintroduced.
 
-**Depends On:** Story 0.7, Story 0.9
+**Depends On:** Story 0.7, Story 0.9, Story 0.13
 
 **Acceptance Criteria:**
 
-- **Given** default runtime profile  
-  **When** host exposure is inspected  
-  **Then** baseline contract is preserved (`channel-service:8080` exposed; corebank/fep-gateway/fep-simulator non-exposed) to remain compatible with existing PRD scope.
-- **Given** DMZ deployment profile `docker-compose.dmz.yml`  
-  **When** service-to-network membership is inspected  
-  **Then** logical zone mapping is enforced (`edge zone`, `application zone`, `core private zone`) and no service is attached to all zones simultaneously.
-- **Given** architecture network-isolation baseline  
-  **When** DMZ profile documentation is reviewed  
-  **Then** logical zone mapping explicitly traces to architecture isolation lanes (`external-net`, `core-net`, `gateway-net`, `fep-net`) to avoid naming drift.
-- **Given** network mapping evidence document  
-  **When** review is executed  
-  **Then** `docs/ops/dmz-network-mapping.md` maps default `fix-net` and DMZ profile zones with explicit migration steps.
-- **Given** DMZ profile host exposure inventory  
-  **When** compose config is rendered  
-  **Then** only `edge-gateway` publishes `80/443` and `channel-service`, `corebank-service`, `fep-gateway`, `fep-simulator` publish no host ports.
-- **Given** boundary verification drill from host network  
-  **When** probes are executed for `localhost:8080/8081/8082/8083` under DMZ profile  
-  **Then** all direct probes fail and only edge-routed channel APIs remain reachable.
+- **Given** the active Story 0.7 baseline
+  **When** `docs/ops/dmz-network-mapping.md` is reviewed
+  **Then** current host exposure, services without direct host ports, and edge-visible baseline exceptions are explicitly documented.
+- **Given** the target Epic 12 topology
+  **When** the design package is reviewed
+  **Then** edge/application/core-private zones, allowed flows, and owner services are explicitly documented.
+- **Given** future implementation planning
+  **When** Story 12.1 is reviewed
+  **Then** the expected future repository-owned runtime specification, default compose filename if Compose is used, verification points, and rollback triggers are documented.
+- **Given** architecture isolation concerns
+  **When** Story 12.1 is reviewed
+  **Then** any lane split or lane collapse decisions are explicit instead of hidden inside deployment config.
 
 ### Story 12.2: [BE/OPS][CH] Edge Perimeter Policy Hardening
 
@@ -2370,19 +2366,31 @@ So that only approved routes and methods are reachable from external clients.
 
 - **Given** explicit route-method matrix in `docs/ops/dmz-route-policy.md`  
   **When** a request targets disallowed path or method  
-  **Then** edge returns deterministic deny mapping (`404` for unknown path or disallowed method, `403` for internal namespace).
-- **Given** abuse-control thresholds  
-  **When** traffic exceeds limits (`unknown routes: 60 req/min/IP, burst 20`; `sensitive routes: 20 req/min/IP, burst 5`)  
+  **Then** edge returns deterministic deny mapping with stable machine codes (`404 EDGE_ROUTE_NOT_ALLOWED` for unknown path, `404 EDGE_METHOD_NOT_ALLOWED` for disallowed method, `403 EDGE_INTERNAL_NAMESPACE_DENIED` for internal namespace).
+- **Given** abuse-control thresholds
+  **When** traffic exceeds limits (`unknown routes: 60 req/min/source_identity, burst 20`; `sensitive routes: 20 req/min/source_identity, burst 5`)
   **Then** edge returns `429` with retry metadata and request-id for audit trace.
-- **Given** repeated abuse from same source  
-  **When** an IP triggers at least 5 rate-limit violations within 5 minutes  
-  **Then** temporary deny rule is applied for 10 minutes via `docs/ops/dmz-abuse-response.md` procedure and a security event is recorded.
+- **Given** repeated abuse from same source
+  **When** the same normalized `source_identity` triggers at least 5 rate-limit violations within 5 minutes
+  **Then** the design package defines a 10-minute temporary deny, `Retry-After` behavior, deterministic response contract, and required security event fields in `docs/ops/dmz-abuse-response.md`.
 - **Given** client identity extraction for abuse controls  
   **When** request source is evaluated  
   **Then** limiter key uses trusted proxy chain policy (`X-Forwarded-For` only from trusted ingress, otherwise `remote_addr`).
 - **Given** trusted ingress allowlist source  
   **When** runtime configuration is inspected  
-  **Then** trusted CIDR sources come only from `EDGE_TRUSTED_PROXY_CIDR_*` environment variables managed in DMZ profile configuration and documented in `docs/ops/dmz-trusted-proxies.md`.
+  **Then** trusted CIDR ownership, review flow, and future configuration surface are documented in `docs/ops/dmz-trusted-proxies.md`.
+- **Given** active Story 0.7 scaffold routes
+  **When** Story 12.2 is reviewed
+  **Then** scaffold-only public paths and missing scaffold coverage relative to the canonical target contract are explicitly inventoried instead of being implied.
+- **Given** the current Story 0.7 edge alias surface
+  **When** Story 12.2 is reviewed
+  **Then** `/api/v1/channel/*` is explicitly treated as a legacy edge-only alias that must be denied in hardened mode unless an ADR-backed migration exception is approved.
+- **Given** ambiguous request path encodings or trailing-slash variants
+  **When** the perimeter policy is reviewed
+  **Then** canonical path normalization and route matching rules are explicit.
+- **Given** privileged DMZ operator flows
+  **When** Story 12.2 is reviewed
+  **Then** the public edge policy explicitly excludes privileged operator surfaces from the public allowlist and points to the private Story 12.4 operator path.
 
 ### Story 12.3: [BE/OPS][SEC] Service Boundary Trust Hardening (Internal Secret Rotation + mTLS Readiness)
 
@@ -2390,22 +2398,22 @@ As a **service trust owner**,
 I want hardened service-boundary trust controls with rotation safety,  
 So that east-west traffic is resilient to spoofing and stale credential risk.
 
-**Depends On:** Story 0.8, Story 8.3, Story 12.1
+**Depends On:** Story 0.8, Story 0.13, Story 8.3, Story 12.1
 
 **Acceptance Criteria:**
 
-- **Given** internal secret rotation runbook  
-  **When** rotation starts  
-  **Then** dual-secret overlap window of 15 minutes allows safe cutover without rejecting valid in-flight service calls.
-- **Given** rotation cutover completion  
-  **When** overlap window expires  
-  **Then** previous secret is fully invalidated within 10 minutes and stale-secret requests are rejected.
-- **Given** rotation availability SLO  
-  **When** rotation drill is executed for a 15-minute window with at least 500 service-to-service requests  
-  **Then** 5xx rate stays at or below 0.5% and no continuous outage exceeds 30 seconds.
-- **Given** phase-2 trust roadmap  
-  **When** architecture artifacts are reviewed  
-  **Then** mTLS readiness ADR and one service-pair PoC profile exist as non-blocking MVP outputs.
+- **Given** trust-hardening design review
+  **When** `docs/ops/dmz-trust-hardening.md` is reviewed
+  **Then** dual-secret overlap window, invalidation timing, and stale-secret behavior are explicit.
+- **Given** trust validation planning
+  **When** Story 12.3 is reviewed
+  **Then** service pairs, workload shape, numerator/denominator calculation, and pass/fail thresholds are explicit.
+- **Given** mTLS readiness scope
+  **When** Story 12.3 is reviewed
+  **Then** ADR output, the fixed `channel-service -> corebank-service` PoC scope, and deferred items are explicit.
+- **Given** non-local Vault constraints
+  **When** Story 12.3 is reviewed
+  **Then** Story 0.13 requirements are carried forward as mandatory upstream context.
 
 ### Story 12.4: [OPS][SEC] Admin Access Control Path for DMZ Operations
 
@@ -2413,19 +2421,28 @@ As a **security operations lead**,
 I want controlled DMZ administration access paths,  
 So that privileged operations are restricted, temporary, and fully auditable.
 
-**Depends On:** Story 0.8, Story 7.5, Story 8.1
+**Depends On:** Story 0.13, Story 7.5, Story 8.1
 
 **Acceptance Criteria:**
 
 - **Given** privileged DMZ maintenance requests  
   **When** access is granted  
-  **Then** access uses Vault short-lived credentials with TTL at or below 30 minutes and least-privilege policy scope.
+  **Then** `docs/ops/dmz-admin-access.md` defines Vault-issued short-lived credentials with TTL at or below 30 minutes, least-privilege scope, and non-local environment constraints.
 - **Given** credential TTL expiry  
   **When** TTL elapses  
-  **Then** privileged access is auto-revoked without Keycloak dependency within 60 seconds and subsequent privileged calls are denied.
+  **Then** Story 12.4 defines auto-revocation target within 60 seconds and deterministic denial after expiry.
 - **Given** privileged action execution  
   **When** audit/security events are queried  
-  **Then** actor, action, target, timestamp, correlation-id, reason, and ticket-id are all mandatory fields.
+  **Then** actor, action, target, timestamp, correlation-id, reason, ticket-id, credential reference, approver, environment, and listener scope are all mandatory fields.
+- **Given** privileged credential issuance
+  **When** Story 12.4 is reviewed
+  **Then** the bootstrap identity that may call `issue` and the private operator access path are explicit.
+- **Given** approved automation issuance
+  **When** Story 12.4 is reviewed
+  **Then** workload identity registration, rotation, suspension, and scope-separation rules are explicit.
+- **Given** task-specific privileged controls such as temp deny management
+  **When** Story 12.4 is reviewed
+  **Then** the shared operator contract explicitly allows task-specific operations and response fields without diverging from the common `dmz:access:*` model.
 
 ### Story 12.5: [BE/OPS][INT] DMZ Security Drill and Evidence Gate
 
@@ -2437,21 +2454,24 @@ So that perimeter controls are proven before deployment promotion.
 
 **Acceptance Criteria:**
 
-- **Given** DMZ drill scenarios (`blocked direct internal access`, `route-method deny`, `abuse rate-limit`, `stale-secret rejection`, `admin credential TTL expiry`)  
+- **Given** DMZ drill scenarios (`blocked direct internal access`, `route-method deny`, `abuse rate-limit`, `trusted proxy untrusted spoof rejected`, `trusted proxy malformed-chain fallback`, `trusted proxy right-most hop selection`, `stale-secret rejection`, `admin credential TTL expiry`)
   **When** scheduled validation runs  
-  **Then** any failed scenario blocks promotion with explicit failure reason and owner assignment.
-- **Given** Story 12.3 or Story 12.4 is still `backlog`  
-  **When** weekly scheduled DMZ drill runs  
-  **Then** `stale-secret rejection` and `admin credential TTL expiry` may be recorded as `pending`, and promotion enforcement must rerun with trust-scenario enforcement enabled.
+  **Then** any failed or not-yet-implemented required scenario blocks promotion with explicit failure reason and owner assignment.
 - **Given** drill evidence packaging  
   **When** artifacts are generated  
-  **Then** artifacts are stored under `docs/ops/evidence/dmz/<YYYYMMDD>/` with naming `dmz-<scenario>-<YYYYMMDDTHHMMSSZ>.json` plus `summary-index.json`.
+  **Then** artifacts follow `docs/ops/evidence/dmz/README.md` exactly, including execution mode, environment, control state, and `review_window_id`.
 - **Given** first DMZ promotion gate  
   **When** release readiness is reviewed  
-  **Then** at least one full successful DMZ drill result within the last 7 days and unresolved findings are linked from the release checklist.
+  **Then** at least one full successful DMZ drill result within the last 7 days and unresolved findings with owner, disposition, and reviewer evidence are linked from the release checklist.
 - **Given** steady-state DMZ operation after first promotion  
   **When** periodic governance review runs  
   **Then** rolling last four weekly drill results are retained and linked.
-- **Given** DMZ drill automation ownership  
-  **When** operations controls are reviewed  
-  **Then** `.github/workflows/dmz-security-drill.yml` exists with weekly schedule and explicit `SEC` owner metadata.
+- **Given** a flaky or repeated drill scenario in the same review window
+  **When** the scenario is rerun
+  **Then** a new `drill_set_id` is created and the previous set is treated as superseded rather than mutated in place.
+- **Given** release checklist lineage requirements
+  **When** Story 12.5 is reviewed
+  **Then** the checklist template records `review_window_id`, `supersedes_drill_set_id` when applicable, and links the rolling last four consecutive weekly same-environment drill sets using the latest non-superseded set for each week.
+- **Given** DMZ drill governance ownership
+  **When** operations controls are reviewed
+  **Then** `docs/ops/dmz-drill-governance.md` defines owner `SEC`, intended cadence, and promotion semantics.

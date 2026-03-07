@@ -1,5 +1,7 @@
 # 채널 시스템 — 상태 모델 설계 (v1.0)
 
+> **상태 모델 참조 노트**: 이 문서는 도메인 상태 전이와 이벤트 모델을 설명하는 참조 문서다. 아래 예시 경로는 초기 설계 시점의 표현을 일부 보존할 수 있으며, 현재 Story 0.7 스캐폴드의 부분 구현이나 Epic 12가 유지하는 정본 target contract와 정확히 일치한다고 가정하면 안 된다. 실제 공개 API 정본과 스캐폴드/edge divergence는 `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/prd.md`, `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/channels/api-spec.md`, `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/channels/login_flow.md`, Epic 12 문서를 따른다.
+
 채널계는 **4개의 독립 상태 머신**으로 구성된다.
 
 | 테이블 | 상태 컬럼 | 상태 전이 권한 |

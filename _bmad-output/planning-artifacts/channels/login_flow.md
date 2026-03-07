@@ -6,6 +6,8 @@
 > **세션 타임아웃**: 30분 비활성 (UX 타협 — 금감원 권고 10~15분 대비 완화, MVP 단계 적용. 실 운영 시 단축 검토 필요)  
 > **MVP 제약**: 단일 Redis 인스턴스 (SPOF) — P2 Sentinel 전환 예정  
 > **대상 독자**: 구현 개발자, 면접관 설명용
+>
+> **Canonical target flow note**: This document describes the product-level target flow, not the current Story 0.7 scaffold parity surface. Current direct scaffold exposure is still partial, and the public edge baseline still uses legacy `/api/v1/channel/*` aliases. When this document uses `GET /api/v1/auth/session`, `POST /api/v1/orders/sessions/{id}/otp`, or `GET /api/v1/orders/sessions/{id}`, treat them as canonical target-contract flows and refer to Epic 12 parity inventory for current baseline divergence.
 
 ---
 
@@ -846,7 +848,7 @@ ALTER TABLE member ADD COLUMN totp_enrolled_at TIMESTAMP NULL;
 | 동작 | Vault API (HTTP) | 발생 시점 |
 |------|------------------|-----------|
 | Secret 저장 | `PUT /v1/secret/fix/member/{memberId}/totp-secret` | `POST /totp/enroll` |
-| Secret 조회 | `GET /v1/secret/fix/member/{memberId}/totp-secret` | `POST /totp/confirm` + `POST /api/v1/orders/sessions/{sessionId}/otp/verify` |
+| Secret 조회 | `GET /v1/secret/fix/member/{memberId}/totp-secret` | `POST /totp/confirm` + `POST /api/v1/orders/sessions/{orderSessionId}/otp` |
 | Secret 삭제 | `DELETE /v1/secret/fix/member/{memberId}/totp-secret` | `DELETE /totp` |
 
 ### OtpService 인터페이스
