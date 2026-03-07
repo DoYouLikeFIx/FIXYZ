@@ -1,5 +1,7 @@
 # Epic 6: Security, Audit & Administration
 
+> Historical artifact. This document preserves prior implementation context and may diverge from the current canonical target contract. For active design truth, refer to `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/prd.md`, `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/channels/api-spec.md`, and Epic 12 documentation for current perimeter/operator governance rules.
+
 > **⚠️ Epic Numbering Note**: This supplemental file was numbered from the securities-order domain and corresponds to **Epic 8 in epics.md: Cross-system Security, Audit, Observability**. The canonical story authority is always `_bmad-output/planning-artifacts/epics.md`.
 
 
@@ -118,7 +120,7 @@ So that abuse, CSRF attacks, and network bypass attempts are all rejected.
 **When** Check configuration  
 **Then** Applied only to 3 endpoints:
 - `POST /api/v1/auth/login`: 5 req/min/IP
-- `POST /api/v1/orders/sessions/{id}/otp/verify`: 3 times/session
+- `POST /api/v1/orders/sessions/{id}/otp`: 3 times/session
 - `POST /api/v1/orders/sessions`: 10 req/min/userId
 
 **Given** Rate limit exceeded  

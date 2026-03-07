@@ -1,6 +1,8 @@
 # Epic 7: Observability, API Docs & README
 
 > **⚠️ Epic Numbering Note**: This supplemental file was numbered from the securities-order domain and corresponds to **Epic 8 in epics.md: Cross-system Security, Audit, Observability (partial)**. The canonical story authority is always `_bmad-output/planning-artifacts/epics.md`.
+>
+> **Historical artifact**: This document preserves prior implementation and demo context and may diverge from the current canonical target contract. For active API and flow truth, refer to `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/prd.md`, `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/channels/api-spec.md`, `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/channels/login_flow.md`, and Epic 12 documentation for scaffold-divergence handling.
 
 
 ## Summary
