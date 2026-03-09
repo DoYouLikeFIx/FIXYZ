@@ -65,11 +65,13 @@ Six capability domains, all implemented in `channel-service` unless noted:
 
 | NFR Category                | Requirement                                                                              | Architectural Impact                                                                                 |
 | --------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| Concurrency                 | `SELECT FOR UPDATE` on position writes                                                   | Pessimistic lock on position entity (EAGER mode); QueryDSL daily-sell-limit runs inside lock scope   |
-| Concurrent session race     | `AUTHED→EXECUTING` state transition must be atomic                                       | Redis `SET ch:txn-lock:{sessionId} NX EX 30` before CoreBanking call; `NX` failure → `CORE-003`      |
-| Security                    | HttpOnly + Secure + SameSite cookie, CSRF Double Submit Cookie, PII masking, step-up OTP | Spring Security + `CookieCsrfTokenRepository` (`XSRF-TOKEN` → `X-XSRF-TOKEN`) + `AccountNumber.masked()` in `channel-common`  |
-| Resilience                  | Circuit breaker OPEN after 3 FEP timeouts (Resilience4j `slidingWindowSize=3`); compensating position reversal on post-commit failure | **단일 CB 레이어**: Resilience4j `@CircuitBreaker(name="fep")` on `FepClient` in **corebank-service** — `slidingWindowSize=3`, `failureRateThreshold=100`, `waitDurationInOpenState=10s`. CB OPEN preemptive: no `@Transactional`, no order record, no position change. Post-commit FEP failure: compensating position reversal via `OrderSessionRecoveryService` (corebank-service-owned). CB state: `localhost:8081/actuator/circuitbreakers` |
+| Concurrency                 | `SELECT FOR UPDATE` on `(account_id, symbol)` position writes                            | Pessimistic lock on position entity (EAGER mode); cross-symbol isolation must hold (005930 and 000660 can execute in parallel) |
+| Concurrent session race     | `AUTHED→EXECUTING` state transition must be atomic                                       | Redis `SET ch:txn-lock:{sessionId} NX EX 30` before CoreBanking call; `NX` failure → `ORD-010`      |
+| Security                    | HttpOnly + Secure + SameSite cookie, CSRF Synchronizer Token, PII masking, step-up OTP | Spring Security + `HttpSessionCsrfTokenRepository` + CSRF bootstrap `GET /api/v1/auth/csrf` + non-GET `X-CSRF-TOKEN` + `AccountNumber.masked()` in `channel-common` |
+| Resilience                  | Circuit breaker OPEN after 3 FEP timeouts (Resilience4j `slidingWindowSize=3`); post-commit failure escalates external sync state | **단일 CB 레이어**: Resilience4j `@CircuitBreaker(name="fep")` on `FepClient` in **corebank-service** — `slidingWindowSize=3`, `failureRateThreshold=100`, `waitDurationInOpenState=10s`. CB OPEN preemptive: no `@Transactional`, no order record, no position change. Post-commit FEP failure: canonical fill 유지 + `external_sync_status=FAILED/ESCALATED`, `OrderSession=ESCALATED` for replay/requery recovery. CB state: `localhost:8081/actuator/circuitbreakers` |
 | Idempotency                 | `ClOrdID` UNIQUE at DB level                                                             | `UNIQUE INDEX idx_clordid (cl_ord_id)` in `core_db.orders`                                          |
+| Execution source of truth   | Local CoreBanking Order Book match is canonical in simulator mode                        | `executions`/`positions` are committed from local matcher; FEP `ExecutionReport` used for confirmation/recovery only |
+| Market Data                 | `LIVE` / `DELAYED` / `REPLAY` source modes with quote freshness bound                    | `quoteSnapshotId` + `quoteAsOf` + `quoteSourceMode` required for MARKET pre-check and valuation; stale snapshots are rejected deterministically |
 | Observability (Demo)        | Actuator selectively exposed for screenshare demo                                        | `circuitbreakers` + `health` endpoints accessible without auth; FEP chaos endpoint robustly designed |
 | Rate Limiting               | Login: 5 req/min/IP; OTP: 3/session; Order Prepare: 10 req/min/userId                   | Bucket4j + Redis-backed `Filter` on 3 endpoints only                                                |
 | Test Coverage               | CoreBanking ≥ 80%, Channel ≥ 70%, FEP Gateway ≥ 60%, FEP Simulator ≥ 60%                 | JaCoCo in Gradle; real MySQL + Redis via Testcontainers (H2 disqualified for runtime/integration, OpenAPI generation-only profile exception) |
@@ -111,19 +113,27 @@ Six capability domains, all implemented in `channel-service` unless noted:
 | ------------------------ | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Trace propagation        | All 4 backend services               | `traceparent` + `X-Correlation-Id` headers; MDC injection via `OncePerRequestFilter`                                                                                                                                                                                                                                                                                                        |
 | PII masking              | Channel layer (logs + API responses) | `AccountNumber.masked()` in `channel-common`; unit-tested — full number must never appear in output                                                                                                                                                                                                                                                                                         |
-| Error code taxonomy      | All services                         | API 응답: `CHANNEL-xxx` / `ORD-xxx` / `CORE-xxx` / `FEP-xxx` / `SYS-xxx` → `GlobalExceptionHandler` → standard response envelope; `AUTH-xxx`는 Spring Security 내부 코드 (RULE-031, P-F5). **FEP RC 코드**: `RC=9001 NO_ROUTE` / `RC=9002 POOL_EXHAUSTED` / `RC=9003 NOT_LOGGED_ON` / `RC=9004 TIMEOUT` / `RC=9005 KEY_EXPIRED` / `RC=9097 ORDER_REJECTED` / `RC=9098 CIRCUIT_OPEN` / `RC=9099 CONCURRENCY_FAILURE`                                                                                                                                                                                                                                                                                                |
+| Error code taxonomy      | All services                         | API 응답: `AUTH-xxx` / `CHANNEL-xxx` / `ORD-xxx` / `CORE-xxx` / `FEP-xxx` / `SYS-xxx`를 외부 계약 코드로 사용하고 `GlobalExceptionHandler` 표준 봉투로 반환한다 (RULE-031, P-F5). OTP는 `CHANNEL-002/003`, `429`는 `RATE-001`만 사용. **FEP RC 코드**: `RC=9001 NO_ROUTE` / `RC=9002 POOL_EXHAUSTED` / `RC=9003 NOT_LOGGED_ON` / `RC=9004 TIMEOUT` / `RC=9005 KEY_EXPIRED` / `RC=9097 ORDER_REJECTED` / `RC=9098 CIRCUIT_OPEN` / `RC=9099 CONCURRENCY_FAILURE`                                                                                                                                                                                                                                                                                                |
 | Docker network isolation | Compose layer                        | `external-net` (Channel only, port 8080 exposed), `core-net` (Channel↔CoreBanking), `gateway-net` (CoreBanking↔FEP Gateway:8083), `fep-net` (FEP Gateway↔FEP Simulator:8082); no ports on CoreBanking, FEP Gateway, or FEP Simulator exposed to host                                                                                                                                                                                                                                                                                                                                             |
 | Internal API secret      | Service-to-service                   | `X-Internal-Secret` header validated by `OncePerRequestFilter` (copy-paste MVP); `INTERNAL_API_SECRET` env var                                                                                                                                                                                                                                                                              |
-| Saga ownership           | Channel ↔ CoreBanking                | **Channel-service is the saga orchestrator** — owns `OrderExecutionService`, calls CoreBanking execute, issues compensating position release on FEP failure; CoreBanking executes Order Book + position mutation atomically                                                                                                                                                                |
+| Saga ownership           | Channel ↔ CoreBanking                | **Channel-service is the saga orchestrator** — owns `OrderExecutionService`, calls CoreBanking execute, and on FEP failure drives `ESCALATED` replay/requery workflow; CoreBanking executes Order Book + position mutation atomically                                                                                                                                                                |
 | Audit logging            | Channel layer                        | `audit_logs` + `security_events` tables; scheduled purge (90/180 days)                                                                                                                                                                                                                                                                                                                      |
 | Rate limiting            | Channel layer                        | Bucket4j Filter on 3 endpoints only (login, OTP verify, order prepare)                                                                                                                                                                                                                                                                                                                   |
-| CSRF                     | Channel ↔ React/Mobile               | Double Submit Cookie (`CookieCsrfTokenRepository.withHttpOnlyFalse()`); `GET /api/v1/auth/csrf`로 `XSRF-TOKEN` 발급 후 모든 non-GET에 `X-XSRF-TOKEN` 주입; 로그인 성공 후 재조회 필수 (`changeSessionId()` 후 토큰 재발급) |
+| CSRF                     | Channel ↔ React/Mobile               | Synchronizer Token (`HttpSessionCsrfTokenRepository`); bootstrap endpoint `GET /api/v1/auth/csrf`에서 토큰 수령 후 모든 non-GET 요청에 `X-CSRF-TOKEN` 주입; 로그인 성공 후 `changeSessionId()` 이후 CSRF 토큰 재조회 필수 |
 | SSE lifecycle            | Channel ↔ Frontend                   | SSE endpoint is session-aware push channel; backend must push session-expiry event proactively before TTL expires; CORS `allowCredentials=true` must explicitly cover `/api/v1/notifications/stream`; production (cross-origin Vercel→EC2): `allowCredentials=true` + exact origins required (`fix-xxx.vercel.app`, `localhost:5173`); `EventSource({ withCredentials: true })` on frontend |
 | Demo infrastructure      | Actuator + FEP chaos                 | `circuitbreakers` + `health` accessible without auth for screenshare; `PUT /fep-internal/rules` robustly designed (chaos endpoint is a demo use case, not test-only)                                                                                                                                                                                                                       |
 | ADR format               | Architecture document                | Key decisions use lightweight ADR: Context → Decision → Consequences; pessimistic lock rationale and simulation boundaries documented for verbatim interview narration                                                                                                                                                                                                                      |
 
 ---
 
+### PR-00 정본 결정표
+
+| 결정 항목 | 정본 값(확정) | 적용 규칙 |
+| --- | --- | --- |
+| 세션 쿠키명 | `SESSION` | Spring Session 기본 쿠키명을 사용하며 별도 쿠키명 커스터마이징을 적용하지 않는다 |
+| CSRF | Synchronizer Token + `HttpSessionCsrfTokenRepository` | 프론트 bootstrap: `GET /api/v1/auth/csrf`로 토큰 수신 후 모든 non-GET에 `X-CSRF-TOKEN` 포함. 로그인 성공 후 토큰 재조회 |
+| Gateway↔Simulator 통신 | Data plane=`FIX 4.2 TCP (QuickFIX/J)`, Control plane=`HTTP + X-Internal-Secret` | 주문/체결은 FIX만 사용, 카오스/운영 제어 API만 HTTP 사용 |
+| 주문 식별자 표기 | field/path=`clOrdId`, header=`X-ClOrdID` | 주문 계열 요청에서 `X-ClOrdID` 필수, `X-ClOrdID == body/path clOrdId` 계약 강제 |
 ### Intentional Simplifications
 
 _Decisions that look like shortcuts but are deliberate, with the production path documented. Demonstrating this reasoning is a senior engineering signal._
@@ -146,12 +156,26 @@ _Primary framing device for interviewer objections. Each boundary documented as:
 | Real Component          | FIX Simulator                                        | Interface Contract                                                            | Production Delta                                                | Talking Point                                              |
 | ----------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------- |
 | SMS OTP delivery gateway | TOTP via Google Authenticator (RFC 6238); secret in Vault `secret/fix/member/{memberId}/totp-secret` | `OtpService.generateSecret()` / `OtpService.confirmEnrollment()` / `OtpService.verify()` | Add SMS gateway if required; TOTP secret optionally from HSM; Vault stays | "I chose TOTP: stronger 2FA, zero telephony cost, Vault key management" |
-| KRX FEP gateway (FIX 4.2)  | **FEP Gateway** (`fep-gateway:8083`) + **FEP Simulator** (`fep-simulator:8082`) — Gateway는 FIX 4.2 변환·라우팅·키 관리를 담당; Simulator는 가상 거래소로 QuickFIX/J SocketAcceptor 역할 + Chaos 주입 | `POST /fep/v1/orders` (JSON/HTTP, CoreBanking→Gateway) → Gateway가 FIX 4.2 `NewOrderSingle(35=D)`로 변환 → Simulator 응답 `ExecutionReport(35=8)` | FEP Gateway의 `fep_institutions.host/port`를 실제 KRX 기관 IP로 교체; `fep_protocol_specs` 기관별 FIX 4.2 필드 명세 커스터마이즈 | "Gateway가 프로토콜 변환·키 관리를 담당하고; CB는 corebank-service FepClient에서 관리; Simulator가 거래소를 모사한다 — 와이어는 교체되지만 아키텍처는 유지된다" |
+| KRX FEP gateway (FIX 4.2)  | **FEP Gateway** (`fep-gateway:8083`) + **FEP Simulator** (`fep-simulator:8082`) — Gateway는 시세 수신(LIVE/DELAYED/REPLAY)과 가상 체결 엔진 연계를 담당하고, FIX 4.2 변환·라우팅·키 관리도 담당; LIVE 시세 공급자는 KIS Open API WebSocket(`H0STCNT0`)을 사용하고, approval-key 발급(`/oauth2/Approval`) + `encFlag|trId|count|payload` 프레임 파서를 가진다 | `POST /fep/v1/orders` (JSON/HTTP, CoreBanking→Gateway) + quote snapshot contract (`quoteSnapshotId`, `quoteAsOf`, `quoteSourceMode`) → Gateway가 FIX 4.2 `NewOrderSingle(35=D)` 변환/전송 → Simulator 응답 `ExecutionReport(35=8)` | FEP Gateway의 `fep_institutions.host/port`를 실제 KRX 기관 IP로 교체; 시장데이터 공급원만 실거래소 벤더로 교체하면 상위 도메인 계약 유지 | "모의투자에서는 대외계 핵심이 시세 + 가상체결이다. 실거래 연계로 바꿔도 인터페이스 계약은 유지된다" |
 | KSD (예탁결제원) settlement | Not implemented                                      | Documented boundary in README                                                 | Add `SettlementService` at post-execution step                          | "Settlement boundary is explicit and documented"           |
 | 공인인증서 (공동인증서) | Spring Security session cookie                       | `AuthenticationProvider` interface                                            | Swap `AuthenticationProvider` implementation for PKI provider           | "Spring Security abstracts the trust anchor"               |
 | Real PII (주민등록번호) | Faker-generated test data                            | `AccountNumber.masked()` utility                                              | No change to masking logic; swap seed data                              | "Masking pattern is production-correct; data is synthetic" |
 
 ---
+
+### KIS WebSocket Provider Contract (LIVE)
+
+`LIVE` 시장데이터 모드는 한국투자 Open API WebSocket `H0STCNT0`를 기준으로 구현한다.
+
+- 실전/모의 endpoint: `ws://ops.koreainvestment.com:21000` / `ws://ops.koreainvestment.com:31000`
+- 구독 요청: header(`approval_key`, `custtype`, `tr_type`, `content-type=utf-8`) + body(`tr_id`, `tr_key`)
+- 해제 요청: `tr_type=2` 고정 (`1` 등록)
+- 실시간 프레임: `encFlag|trId|count|payload` (`^` field delimiter)
+- `count` 기준 멀티레코드 분리 파싱 + `encFlag=1` 시 AES key/iv 복호화
+- ETN 심볼은 `^Q\\d{6}$` 형식까지 허용
+
+Provider-specific parsing/ops details are documented in:
+`_bmad-output/planning-artifacts/fep-gateway/kis-websocket-h0stcnt0-spec.md`
 
 ## Starter Template Evaluation
 
@@ -220,7 +244,7 @@ testImplementation "org.testcontainers:junit-jupiter:${versions.testcontainers}"
 | Decision    | Value                                             |
 | ----------- | ------------------------------------------------- |
 | Web layer   | Spring MVC (servlet stack) — `SseEmitter` for SSE |
-| Security    | Spring Security 6.x (Lambda DSL config)           |
+| Security                    | HttpOnly + Secure + SameSite cookie, CSRF Synchronizer Token, PII masking, step-up OTP | Spring Security + `HttpSessionCsrfTokenRepository` + CSRF bootstrap `GET /api/v1/auth/csrf` + non-GET `X-CSRF-TOKEN` + `AccountNumber.masked()` in `channel-common` |
 | Session     | Spring Session Redis (`@EnableRedisHttpSession`)  |
 | Data access | Spring Data JPA + Hibernate 6.x                   |
 | Migrations  | Flyway auto-run on startup                        |
@@ -512,17 +536,17 @@ _Flat reference for implementers. Every named decision, rule, and ADR. Reference
 `corebank-service` handles concurrent position mutations — Order Book SELL execution consumes `available_qty` in the `positions` table. Two standard JPA approaches exist: optimistic locking (`@Version` column, retry on `OptimisticLockingFailureException`) and pessimistic locking (`@Lock(LockModeType.PESSIMISTIC_WRITE)`, InnoDB `SELECT FOR UPDATE`).
 
 **Decision:**
-Use `@Lock(LockModeType.PESSIMISTIC_WRITE)` on the `findBySymbol` query in `PositionRepository` (symbol-level row lock). All position write paths acquire this lock before any mutation. QueryDSL daily-sell-limit aggregate query runs after the position row is locked.
+Use `@Lock(LockModeType.PESSIMISTIC_WRITE)` on the `findByAccountAndSymbolWithLock` query in `PositionRepository` (`account_id + symbol` row lock). All position write paths acquire this lock before any mutation. QueryDSL daily-sell-limit aggregate query runs after the position row is locked.
 (Note: **DEFERRED** mode is reserved for Phase 2 Hot Symbols).
 
 ```java
 // PositionRepository.java
 @Lock(LockModeType.PESSIMISTIC_WRITE)
 @Query("SELECT p FROM Position p WHERE p.accountId = :accountId AND p.symbol = :symbol")
-Optional<Position> findBySymbolWithLock(@Param("accountId") Long accountId, @Param("symbol") String symbol);
+Optional<Position> findByAccountAndSymbolWithLock(@Param("accountId") Long accountId, @Param("symbol") String symbol);
 
 // OrderExecutionService.java — lock sequence
-Position position = positionRepository.findBySymbolWithLock(accountId, symbol);  // SELECT FOR UPDATE
+Position position = positionRepository.findByAccountAndSymbolWithLock(accountId, symbol);  // SELECT FOR UPDATE
 Long todaySellQty = orderRepository.sumTodaySellQty(accountId, symbol);          // shared lock sufficient (position already locked)
 ```
 
@@ -574,7 +598,7 @@ No MapStruct. All entity↔DTO conversions are explicit `toDto()` / `fromDto()` 
 | Rate limit bucket     | `ch:ratelimit:{endpoint}:{identifier}`                           | per Bucket4j config |
 | OTP attempt debounce  | `ch:otp-attempt-ts:{orderSessionId}`                             | 1s                  |
 | OTP attempt counter   | `ch:otp-attempts:{sessionId}`                                    | 600s (SET NX EX 600 — matches order session TTL) |
-| Idempotency key       | `ch:idempotency:{clOrdID}`                                       | 600s                |
+| Idempotency key       | `ch:idempotency:{clOrdId}`                                       | 600s                |
 | Recovery scheduler lock | `ch:recovery-lock:{sessionId}`                                 | 120s (NX — prevents double-processing of same EXECUTING session) |
 | FDS IP fail count     | `fds:ip-fail:{ip}`                                               | 10 min              |
 | FDS device            | `fds:device:{memberId}`                                          | 30 days             |
@@ -684,7 +708,7 @@ public class FepClient {
 
 Validated in `OrderService.prepare()` before any CoreBanking call:
 
-- Format: `^\d{6}$` (symbol code — KRX 6자리 숫자) → fail with `ORD-004 SYMBOL_INVALID`
+- Format: `^\d{6}$` 또는 `^Q\d{6}$` (국내주식/ETN symbol code) → fail with `ORD-004 SYMBOL_INVALID`
 - Qty range guard: `qty < 1 || qty > availableQty` → `ORD-004`
   > ⚠️ P-C3: 종목 코드 검증은 `SymbolValidator` 유틸리티로 분리 — 서비스 내 하드코딩 금지
 
@@ -722,11 +746,14 @@ Date format: ISO-8601 (`2026-02-23T14:32:11Z`). camelCase (not snake_case). Null
 | `BusinessException` (base)                 | 400  | from exception field |
 | `AuthenticationException`                  | 401  | `AUTH-003`           |
 | `AccessDeniedException`                    | 403  | `AUTH-006`           |
+| `OwnershipMismatchException`               | 403  | `CHANNEL-006`        |
 | `ResourceNotFoundException`                | 404  | from exception field |
 | `OptimisticLockingFailureException`        | 409  | `CORE-003`           |
 | `DataIntegrityViolationException` (UNIQUE) | 409  | `ORD-007`            |
 | `MethodArgumentNotValidException`          | 422  | `VALIDATION-001`     |
 | `Exception` (catch-all)                    | 500  | `SYS-001`            |
+
+`AccessDeniedException`은 관리자 권한 부족(`ROLE_ADMIN`)에 한정한다. `clOrdId/account` 소유권 불일치는 반드시 `OwnershipMismatchException`으로 분리하여 `CHANNEL-006`으로 매핑한다.
 
 > ⚠️ P-D1: catch-all 코드를 `SYSTEM-001` → `SYS-001`로 통일 (RULE-031 에러코드 표 기준).
 
@@ -1172,7 +1199,12 @@ void transition(String orderSessionId, OrderSessionStatus expected, OrderSession
 // AUTHED       → EXECUTING     (Redis SETNX ch:txn-lock 획득 직전)
 // AUTHED       → EXPIRED       (@Scheduled 10분 TTL)
 // EXECUTING    → COMPLETED     (Order Book 체결 + FEP 성공 — orders.status=FILLED, OrderSession=COMPLETED)
-// EXECUTING    → FAILED        (FEP 실패/보상 트랜잭션 완료 — orders.status=FAILED, sub_status=COMPENSATED)
+// EXECUTING    → FAILED        (명확한 검증/거절 실패)
+// EXECUTING    → CANCELED      (취소 승인)
+// EXECUTING    → REQUERYING    (timeout/불확실)
+// REQUERYING   → COMPLETED/CANCELED/ESCALATED (재조회 결과 기반 종결)
+// ESCALATED    → COMPLETED/FAILED/CANCELED (Admin Replay)
+// EXECUTING    → ESCALATED     (FEP post-commit 동기화 실패 — canonical fill 유지, external sync 복구 대기)
 ```
 
 ### RULE-027: AsyncStateWrapper 로딩/에러 패턴
@@ -1241,28 +1273,40 @@ public final class BusinessConstants {
 
 #### 비즈니스 에러 코드 표준 목록
 
-> ⚠️ **이중 체계 주의**: `AUTH-xxx`는 Spring Security `AuthenticationException` 슬로에서만 사용하는 내부 코드. 
-> API 응답 body의 모든 비즈니스 에러는 아래 `CHANNEL-xxx` / `CORE-xxx` / `FEP-xxx` / `SYS-xxx` 코드를 사용한다.
+`AUTH-*`는 내부 전용이 아니라 외부 API 응답에서 사용하는 계약 코드다. 아래 표를 단일 소스로 사용한다.
 
 | 코드        | HTTP | 설명                      | 발생 위치        |
 | ----------- | ---- | ------------------------- | ---------------- |
-| CHANNEL-001 | 401  | 세션 없음/만료            | channel-service  |
+| AUTH-001    | 401  | 자격증명 불일치 | channel-service  |
+| AUTH-002    | 401  | 계정 잠금 | channel-service  |
+| AUTH-003    | 401  | 미인증(세션 쿠키 없음/무효) | channel-service  |
+| AUTH-004    | 401  | 탈퇴 계정 | channel-service  |
+| AUTH-005    | 404  | 대상 회원 없음(관리자 API) | channel-service  |
+| AUTH-006    | 403  | 권한 부족(`ROLE_ADMIN` 필요) | channel-service  |
+| AUTH-007    | 422  | 비밀번호 정책 위반 | channel-service  |
+| AUTH-008    | 409  | username 중복 | channel-service  |
+| CHANNEL-001 | 410  | 세션 쿠키는 있으나 Redis TTL 만료 | channel-service  |
 | CHANNEL-002 | 422  | OTP 불일치                | channel-service  |
-| CHANNEL-003 | 429  | OTP 시도 초과 (3회 초과 시) | channel-service  |
+| CHANNEL-003 | 403  | OTP 시도 초과(터미널 실패) | channel-service  |
 | CHANNEL-004 | 409  | 이미 진행 중인 주문 세션  | channel-service  |
 | CHANNEL-005 | 400  | 주문 수량 유효성 오류     | channel-service  |
-| RATE-001    | 429  | OTP 시도 디바운스 (1s burst guard 활성, 시도 횟수 미차감) | channel-service  |
+| CHANNEL-006 | 403  | 소유권 불일치(`clOrdId`/`accountId`) | channel-service  |
+| RATE-001    | 429  | 레이트 리밋/OTP 디바운스 (`Retry-After` 포함) | channel-service  |
+| ORD-001     | 422  | 매수 자금 부족 | corebank-service |
+| ORD-002     | 422  | 일일 매도 한도 초과 | corebank-service |
+| ORD-003     | 422  | 매도 주식 부족 | corebank-service |
+| ORD-012     | 422  | 계좌 상태 차단(`FROZEN`/`CLOSED`) | corebank-service |
 | CORE-001    | 404  | 종목 없음                 | corebank-service |
 | CORE-002    | 422  | 보유수량 부족                 | corebank-service |
 | CORE-003    | 409  | 포지션 잠금 획득 실패       | corebank-service |
 | CORE-004    | 500  | 트랜잭션 롤백 (내부 DB 오류)     | corebank-service |
 | CORE-005    | 404  | 종목 코드 없음            | corebank-service |
-| FEP-001     | 504  | FEP 응답 타임아웃 / HTTP 5xx (보상 트랜잭션 실행됨)         | corebank-service |
-| FEP-002     | 422  | FEP 거부 응답 (REJECTED\_BY\_FEP, FIX ExecutionReport MsgType=j — 보상 트랜잭션 실행됨) | corebank-service |
-| FEP-003     | 503  | FEP 서비스 불가 (CB Open — fallback 즉시 반환, FEP 호출 없음, 포지션 무변동) | corebank-service |
+| FEP-001     | 503  | FEP 서비스 불가 (CB Open/Pool/Logon/Key 이슈 — fallback 즉시 반환, FEP 호출 없음, 포지션 무변동) | corebank-service |
+| FEP-002     | 504  | FEP 응답 타임아웃 / HTTP 5xx (canonical fill 유지, external sync는 FAILED/ESCALATED로 복구) | corebank-service |
+| FEP-003     | 400  | FEP 거부 응답 (REJECTED\_BY\_FEP, FIX ExecutionReport MsgType=j — canonical fill 유지, 외부 동기화 복구 대상) | corebank-service |
 | SYS-001     | 500  | 내부 시스템 오류          | 전체             |
 | ORD-004     | 422  | 종목코드 형식 오류 또는 수량 범위 초과 | channel-service  |
-| ORD-007     | 409  | `clOrdID` 중복 — 멱등성 위반 (FR-22) | channel-service  |
+| ORD-007     | 409  | `clOrdId` 중복 — 멱등성 위반 (FR-22) | channel-service  |
 | VALIDATION-001 | 422 | 요청 필드 유효성 오류 (`@Valid` 실패) | 전체             |
 
 ### RULE-032: FepClient 구현 패턴
@@ -1813,7 +1857,7 @@ spring:
 # stop_grace_period: 35s
 
 # 이유: 주문 체결 중 강제 종료 → EXECUTING 상태 고착 방지
-# OrderSessionRecoveryService @PostConstruct: 재시작 후 EXECUTING 세션 → FAILED 전환
+# OrderSessionRecoveryService @PostConstruct: 재시작 후 EXECUTING 세션을 REQUERYING으로 전이해 복구 워크플로 재개
 ```
 
 ### RULE-070: HikariCP 커넥션 풀 (EC2 t3.small)
@@ -1838,7 +1882,7 @@ spring:
 
 ```java
 // 헤더: X-ClOrdID: <client UUID v4>  (FIX Tag 11 새셸)
-// Redis: SET ch:idempotency:{clOrdID} {orderSessionId} NX EX 600
+// Redis: SET ch:idempotency:{clOrdId} {orderSessionId} NX EX 600
 // NX 성공 → 신규 처리
 // NX 실패 → 기존 orderSessionId 반환 (200, 재처리 없음)
 
@@ -1852,12 +1896,13 @@ spring:
 // Redis TTL 만료 = 세션 자연 소멸 → CHANNEL-001 반환
 
 // @PostConstruct — 재시작 즉시 복구 (서비스 재배포 시 고착 세션 즉시 처리)
-//   → EXECUTING 상태인 세션을 스캔 후 FAILED 전환 (멱등성 보장: EXECUTING인 경우만)
+//   → EXECUTING 상태인 세션을 스캔 후 REQUERYING 전환 (멱등성 보장: EXECUTING인 경우만)
 
 // @Scheduled(fixedDelay = 60s) — 런타임 주기 감시 (이상 상태 감지)
-//   → EXECUTING + created_at > 10분 → FAILED 강제 전환
+//   → EXECUTING + executing_started_at > 30초 → REQUERYING 전환 후 Core/FEP 재조회
 //   → PENDING_NEW + created_at > 10분 → EXPIRED 전환
 //   → AUTHED   + created_at > 10분 → EXPIRED 전환
+//   → REQUERYING maxRetryCount 초과 → ESCALATED 전환
 //   멱등성 보장: 해당 상태인 경우만 전환, DB 업데이트 실패 시 에러 로그 후 skip
 // DB 정합성 유지 — Redis TTL 자연 소멸만으로는 DB에 상태가 영구 잔존할 수 있음
 ```
@@ -1866,7 +1911,7 @@ spring:
 
 ```
 1. Redis SETNX order execute lock: SET ch:txn-lock:{sessionId} NX EX 30 (RULE-026)
-2. JPA @Lock(PESSIMISTIC_WRITE) on PositionRepository.findBySymbolWithLock (ADR-001)
+2. JPA @Lock(PESSIMISTIC_WRITE) on PositionRepository.findByAccountAndSymbolWithLock (ADR-001)
 3. @Transactional(isolation = REPEATABLE_READ)
 
 // 락 획득 실패 시 재시도 없음 → 즉시 CORE-003 반환
@@ -2214,7 +2259,7 @@ fix/                                          # 모노레포 루트
 │       │   │   ├── Member.java
 │       │   │   └── OrderSession.java           # R8: 핵심 필드 명시
 │       │   ├── vo/
-│       │   │   └── OrderSessionStatus.java     # PENDING_NEW/AUTHED/EXECUTING/COMPLETED/FAILED/EXPIRED
+│       │   │   └── OrderSessionStatus.java     # PENDING_NEW/AUTHED/EXECUTING/REQUERYING/ESCALATED/COMPLETED/FAILED/CANCELED/EXPIRED
 │       │   └── repository/
 │       │       ├── MemberRepository.java
 │       │       └── OrderSessionRepository.java
@@ -2227,7 +2272,7 @@ fix/                                          # 모노레포 루트
 │       │   ├── java/com/fix/channel/
 │       │   │   ├── ChannelApplication.java
 │       │   │   ├── config/
-│       │   │   │   ├── SecurityConfig.java     # Spring Session + CORS + CookieCsrfTokenRepository + permitAll
+│       │   │   │   ├── SecurityConfig.java     # Spring Session + CORS + HttpSessionCsrfTokenRepository + permitAll
 │       │   │   │   ├── CorsConfig.java         # profile별 allowedOrigins (R5)
 │       │   │   │   ├── SessionConfig.java      # @EnableRedisHttpSession + SpringSessionBackedSessionRegistry (R5)
 │       │   │   │   ├── JpaConfig.java          # @EnableJpaAuditing (R5)
@@ -2256,7 +2301,7 @@ fix/                                          # 모노레포 루트
 │       │   │   │   │   └── PrepareOrderRequest.java  # record (ClOrdID, symbol, side, qty)
 │       │   │   │   ├── response/
 │       │   │   │   │   ├── LoginResponse.java        # record
-│       │   │   │   │   ├── OrderSessionResponse.java # orderSessionId, status, clOrdID
+│       │   │   │   │   ├── OrderSessionResponse.java # orderSessionId, status, clOrdId
 │       │   │   │   │   ├── SessionStatusResponse.java
 │       │   │   │   │   └── AuditLogResponse.java     # record (R4)
 │       │   │   │   └── command/
@@ -2307,7 +2352,7 @@ fix/                                          # 모노레포 루트
 │       ├── main/java/com/fix/corebank/domain/
 │       │   ├── entity/
 │       │   │   ├── Account.java               # @ToString.Exclude (RULE-033)
-│       │   │   └── OrderHistory.java
+│       │   │   └── OrderRecord.java
 │       │   ├── repository/
 │       │   │   ├── AccountRepository.java     # @Lock(PESSIMISTIC_WRITE)
 │       │   │   ├── AccountRepositoryCustom.java
@@ -2354,7 +2399,7 @@ fix/                                          # 모노레포 루트
 │       │           ├── migration/
 │       │           │   ├── V1__create_member_table.sql
 │       │           │   ├── V2__create_account_table.sql
-│       │           │   └── V3__create_order_history_table.sql
+│       │           │   └── V3__create_orders_table.sql
 │       │           └── seed/
 │       │               └── R__seed_data.sql   # Repeatable (R2/R4)
 │       └── test/
@@ -2492,7 +2537,8 @@ fix/                                          # 모노레포 루트
 | Vercel → channel-service           | HTTPS REST      | Spring Session Cookie | external-net |
 | channel-service → corebank-service | HTTP REST       | X-Internal-Secret  | core-net     |
 | corebank-service → fep-gateway     | HTTP REST       | X-Internal-Secret  | gateway-net  |
-| fep-gateway → fep-simulator        | HTTP REST       | X-Internal-Secret  | fep-net      |
+| fep-gateway → fep-simulator (data plane)    | FIX 4.2 TCP (QuickFIX/J) | FIX Logon credentials | fep-net |
+| fep-gateway → fep-simulator (control plane) | HTTP REST                 | X-Internal-Secret     | fep-net |
 | channel-service → SSE Client       | HTTP long-lived | Session Cookie     | external-net |
 | CI → EC2                           | SSH             | SSH Key            | 인터넷       |
 
@@ -2573,12 +2619,12 @@ public class OrderSession extends BaseTimeEntity {
     @Column(nullable = false, unique = true, length = 36)
     private String orderSessionId;        // UUID (ch:order-session key suffix)
     @Column(nullable = false, unique = true, length = 36)
-    private String clOrdID;               // FIX Tag 11 — Idempotency RULE-071 (UUID v4)
+    private String clOrdId;               // FIX Tag 11 — Idempotency RULE-071 (UUID v4)
     @Column(nullable = false)
     private Long memberId;
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private OrderSessionStatus status;    // PENDING_NEW/AUTHED/EXECUTING/COMPLETED/FAILED/EXPIRED
+    private OrderSessionStatus status;    // PENDING_NEW/AUTHED/EXECUTING/REQUERYING/ESCALATED/COMPLETED/FAILED/CANCELED/EXPIRED
     private Long accountId;               // 포지션 보유 계좌 ID
     private String symbol;                // 종목코드 (005930)
     @Enumerated(EnumType.STRING)
@@ -2845,7 +2891,7 @@ logback-spring.xml 패턴: [%X{correlationId}] 포함
 
 > ⚠️ **이 설계는 Spring Session Redis 전환으로 폐기되었습니다.**  
 > 중간 결정 근거: 세션 즉각 무효화 뺈리티, 서버 완전 통제, JwtAuthFilter 제거로 코드 단순화, 부수 AT Blacklist 키 불필요.  
-> **현행 인증 설계**: login-flow.md 참조 — Spring Session Redis (`JSESSIONID` HttpOnly 쿠키, 30분 슬라이딩 TTL).
+> **현행 인증 설계**: login-flow.md 참조 — Spring Session Redis (`SESSION` HttpOnly 쿠키, 30분 슬라이딩 TTL).
 
 #### ~~Silent Refresh 패턴 (Q-7-20)~~ — **폐기**
 
@@ -2859,11 +2905,11 @@ logback-spring.xml 패턴: [%X{correlationId}] 포함
 올바른 순서:
   1. @Transactional 시작
   2. Position 보유수량 검증 (@Lock PESSIMISTIC_WRITE)
-  3. 수량 차감 + OrderHistory PENDING 기록
+  3. 수량 차감 + orders/executions PENDING 기록
   4. @Transactional 커밋 (DB Lock 해제)
   5. @Transactional 외부에서 FepClient.call() 호출
   6. FEP 응답에 따라 새 @Transactional로 주문 상태 업데이트 — FEP 성공: orders.status=FILLED, OrderSession=COMPLETED;
-     FEP 실패: 보상 트랜잭션(orders.status=FAILED, sub_status=COMPENSATED), OrderSession=FAILED
+     FEP 실패: canonical fill 유지 + external_sync_status=FAILED/ESCALATED, OrderSession=ESCALATED
 
 금지: FepClient.call()을 @Transactional 내부에서 호출
 근거: HTTP 대기 시간 동안 DB Lock 점유 → 동시성 저하
@@ -3103,7 +3149,7 @@ eventsource.onerror = () => {
 1. 7개 Gradle 모듈 = Docker 네트워크 = 보안 경계 3중 일치
 2. OrderSession FSM 7+1대 Scenario 전수 커버
 3. X-Correlation-Id 전파 체인 — 3개 서비스 로그 추적 완전
-4. Spring Session Redis — `JSESSIONID` HttpOnly 쿠키, 30분 슬라이딩 TTL, 즉각 세션 무효화, log-flow.md 완전 명세
+4. Spring Session Redis — `SESSION` HttpOnly 쿠키, 30분 슬라이딩 TTL, 즉각 세션 무효화, log-flow.md 완전 명세
 5. 트랜잭션 경계 명시 — DB Lock과 HTTP 호출 분리
 
 **Areas for Future Enhancement (post-MVP):**

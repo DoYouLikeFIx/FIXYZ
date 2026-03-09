@@ -1,12 +1,16 @@
 ---
-stepsCompleted: [1, 2, "3-epic0", "3-epic1", "3-epic2", "3-epic3", "3-epic4", "3-epic5", "3-epic6", "3-epic7", "3-epic8", "3-epic9", "3-epic10"]
-step3Progress: "Bottom-up detailed epics complete (Epic 0~10, BE/FE/MOB ownership)"
+stepsCompleted: [1, 2, "3-epic0", "3-epic1", "3-epic2", "3-epic3", "3-epic4", "3-epic5", "3-epic6", "3-epic7", "3-epic8", "3-epic9", "3-epic10", "3-epic11"]
+step3Progress: "Bottom-up detailed epics complete (Epic 0~11, BE/FE/MOB ownership)"
 version: "v2-detailed-bottom-up"
-updated: "2026-03-03"
+updated: "2026-03-04"
 inputDocuments:
   - "_bmad-output/planning-artifacts/prd.md"
   - "_bmad-output/planning-artifacts/architecture.md"
   - "_bmad-output/planning-artifacts/ux-design-specification.md"
+  - "_bmad-output/planning-artifacts/accounts/api-spec.md"
+  - "_bmad-output/planning-artifacts/accounts/db_schema.md"
+  - "_bmad-output/planning-artifacts/channels/api-spec.md"
+  - "_bmad-output/planning-artifacts/fep-gateway/api-spec.md"
   - "_bmad-output/implementation-artifacts/epic-0-project-foundation.md"
   - "_bmad-output/implementation-artifacts/epic-1-user-authentication-and-account-access.md"
   - "_bmad-output/implementation-artifacts/epic-2-order-session-and-otp.md"
@@ -28,7 +32,7 @@ Core Objectives:
 
 1. Anchor the common Foundation in `Epic 0`.
 2. Mature the Channel, Account, and External systems independently before integration.
-3. Maintain Epic numbering starting from 0, extending the final structure to `Epic 0~10`.
+3. Maintain Epic numbering starting from 0, extending the final structure to `Epic 0~11`.
 4. Explicitly define the `FEP Owner` role in the ownership model.
 5. Break down Stories into BE/FE/MOB units to enable actual team distribution.
 
@@ -67,6 +71,7 @@ Core Objectives:
 | 8 | Cross-system Security, Audit, Observability | Cross-system | CH | Channel Engineer |
 | 9 | Integration Orchestration & End-to-End Recovery | Integration | INT | Channel Engineer |
 | 10 | Full Validation & Release Readiness | Integration | INT | Channel Engineer |
+| 11 | Market Data Ingestion & Virtual Execution Determinism | External + Account | FEP | FEP Owner (acting Account Engineer) |
 
 ---
 
@@ -215,6 +220,17 @@ Passes the quality gate just before release and completes the release evidence.
 - Story 10.5: FE Release Readiness Pack
 - Story 10.6: MOB Release Readiness Pack
 
+### Epic 11: Market Data Ingestion & Virtual Execution Determinism
+
+Defines simulator-grade market data contracts (LIVE/DELAYED/REPLAY), quote freshness policy, and deterministic valuation/execution behavior.
+
+**Story Hints:**
+- Story 11.1: BE Market Data Source Adapter (LIVE/DELAYED/REPLAY)
+- Story 11.2: BE Quote Snapshot Freshness Guard
+- Story 11.3: BE Replay Timeline Controller
+- Story 11.4: BE MARKET Order Sweep Matching Validation
+- Story 11.5: FE/MOB Quote Freshness & Source Visibility UX
+
 ---
 
 ## Detailed Epics & Stories
@@ -327,7 +343,7 @@ So that mobile features follow the same contract and architecture.
   **Then** mobile persists no raw credentials/password/OTP in app storage and uses OS-approved secure storage controls for any sensitive client-side secret material.
 - **Given** cookie-session + CSRF contract for state-changing API calls  
   **When** mobile sends non-GET request  
-  **Then** client includes credentials and `X-XSRF-TOKEN` header derived from `XSRF-TOKEN` cookie after explicit CSRF bootstrap/refresh (`GET /api/v1/auth/csrf`) on app start/login/resume.
+  **Then** client includes credentials and `X-CSRF-TOKEN` header using the token acquired from explicit CSRF bootstrap/refresh (`GET /api/v1/auth/csrf`) on app start/login/resume.
 - **Given** foundation CI runs bundle-only checks  
   **When** PR is prepared for merge  
   **Then** AC1 is satisfied only after manual simulator/device smoke evidence (boot log/screenshot + health-call capture) is attached in PR checklist.
@@ -774,7 +790,7 @@ So that I can inspect recent order activity.
 
 - **Given** owned account with order records  
   **When** order history API is called  
-  **Then** results are paginated, include symbol/qty/status/clOrdID, and ordered by created time desc.
+  **Then** results are paginated, include symbol/qty/status/clOrdId, and ordered by created time desc.
 - **Given** order history table columns  
   **When** rendered  
   **Then** columns are: 종목명(symbolName), 구분(side: BUY/SELL), 수량(qty), 체결단가(unitPrice), 체결금액(totalAmount), 상태(status), ClOrdID.
@@ -838,7 +854,7 @@ So that parity with web is maintained.
 
 As an **account admin system**,  
 I want explicit account status contract,  
-So that lock/unlock and order eligibility can be governed consistently.
+So that freeze/close lifecycle and order eligibility can be governed consistently.
 
 **Depends On:** Story 2.1
 
@@ -846,13 +862,13 @@ So that lock/unlock and order eligibility can be governed consistently.
 
 - **Given** account status model  
   **When** status endpoint is queried  
-  **Then** `ACTIVE/LOCKED` and related metadata are returned.
-- **Given** locked account  
+  **Then** `ACTIVE/FROZEN/CLOSED` and related metadata are returned.
+- **Given** `FROZEN` or `CLOSED` account  
   **When** order flow requests eligibility  
-  **Then** denial reason code is deterministic.
+  **Then** denial reason code (`ORD-012`) is deterministic.
 - **Given** status transition event  
   **When** status changes  
-  **Then** audit/security event is emitted.
+  **Then** account-domain status event is emitted.
 
 ---
 
@@ -870,7 +886,7 @@ So that channel-to-FEP integration is deterministic.
 
 - **Given** outbound order payload  
   **When** mapped to FEP DTO  
-  **Then** required fields (clOrdID, symbol, qty, side) are validated before send.
+  **Then** required fields (clOrdId, symbol, qty, side) are validated before send.
 - **Given** response payload from FEP  
   **When** parsed  
   **Then** internal contract is mapped with explicit status values.
@@ -1050,7 +1066,7 @@ I want explicit order session transition rules,
 So that invalid state progression cannot occur.
 
 > **Reference:** OrderSession FSM transition table is defined in `architecture.md §OrderSession FSM`.  
-> Valid transitions: `PENDING_NEW → AUTHED → EXECUTING → COMPLETED | FAILED | EXPIRED`.
+> Valid transitions: `PENDING_NEW → AUTHED → EXECUTING → (COMPLETED|FAILED|CANCELED|REQUERYING)`, `REQUERYING → (COMPLETED|CANCELED|ESCALATED)`, `ESCALATED → (COMPLETED|FAILED|CANCELED)`, `PENDING_NEW|AUTHED → EXPIRED`.
 
 **Depends On:** Story 4.2
 
@@ -1208,8 +1224,7 @@ So that order attempts respect position constraints and policy limits.
   **When** date boundary changes  
   **Then** counters reset according to timezone rule.
 
-> **MVP Scope Note:** `InsufficientPositionException` (available_qty < requested qty) is enforced in MVP.  
-> `DailySellLimitExceededException` is declared but **not enforced in MVP** — enforcement deferred to Phase 2.
+> **MVP Scope Note:** `InsufficientPositionException` (available_qty < requested qty)와 `DailySellLimitExceededException` 모두 MVP에서 강제한다.
 
 ### Story 5.2: [BE][AC] Order Execution & Position Update
 
@@ -1223,10 +1238,16 @@ So that position integrity is preserved.
 
 - **Given** authorized order execution  
   **When** execution occurs  
-  **Then** position deduction and OrderHistory record are committed atomically.
+  **Then** position deduction and `orders`/`executions` 기록이 원자적으로 커밋된다.
+- **Given** `MARKET` order with opposite-side liquidity  
+  **When** matching runs  
+  **Then** engine sweeps opposite book levels in price-time order until requested qty or liquidity exhaustion.
+- **Given** `MARKET` order with no opposite-side liquidity  
+  **When** matching runs  
+  **Then** request is rejected with deterministic no-liquidity contract and no position mutation.
 - **Given** execution failure mid-transaction  
   **When** transaction aborts  
-  **Then** neither partial position update nor OrderHistory record persists.
+  **Then** partial position update나 `orders`/`executions` 잔존이 없어야 한다.
 - **Given** insufficient position quantity condition  
   **When** availability pre-check fails  
   **Then** no position mutation occurs.
@@ -1246,16 +1267,19 @@ So that local position state stays consistent with FEP execution lifecycle.
 
 - **Given** FEP-routed order execution request  
   **When** pre-execution position reservation occurs  
-  **Then** order state records FEP reference and clOrdID metadata.
-- **Given** FEP rejection/failure requiring position restoration  
-  **When** position restoration path runs  
-  **Then** position quantity is restored with traceable order linkage.
+  **Then** order state records FEP reference and clOrdId metadata.
+- **Given** simulator mode execution  
+  **When** local Order Book match commits  
+  **Then** local `executions` is treated as canonical position truth and FEP report is used for confirmation/recovery only.
+- **Given** FEP rejection/failure after local canonical match commit  
+  **When** external sync recovery path runs  
+  **Then** position quantity remains canonical and order is marked for requery/replay reconciliation (`ESCALATED`).
 - **Given** FEP unknown/pending outcome  
   **When** order settlement deferred  
   **Then** position state remains reconcilable for later recovery.
 - **Given** FEP order FILLED  
   **When** finalized  
-  **Then** final order status (FILLED) and clOrdID references are consistent.
+  **Then** final order status (FILLED) and clOrdId references are consistent.
 
 ### Story 5.4: [BE][AC] Idempotent Posting
 
@@ -1290,8 +1314,8 @@ So that concurrent orders cannot produce negative or corrupted position quantiti
 
 **Acceptance Criteria:**
 
-- **Given** concurrent order attempts on same symbol  
-  **When** symbol-level pessimistic lock policy is applied  
+- **Given** concurrent order attempts on same account+symbol  
+  **When** `(account_id, symbol)` pessimistic lock policy is applied  
   **Then** final available_qty never becomes negative.
 - **Given** lock contention  
   **When** threshold exceeded  
@@ -1301,7 +1325,7 @@ So that concurrent orders cannot produce negative or corrupted position quantiti
   **Then** expected success/failure counts and final available_qty assertions pass.
 - **Given** concurrent orders on two different symbols (005930 삼성전자 / 000660 SK하이닉스)  
   **When** executed in parallel  
-  **Then** symbol-level lock isolation is verified — each symbol's available_qty converges independently.
+  **Then** symbol-level lock isolation is verified — each symbol's available_qty converges independently without cross-symbol blocking.
 - **Given** lock duration observation  
   **When** measured  
   **Then** operational threshold alerting is available.
@@ -1434,7 +1458,7 @@ So that ambiguous orders can converge to terminal states.
 
 - **Given** order in UNKNOWN/EXECUTING timeout state  
   **When** scheduler runs  
-  **Then** clOrdID status requery is executed with backoff policy.
+  **Then** clOrdId status requery is executed with backoff policy.
 - **Given** requery returns accepted/completed  
   **When** reconciliation runs  
   **Then** order state converges to terminal success (FILLED).
@@ -1830,7 +1854,7 @@ So that all sell orders are consistently routed to KRX via FEP Gateway.
 
 - **Given** AUTHED order session  
   **When** execute command issued  
-  **Then** `OrderExecutionService` initiates FEP-routed execution and records clOrdID.
+  **Then** `OrderExecutionService` initiates FEP-routed execution and records clOrdId.
 - **Given** FEP execution completed  
   **When** FILLED/REJECTED received from FEP simulator  
   **Then** order session state reflects terminal outcome deterministically.
@@ -2097,3 +2121,111 @@ So that mobile deployment quality is auditable.
 - **Given** final build candidate  
   **When** approved  
   **Then** release notes and handoff package are finalized.
+
+## Epic 11: Market Data Ingestion & Virtual Execution Determinism
+
+### Story 11.1: [BE][MD] Market Data Source Adapter (LIVE/DELAYED/REPLAY)
+
+As a **market data owner**,  
+I want a unified source adapter for LIVE/DELAYED/REPLAY modes,  
+So that quote ingestion and downstream valuation use a single contract.
+
+**Depends On:** Story 5.2
+
+**Acceptance Criteria:**
+
+- **Given** configured `LIVE` mode  
+  **When** KIS WebSocket(`H0STCNT0`) quote events arrive  
+  **Then** adapter authenticates with `approval_key` and subscribes using `tr_type=1`, `tr_id=H0STCNT0`, `tr_key` contract.
+- **Given** configured `DELAYED` mode  
+  **When** quote events are consumed  
+  **Then** configured delay is applied deterministically and emitted snapshots include `quoteSnapshotId` with `quoteSourceMode=DELAYED`.
+- **Given** configured `REPLAY` mode  
+  **When** replay seed and cursor are fixed  
+  **Then** identical input produces identical quote snapshot sequence (including `quoteSnapshotId`) with `quoteSourceMode=REPLAY`.
+- **Given** KIS real-time frame `encFlag|trId|count|payload`  
+  **When** `count>1` 또는 `encFlag=1` frame is received  
+  **Then** adapter splits multi-record payload by `count`, decrypts encrypted payload via key/iv, and emits normalized snapshots with `quoteSourceMode=LIVE`.
+
+### Story 11.2: [BE][MD] Quote Snapshot Freshness Guard
+
+As a **risk owner**,  
+I want stale quote rejection rules,  
+So that MARKET pre-check and valuation do not run on outdated data.
+
+**Depends On:** Story 11.1
+
+**Acceptance Criteria:**
+
+- **Given** snapshot age within `maxQuoteAgeMs`  
+  **When** prepare/valuation executes  
+  **Then** request succeeds with `quoteSnapshotId`, `quoteAsOf`, and `quoteSourceMode`.
+- **Given** snapshot age exceeds `maxQuoteAgeMs`  
+  **When** prepare/valuation executes  
+  **Then** request fails with deterministic stale-quote validation code.
+- **Given** stale rejection  
+  **When** audit log written  
+  **Then** `symbol`, `snapshotAgeMs`, `quoteSourceMode` are recorded.
+
+### Story 11.3: [BE][MD] Replay Timeline Controller
+
+As a **test architect**,  
+I want replay timeline controls,  
+So that CI and scenario demos are deterministic and reproducible.
+
+**Depends On:** Story 11.1
+
+**Acceptance Criteria:**
+
+- **Given** replay start point and speed factor  
+  **When** replay starts  
+  **Then** timeline advances deterministically.
+- **Given** replay pause/resume command  
+  **When** command is issued  
+  **Then** cursor and emitted sequence remain consistent.
+- **Given** identical replay seed  
+  **When** CI reruns  
+  **Then** snapshot sequence hash matches baseline.
+- **Given** LIVE WebSocket disconnect/reconnect event  
+  **When** session recovers  
+  **Then** open subscriptions are re-registered deterministically and gap range is backfilled via replay policy.
+
+### Story 11.4: [BE][AC] MARKET Order Sweep Matching Validation
+
+As an **execution engine owner**,  
+I want explicit MARKET sweep rules validated,  
+So that market-order behavior is predictable and auditable.
+
+**Depends On:** Story 5.2, Story 11.2
+
+**Acceptance Criteria:**
+
+- **Given** multi-level opposite book  
+  **When** MARKET order executes  
+  **Then** fills are consumed in strict price-time order.
+- **Given** insufficient liquidity  
+  **When** MARKET order executes  
+  **Then** partial fill or no-liquidity reject follows documented policy.
+- **Given** execution result  
+  **When** persisted  
+  **Then** `executedQty`, `executedPrice`, `leavesQty`, `quoteSnapshotId` are traceable.
+
+### Story 11.5: [FE/MOB][MD] Quote Freshness & Source Visibility UX
+
+As an **order user**,  
+I want to see quote freshness and source mode,  
+So that I understand valuation confidence before execution.
+
+**Depends On:** Story 11.2, Story 11.4
+
+**Acceptance Criteria:**
+
+- **Given** valuation area rendering  
+  **When** quote is fresh  
+  **Then** UI shows `quoteAsOf` and `quoteSourceMode` badge (`LIVE`/`DELAYED`/`REPLAY`).
+- **Given** quote is stale  
+  **When** user attempts MARKET prepare  
+  **Then** UI blocks progression with actionable stale-data guidance.
+- **Given** replay mode demo  
+  **When** screen capture reviewed  
+  **Then** source-mode visibility is clear in both web and mobile clients.

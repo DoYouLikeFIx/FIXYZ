@@ -36,3 +36,8 @@ docs/ops/evidence/*.jsonl
 # Local redis recovery runtime artifacts
 docs/ops/redis-recovery/**/*.log
 docs/ops/redis-recovery/**/*.json
+
+# Ignore local build scripts
+gradlew
+gradlew.bat
+*.sh

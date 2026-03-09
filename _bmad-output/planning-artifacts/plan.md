@@ -107,7 +107,7 @@ Monolith이지만 MSA로 “쪼개지기 쉬운 모놀리식”을 목표로 한
 
 **세션 저장소**: Spring Security는 기본적으로 인증 정보를 HTTP 세션에 저장하며, 수평 확장 시 세션을 캐시/DB 등에 저장하도록 커스터마이징할 수 있음을 문서에서 언급한다. 따라서 본 프로젝트는 “세션 기반 채널계”를 택하고, Spring Session + Redis로 세션을 외부화한다. citeturn1search12turn7search0turn0search1
 
-- Web(React): `JSESSIONID`(HttpOnly/Secure/SameSite) 기반 세션
+- Web(React): `SESSION`(HttpOnly/Secure/SameSite) 기반 세션
 - Mobile(React Native): 쿠키 기반 또는 `X-SESSION-ID` 헤더 기반(학습용으로 단순화)
 
 **주문 재인증(2FA/OTP, step-up)**: 금융 거래는 로그인만으로 끝나지 않고 "고위험 행위(주문 실행, 설정 변경 등)"에 재인증을 요구하는 것이 일반적인 보안 설계 논리다(OWASP Authentication Cheat Sheet는 위험 이벤트 후 재인증을 강조). citeturn0search21  
@@ -116,7 +116,7 @@ Monolith이지만 MSA로 “쪼개지기 쉬운 모놀리식”을 목표로 한
 - (권장) TOTP 기반 주문 OTP: TOTP는 HOTP를 시간 기반으로 확장한 OTP 알고리즘이며 RFC로 표준화되어 있다. citeturn1search3turn1search3
 - (대안) “간편 비밀번호(6자리)” + Redis에 시도 횟수/쿨다운 저장(학습용)
 
-**CSRF**: 쿠키 기반 세션을 쓰는 Web UI는 CSRF 방어가 필요하며, OWASP CSRF Cheat Sheet는 ‘Signed Double-Submit Cookie’ 같은 패턴을 권장한다. (Spring Security의 CSRF 기능을 활용해도 된다.) citeturn6search2turn6search10
+**CSRF**: 쿠키 기반 세션을 쓰는 Web UI는 CSRF 방어가 필요하며, OWASP CSRF Cheat Sheet는 ‘Synchronizer Token’ 같은 패턴을 권장한다. (Spring Security의 CSRF 기능을 활용해도 된다.) citeturn6search2turn6search10
 
 ### API 명세(예시)
 
@@ -227,7 +227,7 @@ MySQL InnoDB는 트랜잭션이 ACID 모델을 따르며(row-level locking, cons
 
 - 기본(권장): FIX 4.2 over TCP (QuickFIX/J)
   - `NewOrderSingle` (MsgType=D) 전송 → `ExecutionReport` (MsgType=8) 수신
-  - 응답 ExecType: `FILL`(체결), `REJECTED`(거부), `ORDER_CANCELLED`(취소)
+  - 응답 ExecType: `FILL`(체결), `REJECTED`(거부), `ORDER_CANCELED`(취소)
 - 옵션(심화): REST 폴백
   - `POST /fep/v1/orders/new` — QuickFIX/J 연결 불가 시 fallback
 

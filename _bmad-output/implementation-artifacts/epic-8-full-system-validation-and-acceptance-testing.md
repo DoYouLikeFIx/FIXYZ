@@ -35,7 +35,7 @@ So that the system's correctness claims are continuously verified.
 **Given** Scenario #1 (Standard order E2E happy path) — `OrderControllerIntegrationTest`  
 **When** `POST /api/v1/orders/sessions` → `POST /api/v1/orders/sessions/{sessionId}/otp/verify` → `POST /api/v1/orders/sessions/{sessionId}/execute` full flow (TOTP 3-phase protocol)  
 **Then** `ChannelIntegrationTestBase @BeforeEach` performs login + obtains JSESSIONID cookie  
-**And** HTTP 200 COMPLETED, returns `orderId`, verifies DB `order_executions` record (`executed_qty`, `executed_price`) + `positions.quantity` updated (NFR-R1)
+**And** HTTP 200 COMPLETED, returns `orderId`, verifies DB `executions` record (`executed_qty`, `executed_price`) + `positions.quantity` updated (NFR-R1)
 
 **Given** Scenario #3 (OTP failure blocks order) — `OrderSessionOtpIntegrationTest`  
 **When** Incorrect OTP entered 3 times  
@@ -50,7 +50,7 @@ So that the system's correctness claims are continuously verified.
 
 **Given** Scenario #4b (Different member + Duplicate clOrdID) — `IdempotencyIntegrationTest.CrossMemberSecurity`  
 **When** Different member attempts session creation using another's `clOrdID`  
-**Then** HTTP 403 `{ code: "AUTH-007" }` (Security Boundary)  
+**Then** HTTP 403 `{ code: "CHANNEL-006" }` (Security Boundary)  
 **And** Only 1 session record in DB
 
 **Given** Scenario #5 (FEP timeout → CB OPEN) — `FepCircuitBreakerIntegrationTest`  
@@ -62,10 +62,10 @@ So that the system's correctness claims are continuously verified.
 **Then** HTTP 401 `UNAUTHORIZED` (Verify Redis Spring Session key deletion)
 
 **Given** Scenario #7 (Position Integrity) — `PositionIntegrityIntegrationTest` (corebank-service integration test)  
-**When** N sequential orders executed across multiple symbols + M compensating reversals  
-**Then** `SUM(order_executions.executed_qty WHERE side='BUY') − SUM(order_executions.executed_qty WHERE side='SELL') == positions.quantity` per symbol (NFR-D1)  
+**When** N sequential orders executed across multiple symbols + M external sync failure/escalation cases  
+**Then** `SUM(executions.executed_qty WHERE side='BUY') − SUM(executions.executed_qty WHERE side='SELL') == positions.quantity` per symbol (NFR-D1)  
 **And** `positions.quantity >= 0` invariant holds for all symbols (no over-sell)  
-**And** Verify all `order_executions.order_id` IS NOT NULL and references an `orders` record with `orders.status = 'FILLED'` (JOIN verification: no execution record is orphaned from a FILLED order)  
+**And** Verify all `executions.order_id` IS NOT NULL and references an `orders` record with `orders.status = 'FILLED'` (JOIN verification: no execution record is orphaned from a FILLED order)  
 **And** Execute in `ci-corebank.yml`
 
 **Given** Scenario #8 (Security boundary) — `SecurityBoundaryTest (@Nested)`  
@@ -113,7 +113,7 @@ So that the pessimistic locking strategy is proven under load.
 **And** Apply `@Tag("concurrency")`  
 **And** Exactly 5 orders `FILLED`, remaining 5 OrderSession `FAILED` (HTTP 422 ORD-003 Insufficient position qty — SELL qty check before INSERT; no order record created)  
 **And** `positions.quantity == 0` after all threads complete (NFR-D1: no over-sell)  
-**And** `SUM(order_executions.executed_qty WHERE side='SELL') == 500` — exactly 500 shares sold  
+**And** `SUM(executions.executed_qty WHERE side='SELL') == 500` — exactly 500 shares sold  
 **And** Total execution time ≤ 20s (Generous for 2-core CI runner) — Apply `@Timeout(20)` annotation
 
 **Given** p95 Response Time Validation  

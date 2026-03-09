@@ -92,7 +92,7 @@
 | `member_id` (FK) | 주문 요청자. 회원별 주문 내역 조회의 기본 조건. |
 | `correlation_uuid` | MSA 환경에서 채널↔코어↔FEP 간 요청을 단일 트레이스로 연결. |
 | `client_request_id` (UK) | **업무 레벨 멱등 키**. 네트워크 재시도/중복 클릭 방어의 DB 1차 방어선. FIX Tag 11 ClOrdID 소스. |
-| `status` | 상태 머신의 핵심(`PENDING_NEW→AUTHED→EXECUTING→COMPLETED/FAILED/EXPIRED`). 서비스 로직이 이 값을 기준으로 분기. |
+| `status` | 상태 머신의 핵심(`PENDING_NEW→AUTHED→EXECUTING→(COMPLETED/FAILED/CANCELED/REQUERYING)`, `REQUERYING→(COMPLETED/CANCELED/ESCALATED)`, `ESCALATED→(COMPLETED/FAILED/CANCELED)`, `PENDING_NEW/AUTHED→EXPIRED`). 서비스 로직이 이 값을 기준으로 분기. |
 | `from_account_id` | 주문 실행 계좌 식별. 채널 레이어에서 계좌 소유자 검증에 사용. core_db 논리 참조. |
 | `from_account_number` | 주문 시점 실행 계좌번호 스냅샷. "내 주문 내역"에서 어느 계좌로 주문했는지 Core API 재조회 없이 표시 가능. |
 | `symbol` | 종목코드 (FIX Tag 55). 주문 대상 식별. 예: 005930(삼성전자). |
@@ -247,4 +247,3 @@
 *   **전략**:
     *   **Immutable Ledger**: Core의 `journal_entries`는 회원 상태와 무관하게 기록을 유지한다.
     *   **History Access**: 탈퇴 회원의 주문 내역 조회 요청 시, Channel은 `deleted_at` 회원의 접근을 차단하되, 내부 감사/CS 도구에서는 조회 가능하도록 필터를 적용한다.
-

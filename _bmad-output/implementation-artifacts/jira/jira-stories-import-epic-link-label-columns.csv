@@ -1,4 +1,4 @@
-"Summary","Work Type","Description","Label 1","Label 2","Label 3","Label 4","Label 5","Epic Link"
+﻿"Summary","Work Type","Description","Label 1","Label 2","Label 3","Label 4","Label 5","Epic Link"
 "Story 0.1: BE Core Platform Baseline","Story","Story 0.1: BE Core Platform Baseline
 
 Status: ready-for-dev
@@ -1845,7 +1845,7 @@ Acceptance Criteria
 Tasks / Subtasks
 
 - [ ] Implement owned-account balance inquiry endpoint (AC: 1)
-  - [ ] Return current and available balance fields in stable contract
+  - [ ] Return canonical `balance` and optional alias `availableBalance` (`== balance`) in stable contract
   - [ ] Preserve currency/as-of semantics consistently
 - [ ] Enforce ownership authorization on account reads (AC: 2)
   - [ ] Deny non-owned account access deterministically
@@ -1870,7 +1870,7 @@ Developer Context Section
 Technical Requirements
 
 - Contract:
-  - Response must include both `balance` and `availableBalance` semantics.
+  - `balance` is canonical; if `availableBalance` is exposed it must be alias-only (`availableBalance == balance`).
   - Field meanings must remain stable across clients.
 - Security:
   - Ownership verification is mandatory before balance disclosure.
@@ -1895,7 +1895,7 @@ File Structure Requirements
 Testing Requirements
 
 - Required checks:
-  - Owned account returns current and available balance.
+  - Owned account returns canonical `balance` and optional alias `availableBalance` (`== balance`).
   - Non-owned account access returns forbidden response.
   - Concurrent write/read scenario keeps deterministic balance contract.
   - Downstream failure maps to normalized retriable/non-retriable code.
@@ -2286,12 +2286,12 @@ Story
 
 As an account admin system,
 I want explicit account status contract,
-so that lock/unlock and order eligibility can be governed consistently.
+so that freeze/close lifecycle and order eligibility can be governed consistently.
 
 Acceptance Criteria
 
-- Given account status model, when status endpoint is queried, then `ACTIVE/LOCKED` and related metadata are returned.
-- Given locked account, when order flow requests eligibility, then denial reason code is deterministic.
+- Given account status model, when status endpoint is queried, then `ACTIVE/FROZEN/CLOSED` and related metadata are returned.
+- Given `FROZEN` or `CLOSED` account, when order flow requests eligibility, then denial reason code (`ORD-012`) is deterministic.
 - Given status transition event, when status changes, then audit/security event is emitted.
 
 Tasks / Subtasks
@@ -2343,7 +2343,7 @@ File Structure Requirements
 Testing Requirements
 
 - Required checks:
-  - Status endpoint returns `ACTIVE/LOCKED` and metadata correctly.
+  - Status endpoint returns `ACTIVE/FROZEN/CLOSED` and metadata correctly.
   - Locked-account eligibility check returns deterministic denial code.
   - Status transitions emit expected audit/security event payload.
 
@@ -3690,7 +3690,7 @@ So that local ledger stays consistent with external processing lifecycle.
 Acceptance Criteria
 
 - Given FEP-routed order execution request When pre-posting/debit occurs Then order state records external linkage metadata.
-- Given external failure requiring compensation When compensation path runs Then compensating credit is recorded with traceable linkage.
+- Given external failure after local canonical match When recovery path runs Then position truth is preserved and external sync state is escalated with traceable linkage.
 - Given external unknown outcome When settlement deferred Then ledger state remains reconcilable for later recovery.
 - Given FEP order FILLED When finalized Then final order status (FILLED) and clOrdID references are consistent.
 
@@ -3932,7 +3932,7 @@ So that accounting integrity can be continuously verified.
 
 Acceptance Criteria
 
-- Given completed order set When integrity query runs Then debit/credit(+compensate) invariants hold.
+- Given completed order set When integrity query runs Then debit/credit(+adjustment) invariants hold.
 - Given detected mismatch When integrity check fails Then anomaly is reported with traceable identifiers.
 - Given scheduled integrity job When executed Then summary metrics are stored for operations.
 - Given release gate When ledger integrity test fails Then build is blocked.
@@ -6650,3 +6650,6 @@ Completion Notes List
 File List
 
 - /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/10-6-mobile-release-readiness-pack.md","bmad","epic-10","story-10-6","lane-mixed","bmad-status-ready-for-dev","FIX-26"
+
+
+

@@ -11,7 +11,7 @@ An authenticated user can initiate a securities order (BUY/SELL) creating an Ord
 **Architecture requirements:** OrderSessionService.initiate() (cash/position/daily-limit validation), OtpService, OrderSession FSM (PENDING_NEW→AUTHED), TOTP (RFC 6238, ±1 window, Vault-stored secret), clOrdID UNIQUE  
 **Frontend:** OrderPage.tsx (FSM), OrderInputForm.tsx, OtpInput.tsx, useOrder.ts (useReducer)
 
-> **OrderSession FSM (Backend):** `PENDING_NEW → AUTHED → EXECUTING → COMPLETED | FAILED | EXPIRED`  
+> **OrderSession FSM (Backend):** `PENDING_NEW → AUTHED → EXECUTING → (COMPLETED|FAILED|CANCELED|REQUERYING)`, `REQUERYING → (COMPLETED|CANCELED|ESCALATED)`, `ESCALATED → (COMPLETED|FAILED|CANCELED)`, `PENDING_NEW|AUTHED → EXPIRED`  
 > **Frontend useReducer step FSM:** `'INPUT' → 'OTP' → 'CONFIRM' → 'PROCESSING' → 'COMPLETED' | 'FAILED' | 'OTP_EXPIRED'`
 >
 > **Redis keys:**
@@ -52,7 +52,7 @@ So that I can proceed through the OTP verification step before the order is exec
 **When** position and daily limit validation  
 **Then** corebank-service `GET /internal/v1/accounts/{accountId}/positions?symbol={symbol}` called for real-time available qty  
 **And** `qty > available_qty` → HTTP 422 `{ code: "ORD-003", message: "Insufficient position qty.", availableQty: N, requestedQty: M }` (FR-49)  
-**And** QueryDSL daily sell limit query executed: `SUM(order_executions.executed_qty WHERE side=SELL AND symbol=X AND account_id=Y AND created_at >= today)`  
+**And** QueryDSL daily sell limit query executed: `SUM(executions.executed_qty WHERE side=SELL AND symbol=X AND account_id=Y AND created_at >= today)`  
 **And** `todaySold + qty > Account.dailySellLimit` → HTTP 422 `{ code: "ORD-002", message: "Daily sell limit exceeded.", todaySold: N, dailyLimit: M, requestedQty: Q }` (FR-47)  
 **And** `Account.dailySellLimit` default per-symbol (externalized via env var `DAILY_SELL_LIMIT_DEFAULT`)
 
@@ -69,7 +69,7 @@ So that I can proceed through the OTP verification step before the order is exec
 
 **Given** request with same value as `clOrdID` owned by **another member**  
 **When** UNIQUE INDEX conflict + ownership verification fails (memberId mismatch)  
-**Then** HTTP 403 `{ code: "AUTH-007", message: "Access denied." }`
+**Then** HTTP 403 `{ code: "CHANNEL-006", message: "Access denied." }`
 
 **Given** `GET /api/v1/orders/sessions/{sessionId}/status` (valid JSESSIONID cookie)  
 **When** ownership confirmed via `SessionOwnershipValidator`  
@@ -103,7 +103,7 @@ So that I can proceed through the OTP verification step before the order is exec
 
 **Given** Package Structure  
 **Then** Package Path `io.github.yeongjae.fix.channel.order.{subpackage}`:
-- `domain/OrderSession.java` — `@Entity`, FSM status enum (`PENDING_NEW`, `AUTHED`, `EXECUTING`, `COMPLETED`, `FAILED`, `EXPIRED`)
+- `domain/OrderSession.java` — `@Entity`, FSM status enum (`PENDING_NEW`, `AUTHED`, `EXECUTING`, `REQUERYING`, `ESCALATED`, `COMPLETED`, `FAILED`, `CANCELED`, `EXPIRED`)
 - `service/OrderSessionService.java` — `initiate()`, `getStatus()`
 - `service/OtpService.java` — `generate()`, `verify()`
 - `service/SessionOwnershipValidator.java` — `@Component`, `validateOwner(sessionId, memberId)`
@@ -150,8 +150,8 @@ for (long w = windowIndex - 1; w <= windowIndex + 1; w++) {
 **Given** Incorrect TOTP code entry (±1 window mismatch)  
 **When** TOTP mismatch  
 **Then** `ch:otp-attempts:{sessionId}` DECR executed atomically  
-**And** HTTP 401 `{ code: "AUTH-004", remainingAttempts: N }` (N > 0)  
-**And** remainingAttempts == 0 → session status `FAILED`, HTTP 401 `{ code: "AUTH-005", message: "Maximum authentication attempts exceeded. Please restart the order." }` (FR-16)
+**And** HTTP 422 `{ code: "CHANNEL-002", remainingAttempts: N }` (N > 0)  
+**And** remainingAttempts == 0 → session status `FAILED`, HTTP 403 `{ code: "CHANNEL-003", message: "Maximum authentication attempts exceeded. Please restart the order." }` (FR-16)
 
 **Given** Verify request when session status is not `PENDING_NEW`  
 **When** FSM state validation failure  
@@ -256,11 +256,11 @@ So that the order flow feels fast and consistent with Korean HTS (Home Trading S
 **When** response received  
 **Then** FSM dispatch `{ type: 'OTP_VERIFIED' }` → step transitions to `'CONFIRM'` (implemented in Epic 4 Story 4.4)
 
-**Given** TOTP code mismatch or replay prevention (HTTP 401)  
+**Given** TOTP code mismatch (`422 CHANNEL-002`) or replay prevention (`401 AUTH-011`)  
 **When** error received  
 **Then** red border on each input box + `data-testid="otp-error-msg"`: "Code is incorrect. Remaining attempts: {remainingAttempts}"
 
-**Given** attempts exceeded (HTTP 401 AUTH-005)  
+**Given** attempts exceeded (HTTP 403 CHANNEL-003)  
 **When** error received  
 **Then** "Authentication attempts exceeded. Please restart the order." + [Start over] button
 

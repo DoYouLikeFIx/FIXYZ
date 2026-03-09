@@ -61,7 +61,7 @@ erDiagram
         BIGINT member_id FK
         CHAR36 correlation_uuid
         VARCHAR64 client_request_id UK "idempotency key - FIX Tag 11 ClOrdID source"
-        VARCHAR20 status "PENDING_NEW|AUTHED|EXECUTING|COMPLETED|FAILED|EXPIRED"
+        VARCHAR20 status "PENDING_NEW|AUTHED|EXECUTING|REQUERYING|ESCALATED|COMPLETED|FAILED|CANCELED|EXPIRED"
         BIGINT from_account_id "logical FK -> COREBANK_ACCOUNTS.id"
         VARCHAR14 from_account_number "nullable - snapshot for history N+1 prevention"
         VARCHAR20 symbol "FIX Tag 55 - e.g. 005930"
@@ -86,7 +86,7 @@ erDiagram
         CHAR36 notification_uuid UK
         BIGINT member_id FK
         BIGINT order_session_id FK
-        VARCHAR50 type "ORDER_FILLED|ORDER_REJECTED|ORDER_CANCELLED|SESSION_EXPIRY|SECURITY_ALERT|ACCOUNT_LOCKED|POSITION_UPDATED"
+        VARCHAR50 type "ORDER_FILLED|ORDER_REJECTED|ORDER_CANCELED|SESSION_EXPIRY|SECURITY_ALERT|ACCOUNT_LOCKED|POSITION_UPDATE"
         VARCHAR20 status "UNREAD|READ|EXPIRED"
         VARCHAR100 title
         TEXT message
@@ -102,7 +102,7 @@ erDiagram
         CHAR36 audit_uuid UK
         BIGINT member_id FK
         BIGINT order_session_id FK
-        VARCHAR50 action "LOGIN_SUCCESS|LOGIN_FAILURE|LOGOUT|OTP_VERIFIED|ACCOUNT_LOCKED|ACCOUNT_UNLOCKED|TOTP_ENROLLED|PASSWORD_CHANGED|ORDER_SUBMITTED|ORDER_EXECUTED|ORDER_FAILED|ORDER_COMPENSATED|ORDER_FILLED|ORDER_REJECTED|ORDER_CANCELLED"
+        VARCHAR50 action "LOGIN_SUCCESS|LOGIN_FAILURE|LOGOUT|OTP_VERIFIED|ACCOUNT_LOCKED|ACCOUNT_UNLOCKED|TOTP_ENROLLED|PASSWORD_CHANGED|ORDER_SUBMITTED|ORDER_EXECUTED|ORDER_FAILED|ORDER_ESCALATED|ORDER_FILLED|ORDER_REJECTED|ORDER_CANCELED"
         VARCHAR50 target_type
         VARCHAR100 target_id
         VARCHAR45 ip_address
@@ -176,9 +176,10 @@ erDiagram
   - `PENDING -> EXPIRED` when `expires_at < NOW()`.
 
 - `ORDER_SESSIONS.status` *(FIX 4.2 주문 세션 — FindingR4-R9)*
-  - `PENDING_NEW -> AUTHED -> EXECUTING -> COMPLETED|FAILED|EXPIRED`.
+  - `PENDING_NEW -> AUTHED -> EXECUTING -> COMPLETED|FAILED|CANCELED|REQUERYING`.
+  - `REQUERYING -> COMPLETED|CANCELED|ESCALATED`.
+  - `ESCALATED -> COMPLETED|FAILED|CANCELED` by admin replay/requery decision.
   - `PENDING_NEW|AUTHED -> EXPIRED` by session expiry batch when `expires_at < NOW()`.
-  - `EXECUTING -> FAILED` by explicit core failure response or timeout when `executing_started_at < NOW()-30s`.
   - Transition authority is service logic; timestamps are audit evidence, not primary state.
 
 - `NOTIFICATIONS.status`
@@ -345,7 +346,10 @@ erDiagram
   - `post_execution_balance`: completed response replay without recalculation.
   - `expires_at`: session validity boundary.
 - Status policy
-  - `PENDING_NEW -> AUTHED -> EXECUTING -> COMPLETED|FAILED|EXPIRED`.
+  - `PENDING_NEW -> AUTHED -> EXECUTING -> COMPLETED|FAILED|CANCELED|REQUERYING`.
+  - `REQUERYING -> COMPLETED|CANCELED|ESCALATED`.
+  - `ESCALATED -> COMPLETED|FAILED|CANCELED`.
+  - `PENDING_NEW|AUTHED -> EXPIRED` by TTL batch.
   - State transitions are explicit service operations, not timestamp inference.
 - Integrity rules
   - `client_request_id` unique.
@@ -361,7 +365,7 @@ erDiagram
 | `member_id` | BIGINT UNSIGNED | FK | NO | References `MEMBERS.id` |
 | `correlation_uuid` | CHAR(36) | | NO | Trace ID for observability |
 | `client_request_id` | VARCHAR(64) | UK | NO | Idempotency key from client |
-| `status` | VARCHAR(20) | | NO | `PENDING_NEW`, `AUTHED`, `EXECUTING`, `COMPLETED`, `FAILED`, `EXPIRED` |
+| `status` | VARCHAR(20) | | NO | `PENDING_NEW`, `AUTHED`, `EXECUTING`, `REQUERYING`, `ESCALATED`, `COMPLETED`, `FAILED`, `CANCELED`, `EXPIRED` |
 | `from_account_id` | BIGINT UNSIGNED | | NO | Sender account (logical ref to core_db.accounts.id) |
 | `from_account_number` | VARCHAR(14) | | YES | Sender account number snapshot at order time; avoids Core API re-query for history display |
 | `symbol` | VARCHAR(20) | | NO | Stock symbol — FIX Tag 55 (e.g. 005930) |
@@ -389,7 +393,7 @@ erDiagram
   - `id`: fast pagination/order operations.
   - `notification_uuid`: external-safe event reference.
 - Important columns
-  - `type`: domain event classification (`ORDER_FILLED`, `ORDER_REJECTED`, `ORDER_CANCELLED`, `SESSION_EXPIRY`, `SECURITY_ALERT`, `ACCOUNT_LOCKED`, `POSITION_UPDATED`).
+  - `type`: domain event classification (`ORDER_FILLED`, `ORDER_REJECTED`, `ORDER_CANCELED`, `SESSION_EXPIRY`, `SECURITY_ALERT`, `ACCOUNT_LOCKED`, `POSITION_UPDATE`).
   - `status`: read lifecycle (`UNREAD`, `READ`, `EXPIRED`).
   - `order_session_id`: optional linkage to order session context.
   - `read_at`, `expires_at`: read/retention control points.
@@ -445,7 +449,7 @@ erDiagram
 | `audit_uuid` | CHAR(36) | UK | NO | Compliance reference |
 | `member_id` | BIGINT UNSIGNED | FK | YES | Actor (NULL if system action) |
 | `order_session_id` | BIGINT UNSIGNED | FK | YES | Related order session |
-| `action` | VARCHAR(50) | | NO | `LOGIN_SUCCESS`, `ORDER_SUBMITTED`, `ORDER_EXECUTED`, `ORDER_FILLED`, `ORDER_REJECTED`, `ORDER_CANCELLED`, etc. |
+| `action` | VARCHAR(50) | | NO | `LOGIN_SUCCESS`, `ORDER_SUBMITTED`, `ORDER_EXECUTED`, `ORDER_FILLED`, `ORDER_REJECTED`, `ORDER_CANCELED`, `ORDER_ESCALATED`, etc. |
 | `target_type` | VARCHAR(50) | | YES | Entity affected (e.g., `MEMBER`, `ORDER`) |
 | `target_id` | VARCHAR(100) | | YES | ID of the target entity |
 | `ip_address` | VARCHAR(45) | | YES | Client IP (IPv4/IPv6) |
@@ -510,6 +514,7 @@ erDiagram
 - Integration policy
   - Channel layer calls Core API; account row locks and ledger writes happen inside `core_db`.
   - Cross-schema link is logical (service boundary), enforced by API/business checks, not DB FK.
+  - `FROZEN`/`CLOSED` 상태 전이는 corebank가 소유한다. channel은 해당 상태를 직접 쓰거나 `channel_db.security_events` enum으로 확장하지 않는다(릴레이 계약 확정 전까지).
 
 #### Field Specifications
 

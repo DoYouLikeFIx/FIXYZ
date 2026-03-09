@@ -28,8 +28,8 @@ So that security investigations can reconstruct the complete event chain.
 **And** Audit INSERT after order TX commit → independent of order rollback (best-effort)  
 **And** `channel_db.audit_logs` INSERT  
 **And** Fields: `id, member_id, action (ENUM), target_id, ip_address, user_agent, created_at`  
-**And** `action` ENUM: `LOGIN_SUCCESS, LOGIN_FAILURE, LOGOUT, ORDER_INITIATED, OTP_ISSUED, OTP_VERIFIED, OTP_FAILED, ORDER_EXECUTED, ORDER_FAILED, ORDER_COMPENSATED`  
-**And** `ORDER_COMPENSATED`: Recorded when Story 4.3 RecoveryScheduler executes compensating transaction  
+**And** `action` ENUM: `LOGIN_SUCCESS, LOGIN_FAILURE, LOGOUT, OTP_VERIFIED, ACCOUNT_LOCKED, ACCOUNT_UNLOCKED, TOTP_ENROLLED, PASSWORD_CHANGED, ORDER_SUBMITTED, ORDER_EXECUTED, ORDER_FAILED, ORDER_ESCALATED, ORDER_FILLED, ORDER_REJECTED, ORDER_CANCELED`  
+**And** `ORDER_ESCALATED`: Recorded when Story 4.3 RecoveryScheduler escalates external sync uncertainty for manual replay/requery  
 **And** Mandatory logging on `@Async` failure: `log.error("AUDIT_FAIL: action={}, memberId={}", event.getAction(), event.getMemberId(), ex)`
 
 **Given** Security-critical events (account lockout, OTP limit exceeded, forced session invalidation)  

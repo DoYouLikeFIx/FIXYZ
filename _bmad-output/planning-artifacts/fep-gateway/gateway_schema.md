@@ -10,15 +10,15 @@
 
 | 버전 | 날짜 | 변경 내용 |
 |---|---|---|
-| v2.0 | 2026-02-27 | `fep_protocol_specs` 신규 추가 (기관별 ISO-8583 필드 명세 DB 관리, 캐시 무효화 전략 포함) |
+| v2.0 | 2026-02-27 | `fep_protocol_specs` 신규 추가 (기관별 FIX 4.2 필드 명세 DB 관리, 캐시 무효화 전략 포함) |
 | v2.0 | 2026-02-27 | `fep_circuit_breaker_events` 신규 추가 (CB 상태 전이 Append-Only 이력, `throttled_count` 포함) |
 | v2.0 | 2026-02-27 | `fep_transaction_journal.tx_status`에 `MALFORMED`, `CIRCUIT_REJECTED` 상태 추가 |
-| v2.0 | 2026-02-27 | `fep_transaction_journal`에 `failure_reason`, `reversal_ref_tx_id`, `stan` NULL 정책 명문화 및 인덱스 전략 5개 추가 |
+| v2.0 | 2026-02-27 | `fep_transaction_journal`에 `failure_reason`, `reversal_ref_tx_id`, `msg_seq_num` 정책 명문화 및 인덱스 전략 5개 추가 |
 | v2.0 | 2026-02-27 | `fep_security_keys`에 `alert_sent_at` 추가 (D-7 만료 알림 중복 발송 방지) |
 | v2.0 | 2026-02-27 | `fep_connections`의 `active_connection_count` → `snapshot_active_count` 명칭 변경 + `last_snapshot_at` 추가 |
 | v2.0 | 2026-02-27 | `fep_institutions.protocol_type` Protocol Family 힌트 역할 명확화 |
 | v2.0 | 2026-02-27 | CB OPEN + connection SIGNED_ON 공존 독립성 정책 명문화 |
-| v2.0 | 2026-02-27 | STAN ↔ Simulator `trace_id` 크로스 매핑 정책 명문화 |
+| v2.0 | 2026-02-27 | MsgSeqNum/ClOrdID ↔ Simulator 로그 크로스 매핑 정책 명문화 |
 | v2.0 | 2026-02-27 | `fep_protocol_spec` NULL Unique MySQL 함정 → Trigger 중복 방지 정책 추가 |
 | v2.0 | 2026-02-27 | `CIRCUIT_REJECTED` SELECT-before-INSERT 멱등성 흐름 명문화 |
 | v2.0 | 2026-02-27 | `throttled_count` 집계 방식 — 인메모리 AtomicLong + 전이 시 일괄 INSERT 정책 명문화 |
@@ -94,17 +94,17 @@
 | v2.0 | 2026-02-27 | **[R19]** DBML `fep_protocol_log.direction` — `varchar(5)` → `varchar(3)` 정합성 보정 (`IN` 2자·`OUT` 3자 최대 3바이트) |
 | v2.0 | 2026-02-27 | **[R20]** Changelog R19 행 병합 버그 수정 (`||` → 줄바꿈 분리) + 오타 `콼럼명`→`컬럼명`, `쾐시`→`캐시` 교정 |
 | v2.0 | 2026-02-27 | **[R20]** `fep_circuit_breaker_events.trigger_type` — schema.md 컬럼명 `trigger` → `trigger_type` 반영 완료. R19 DBML 변경과 schema.md 동기화. 예약어 경고 → 변경 완료 노트로 교체 |
-| v2.0 | 2026-02-27 | **[R20]** DBML `fep_protocol_log.msg_type` `varchar(10)` → `varchar(4)` 보정. ISO-8583 MTI 4자리 고정(`0200`/`0400`/`0600`/`0800`). schema.md DDL 예시 `VARCHAR(4)`와 정합 |
+| v2.0 | 2026-02-27 | **[R20]** DBML `fep_protocol_log.msg_type` 타입/길이 보정 (`varchar(10)` → `varchar(2)`) 및 schema.md DDL 동기화 |
 | v2.0 | 2026-02-27 | **[R20]** `fep_routing_rules.updated_at` — `ON UPDATE CURRENT_TIMESTAMP` 필수 명시 추가. 핫리로드 폴링 방식(`updated_at > last_loaded_at`)이 DDL 누락 시 무음 실패. schema.md + DBML 동시 반영 (`fep_protocol_specs` R18 동일 패턴) |
 | v2.0 | 2026-02-27 | **[R20]** DBML `fep_protocol_specs.created_at/updated_at` `timestamp` → `datetime` 보정. R18에서 connections/security_keys 변환 시 이 테이블 누락. DDL note `TIMESTAMP` → `DATETIME` 동기화 |
 | v2.0 | 2026-02-27 | **[R21]** `fep_transaction_journal` 섹션 헤더 오타 `콤럼` → `컬럼` 교정 |
 | v2.0 | 2026-02-27 | **[R21]** `fep_protocol_specs.idx_spec_load` 설명 오타 4개 교정: `쾐시`×2→`캐시`, `딱라진다`→`떨어진다`, `로드맴`→`로드`, SQL 주석 `콼럼 순서`→`컬럼 순서` |
 | v2.0 | 2026-02-27 | **[R21]** `fep_routing_rules` CHECK constraint 설명 오타 2개 교정: `lexicographic(stext 사전순)`→`lexicographic(사전순)` (앞 `s` 오타), `6자리 BIN라리는`→`6자리 BIN이라면` |
 | v2.0 | 2026-02-27 | **[R21]** `fep_protocol_specs.updated_at` DDL 예시 `TIMESTAMP` → `DATETIME` 반영 — R20에서 DBML `datetime` 변환 완료했으나 schema.md 본문 DDL 예시 미반영 수정 |
-| v2.0 | 2026-02-27 | **[R21]** DBML `fep_transaction_journal.message_type` `varchar(10)` → `varchar(4)` 보정 — ISO-8583 MTI 4자리 고정. R20에서 `fep_protocol_log.msg_type` 수정 시 동일 패턴 누락 |
+| v2.0 | 2026-02-27 | **[R21]** DBML `fep_transaction_journal.msg_type` 타입/컬럼명 정합 보정 (legacy 컬럼명 → `msg_type`, `varchar(10)` → `varchar(2)`) |
 | v2.0 | 2026-02-27 | **[R21]** DBML `fep_protocol_log.direction` note 강화 — schema.md DDL `ENUM('IN','OUT')` 정합 명시. DBML이 MySQL ENUM을 지원하지 않아 `varchar(3)` 유지하되 DDL 정확성 note 추가 |
 | v2.0 | 2026-02-27 | **[R22]** DBML `fep_institutions.created_at/updated_at` `timestamp` → `datetime` 변경 — R13~R20 일괄 마이그레이션에서 유일하게 누락된 테이블. 기관 레코드는 무기한 유지되므로 2038-01-19 `TIMESTAMP` 오버플로우 위험. DBML + schema.md `updated_at` DDL 예시 `TIMESTAMP` → `DATETIME` 동기화 |
-| v2.0 | 2026-02-27 | **[R22]** DBML `fep_protocol_specs.msg_type` `varchar(10)` → `varchar(4)` 보정 — ISO-8583 MTI는 4자리 고정(0200/0400/0600/0800). R20 `fep_protocol_log.msg_type`, R21 `fep_transaction_journal.message_type` 수정 시 이 테이블 누락 |
+| v2.0 | 2026-02-27 | **[R22]** DBML `fep_protocol_specs.msg_type` 타입 보정 (`varchar(10)` → `varchar(2)`) 및 연관 테이블 정합 동기화 |
 | v2.0 | 2026-02-27 | **[R22]** DBML `fep_circuit_breaker_events.idx_cb_events` note 강화 — schema.md DDL 정의 `INDEX idx_cb_events (org_code, created_at DESC)` 내림차순 인덱스 명시. MySQL 8.0+ / MariaDB 10.6+ 전용(구버전 ASC로 무음 대체). DBML이 DESC 인덱스 방향 미지원 — 실제 DDL 적용 필요 안내 |
 | v2.0 | 2026-02-27 | **[R23]** Section 5 Trigger 생성 순서 `두 가지` → 총 **6개** 수정 — 누락된 4개 Trigger 목록 추가: `trg_security_keys_active_dup_insert` (BEFORE INSERT ON fep_security_keys), `trg_security_keys_active_dup_update` (BEFORE UPDATE ON fep_security_keys), `trg_protocol_specs_no_dup_null_msgtype` (BEFORE INSERT ON fep_protocol_specs), `trg_protocol_specs_no_dup_null_msgtype_update` (BEFORE UPDATE ON fep_protocol_specs) |
 | v2.0 | 2026-02-27 | **[R23]** `fep_protocol_specs.idx_spec_load` SQL 코드 블록 마크다운 구조 오류 수정 — 닫는 ` ``` ` 뒤 본문이 같은 줄에 이어지던 문제 해소, 코드 블록 닫기와 후속 단락 사이 줄바꿈 추가 |
@@ -116,12 +116,12 @@
 | v2.0 | 2026-02-27 | **[R25]** `fep_circuit_breaker_state.last_failure_at`, `open_until`, `updated_at` 컬럼 설명에 `DATETIME` 타입 명시 추가 — DBML R16/R17 `datetime` 반영. `open_until`에 `NULL IS NOT NULL` 선행 점검 이유 타입 특성과 함께 명시 |
 | v2.0 | 2026-02-27 | **[R26]** `fep_transaction_journal.req_timestamp`, `res_timestamp` 컬럼 설명 정리 — DBML R15에서 `datetime(3)` 확정된 상태임에도 "`TIMESTAMP` 또는" 선택지 표현 잔류. `DATETIME(3)` 확정 타입으로 명시 + 표제에 일관성 정리 |
 | v2.0 | 2026-02-27 | **[R26]** `fep_transaction_journal.response_code` 컬럼 설명에 `VARCHAR(10)` 타입 명시 추가 — DBML `varchar(10)` 반영 |
-| v2.0 | 2026-02-27 | **[R26]** `fep_protocol_log.msg_type`, `direction` 컬럼 설명에 타입 명시 추가 — `msg_type VARCHAR(4)` (ISO-8583 MTI 4자리 고정), `direction ENUM('IN','OUT')` (DBML `varchar(3)`은 ERD 도구 호환 목적) |
-| v2.0 | 2026-02-27 | **[R27]** `fep_transaction_journal` 핵심 비즈니스 컬럼 타입 미명시 일괄 수정 — `stan VARCHAR(6)`, `tx_status VARCHAR(20)`, `message_type VARCHAR(4)`, `pan_masked VARCHAR(25)`, `currency VARCHAR(3)`, `duration_ms INT`, `failure_reason VARCHAR(100)` 타입 명시 추가. DBML 구조 정합 확인 |
+| v2.0 | 2026-02-27 | **[R26]** `fep_protocol_log.msg_type`, `direction` 컬럼 설명에 타입 명시 추가 — `msg_type VARCHAR(2)`, `direction ENUM('IN','OUT')` (DBML `varchar(3)`은 ERD 도구 호환 목적) |
+| v2.0 | 2026-02-27 | **[R27]** `fep_transaction_journal` 핵심 비즈니스 컬럼 타입 미명시 일괄 수정 — `msg_seq_num INT`, `tx_status VARCHAR(20)`, `msg_type VARCHAR(2)`, `cl_ord_id VARCHAR(64)`, `currency VARCHAR(3)`, `duration_ms INT`, `failure_reason VARCHAR(100)` 타입 명시 추가. DBML 구조 정합 확인 |
 | v2.0 | 2026-02-27 | **[R28]** 전체 검증 일괄 수정 — 오타 2개(`왔`→`왜`, `찬번째`→`첫번째`), 형식 비일관성 수정(`connection_weight`, `needs_reconciliation`, `amount`, `throttled_count`, `trigger_type` 백틱/형식 통일), `fep_connections` 스칼라 컬럼 11개 타입 명시(`conn_id CHAR(36)`, `host_ip VARCHAR(45)`, `port INT`, `is_primary TINYINT(1)`, `max_connections INT`, `keep_alive_interval INT`, `snapshot_active_count INT DEFAULT 0`, `consecutive_echo_fail_count INT DEFAULT 0`, `echo_fail_threshold INT DEFAULT 3`, `consecutive_error_count INT DEFAULT 0`, `runtime_status VARCHAR(20)`) |
-| v2.0 | 2026-02-27 | **[R30]** 전체 잔류 미명시 컬럼 일괄 처리 — `fep_institutions` 4컬럼(`org_code VARCHAR(10)`, `org_name VARCHAR(100)`, `status VARCHAR(20)`, `protocol_type VARCHAR(30)`, `updated_at DATETIME` 형식 통일), `fep_connections.org_code VARCHAR(10)`, `fep_routing_rules` 8컬럼(`rule_id CHAR(36)`, `routing_type VARCHAR(20)`, `exchange_code VARCHAR(10)`, `symbol_prefix_start/end VARCHAR(10)`, `target_org_code VARCHAR(10)`, `priority INT DEFAULT 0`, `is_active TINYINT(1)`), `fep_protocol_specs` 11컬럼(`spec_id CHAR(36)`, `org_code VARCHAR(10)`, `msg_type VARCHAR(4)`, `field_no INT`, `field_name VARCHAR(50)`, `data_type VARCHAR(10)`, `max_length INT`, `length_type VARCHAR(10)`, `is_mandatory TINYINT(1)`, `is_active TINYINT(1)`, `updated_at DATETIME`) |
+| v2.0 | 2026-02-27 | **[R30]** 전체 잔류 미명시 컬럼 일괄 처리 — `fep_institutions`/`fep_connections`/`fep_routing_rules`/`fep_protocol_specs` 타입 표기 통일 (`msg_type VARCHAR(2)` 기준) |
 | v2.0 | 2026-02-27 | **[R29]** `fep_circuit_breaker_state` 스칼라 컬럼 6개 타입 명시 — `state VARCHAR(20)`, `failure_count INT DEFAULT 0`, `success_count INT DEFAULT 0`, `half_open_threshold INT DEFAULT 3`, `open_duration_seconds INT DEFAULT 60`, `failure_threshold INT DEFAULT 5`. `fep_circuit_breaker_events` 스칼라 컬럼 4개 타입 명시 — `event_id CHAR(36)`, `from_state VARCHAR(20)`, `to_state VARCHAR(20)`, `failure_count_snapshot INT NULL`. DBML `fep_transaction_journal.duration_ms` 앱 레이어 계산 정책 note 추가 |
-| v2.0 | 2026-02-27 | **[R30]** 전체 잔류 미명시 컬럼 일괄 처리 (2/2) — `fep_security_keys` 10컬럼(`key_id CHAR(36)`, `org_code VARCHAR(10)`, `key_type VARCHAR(10)`, `key_value_encrypted VARCHAR(512)`, `kcv VARCHAR(20)`, `expiry_date DATE`, `rotation_status VARCHAR(20)`, `rotated_from_key_id CHAR(36)`, `alert_sent_at DATETIME`, `alert_escalated_at DATETIME`), `fep_protocol_log` 5컬럼(`log_id CHAR(36)`, `tx_id CHAR(36)`, `raw_header TEXT`, `raw_body TEXT`, `error_detail TEXT`), FK `org_code VARCHAR(10)` 추가 처리(`fep_transaction_journal`, `fep_circuit_breaker_state`, `fep_circuit_breaker_events`), `fep_transaction_journal.reversal_ref_tx_id CHAR(36)` |
+| v2.0 | 2026-02-27 | **[R30]** 전체 잔류 미명시 컬럼 일괄 처리 (2/2) — `fep_security_keys`(`credential_value_encrypted`, `cert_fingerprint` 포함), `fep_protocol_log`, FK 타입 표기 통일 |
 | v2.0 | 2026-02-27 | **[R31]** DBML `uuid` → `char(36)` 전환 — 6개 테이블 10개 컬럼(`conn_id`, `rule_id`, `spec_id`, `key_id`, `rotated_from_key_id`, `tx_id`×2, `reversal_ref_tx_id`, `log_id`, `event_id`). MySQL/MariaDB에 `uuid` 네이티브 타입 없음 — DDL 실제 타입은 `CHAR(36)`. schema.md SSoT 정책 기반 DBML 보정. 각 컬럼에 `DDL: CHAR(36)` note 추가 |
 | v2.0 | 2026-02-27 | **[R31]** `fep_transaction_journal.needs_reconciliation` — `BOOLEAN DEFAULT FALSE` → `TINYINT(1) DEFAULT 0` 보정. `is_primary`, `is_mandatory`, `is_active` 등 다른 Boolean 컬럼 표기 방식(`TINYINT(1)`)과 일관성 확보. MySQL `BOOLEAN = TINYINT(1)` 동의어이므로 DDL 동작 동일하나 schema.md 내 타입 표기 통일. Reconciliation 설명 본문 동기화(TRUE/FALSE → 1/0 명시) |
 | v2.0 | 2026-02-27 | **[R31]** `fep_connections.is_primary`, `fep_protocol_specs.is_mandatory`, `fep_protocol_specs.is_active` — `DEFAULT 1` 명시 추가. DBML에 `default: true` 표기 존재하나 schema.md 설명에 DEFAULT 누락. 신규 레코드 삽입 시 기본값(`1`) 정책 명문화 |
@@ -162,29 +162,74 @@
 | v2.0 | 2026-02-27 | **[R38]** schema.md `fep_routing_rules.created_at` `DATETIME(6) NOT NULL` 반영, `fep_circuit_breaker_events.created_at` `DATETIME(6) NOT NULL` 반영, `fep_security_keys.created_at` `DATETIME NOT NULL` 반영 — R37 DBML `not null` 변경에 대응하는 schema.md 본문 동기화 |
 | v2.0 | 2026-02-27 | **[R39]** DBML `fep_institutions.status` — `DDL: ENUM('ACTIVE','SUSPENDED')` note 추가. `VARCHAR(20)`은 DBML MySQL ENUM 미지원으로 인한 ERD 도구 호환 목적 — 실제 DDL은 `ENUM` 사용 권장 |
 | v2.0 | 2026-02-27 | **[R39]** DBML `fep_routing_rules.routing_type` — `DDL: ENUM('SYMBOL_PREFIX','EXCHANGE')` note 추가. `VARCHAR(20)` ERD 도구 호환 목적 |
-| v2.0 | 2026-02-27 | **[R39]** DBML `fep_security_keys.key_type` — `DDL: ENUM('ZMK','ZPK','ZAK','PVK')` note 추가. `VARCHAR(10)` ERD 도구 호환 목적 |
-| v2.0 | 2026-02-27 | **[R39]** DBML `fep_transaction_journal.tx_status` — `DDL: ENUM('PENDING','COMPLETED','TIMEOUT','REVERSED','MALFORMED','CIRCUIT_REJECTED')` note 추가. `VARCHAR(20)` ERD 도구 호환 목적 |
+| v2.0 | 2026-02-27 | **[R39]** DBML `fep_security_keys.key_type` — `DDL: ENUM('TLS_CERT','LOGON_PASSWORD','ADMIN_TOKEN')` note 추가. `VARCHAR(20)` ERD 도구 호환 목적 |
+| v2.0 | 2026-02-27 | **[R39]** DBML `fep_transaction_journal.tx_status` — `DDL: ENUM('PENDING','COMPLETED','TIMEOUT','REVERSED','MALFORMED','UNKNOWN','CIRCUIT_REJECTED')` note 추가. `VARCHAR(20)` ERD 도구 호환 목적 |
 | v2.0 | 2026-02-27 | **[R39]** DBML `fep_circuit_breaker_state.state` — `DDL: ENUM('CLOSED','OPEN','HALF_OPEN')` note 추가. `VARCHAR(20)` ERD 도구 호환 목적 |
 | v2.0 | 2026-02-27 | **[R39]** DBML `fep_circuit_breaker_events.from_state` / `to_state` — `ENUM:` 접두사 + `DDL: ENUM(...)` note 추가. `from_state`에 `INITIAL` 값 명시 (기관 최초 등록 시 이전 상태 없음). `VARCHAR(20)` ERD 도구 호환 목적 |
-| v2.0 | 2026-02-27 | **[R39]** schema.md `fep_transaction_journal.tx_status` — `DDL: ENUM('PENDING','COMPLETED','TIMEOUT','REVERSED','MALFORMED','CIRCUIT_REJECTED')` 명시 추가. 컬럼 설명에 상태 값은 열거됐으나 실제 DDL 타입 선언 미명시 상태 수정 |
+| v2.0 | 2026-02-27 | **[R39]** schema.md `fep_transaction_journal.tx_status` — `DDL: ENUM('PENDING','COMPLETED','TIMEOUT','REVERSED','MALFORMED','UNKNOWN','CIRCUIT_REJECTED')` 명시 추가. 컬럼 설명에 상태 값은 열거됐으나 실제 DDL 타입 선언 미명시 상태 수정 |
 | v2.0 | 2026-02-27 | **[R39]** schema.md `fep_circuit_breaker_events.from_state` / `to_state` — `DDL: ENUM(...)` 명시 추가. 전이 상태 값이 괄호 내 열거 표기만 존재하고 DDL 타입 선언 미명시 상태 수정 |
 | v2.0 | 2026-02-27 | **[R40]** DBML `fep_connections.runtime_status` — `DDL: ENUM('DISCONNECTED','CONNECTED','SIGNED_ON','DEGRADED')` note 추가. R39에서 7개 ENUM 컬럼 추가 시 누락 보완. `VARCHAR(20)` ERD 도구 호환 목적 |
 | v2.0 | 2026-02-27 | **[R40]** DBML `fep_security_keys.rotation_status` — `DDL: ENUM('ACTIVE','ROTATED','EXPIRED')` note 추가. R39 누락 보완. `VARCHAR(20)` ERD 도구 호환 목적 |
 | v2.0 | 2026-02-27 | **[R40]** schema.md `fep_protocol_specs.created_at` / `updated_at` — `DATETIME` → `DATETIME NOT NULL` 동기화. R38에서 DBML `not null` 추가 시 schema.md 본문 미반영 수정 |
 | v2.0 | 2026-02-27 | **[R40]** schema.md `fep_circuit_breaker_events.created_at` 설명 오타 — `타임스킬프` → `타임스탬프` 교정. `포렌식 부활` → `포렌식 재구성` 표현 정확화 |
-| v2.0 | 2026-02-27 | **[R40]** DBML `fep_protocol_specs.data_type` — `DDL: ENUM('N','AN','ANS','B','Z')` note 추가. 고정 값 집합 컬럼 ENUM 의도 명시. `VARCHAR(10)` ERD 도구 호환 목적 |
-| v2.0 | 2026-02-27 | **[R40]** DBML `fep_protocol_specs.length_type` — `DDL: ENUM('FIXED','LLVAR','LLLVAR')` note 추가. ISO-8583 길이 인코딩 방식 3종 고정 값 집합. `VARCHAR(10)` ERD 도구 호환 목적 |
+| v2.0 | 2026-02-27 | **[R40]** DBML `fep_protocol_specs.data_type` — `DDL: ENUM('INT','FLOAT','CHAR','STRING','BOOLEAN','PRICE','QTY','CURRENCY','EXCHANGE','UTCTIMESTAMP')` note 추가 |
+| v2.0 | 2026-02-27 | **[R40]** DBML `fep_protocol_specs.length_type` — `DDL: ENUM('FIXED','VARIABLE')` note 추가. `VARCHAR(10)` ERD 도구 호환 목적 |
 | v2.0 | 2026-02-27 | **[R40]** DBML `fep_circuit_breaker_events.trigger_type` — `DDL: ENUM('FAILURE_THRESHOLD','OPEN_EXPIRED','SUCCESS_THRESHOLD','HALF_OPEN_FAILURE','MANUAL_RESET')` note 추가. R19 예약어 변경 이력 note 유지. `VARCHAR(30)` ERD 도구 호환 목적 |
 | v2.0 | 2026-02-27 | **[R41]** schema.md `fep_circuit_breaker_state.updated_at` — `DATETIME` → `DATETIME NOT NULL` 반영. DBML R37 `not null` 추가 시 schema.md 본문 미동기화 수정. Trigger INSERT 시 항상 `NOW()` 주입 근거 명시 |
 | v2.0 | 2026-02-27 | **[R41]** schema.md `fep_connections.last_snapshot_at`, `last_echo_sent_at`, `last_echo_received_at` — **NULL 허용** 명시 추가. 세 컬럼 모두 DBML에서 `not null` 없이 선언된 NULL 허용 컬럼이나 schema.md 설명에 NULL 허용 여부 미명시. 초기값 NULL 이유(`최초 스냅샷 flush 전`, `최초 Echo 발송 전`, `최초 Echo 수신 전`) 각각 명시 |
 | v2.0 | 2026-02-27 | **[R41]** schema.md Section 5 DDL 오타 수정 — `참조하림으로` → `참조하므로` (`fep_transaction_journal.reversal_ref_tx_id` FK 설명 주석) |
 | v2.0 | 2026-02-27 | **[R41]** schema.md `fep_security_keys.updated_at` 부재 — 설계 의도 명문화 추가. `created_at` 아래에 ℹ️ 노트로 "Append-Only + 단방향 상태 전이 테이블 특성상 폴링 기반 캐시 무효화 불필요, 교체 이력은 `rotated_from_key_id` 체인으로 추적, 알림 시각은 `alert_sent_at`/`alert_escalated_at`으로 대체" 근거 기술 — 누락 오해 방지 |
-| v2.0 | 2026-02-27 | **[R42]** schema.md `fep_security_keys.kcv` — **NULL 허용** 명시 추가. DBML에서 `not null` 없이 선언된 nullable 컬럼이나 schema.md 미반영. HSM이 KCV 미출력 시 NULL 허용 이유 기술 |
+| v2.0 | 2026-02-27 | **[R42]** schema.md `fep_security_keys.cert_fingerprint` — **NULL 허용** 명시 추가. 인증서 타입 외 자격증명에서 NULL 허용 정책 명문화 |
 | v2.0 | 2026-02-27 | **[R42]** schema.md `fep_connections` — **`updated_at` 부재 설계 의도 명문화**. 인덱스 전략 섹션 앞에 ℹ️ 노트 추가: 폴링 기반 캐시 무효화 없음, 런타임 시각은 `last_snapshot_at` 등 전용 컬럼으로 추적, 설정 변경은 Admin API 이벤트 방식으로 처리 — 의도적 생략 근거 명시 |
 | v2.0 | 2026-02-27 | **[R42]** schema.md `fep_transaction_journal.duration_ms` — **NULL 허용** 명시 + PENDING 상태에서 NULL인 이유 추가. `PENDING` 상태에서는 응답 수신 전이므로 `NULL`. `COMPLETED`/`TIMEOUT`/`MALFORMED`/`REVERSED` 전이 UPDATE 시점에 애플리케이션이 측정값을 하드코딩. `CIRCUIT_REJECTED`는 INSERT 시점에 `0` 또는 극소값 설정 |
 | v2.0 | 2026-02-27 | **[R43]** schema.md `fep_connections` ℹ️ `updated_at` 부재 노트 오타 3개 수정 — `콜럼`(×2) → `컬럼`, `컴럼`(×1) → `컬럼` |
 | v2.0 | 2026-02-27 | **[R43]** schema.md `fep_transaction_journal.duration_ms` 설명 오타 2개 수정 — `엄는` → `얻는`, `컴럼` → `컬럼` |
 | v1.0 | 초기 | 최초 작성 |
+
+> ℹ️ Changelog는 시점별 변경 이력을 보존하기 위한 섹션이며, **현행 스키마 기준은 본문 섹션(0.5~4)의 컬럼 정의**이다. 저널 컬럼은 `msg_seq_num`/`msg_type`/`cl_ord_id`, 자격증명 컬럼은 `credential_value_encrypted`/`cert_fingerprint`을 사용한다.
+
+---
+
+## 0.5 Epic 11 Market Data Persistence (Determinism)
+
+Epic 11(`LIVE/DELAYED/REPLAY` + reconnect gap-fill + reproducible replay)을 위해 FEP Gateway는 아래 상태를 명시적으로 보존한다.
+
+### `fep_market_data_subscriptions` (구독 상태)
+*   목적: provider 구독 상태와 마지막 처리 offset을 저장해 재연결 시 결정적 재등록을 수행한다.
+*   핵심 컬럼:
+    *   `subscription_id`(UK, UUID)
+    *   `provider` (`KIS_H0STCNT0` | `REPLAY`)
+    *   `symbol`, `source_mode` (`LIVE|DELAYED|REPLAY`)
+    *   `tr_id`, `tr_key` (LIVE provider 계약 추적)
+    *   `last_event_offset` (결정적 재처리 기준)
+    *   `last_quote_as_of`, `is_active`
+*   인덱스 권장:
+    *   `UK(provider, symbol, source_mode)`
+    *   `IDX(is_active, updated_at)`
+
+### `fep_quote_snapshots` (정규 quote 스냅샷)
+*   목적: MARKET 사전검증/체결근거/PnL 계산의 공통 근거(`quoteSnapshotId`)를 보존한다.
+*   핵심 컬럼:
+    *   `quote_snapshot_id`(UK, 결정적 키)
+    *   `symbol`, `source_mode`, `quote_as_of`
+    *   `best_bid`, `best_ask`, `last_trade`
+    *   `stream_offset`, `is_stale`
+*   인덱스 권장:
+    *   `UK(quote_snapshot_id)`
+    *   `IDX(symbol, quote_as_of)`
+    *   `IDX(source_mode, quote_as_of)`
+
+### `fep_replay_cursors` (리플레이 커서)
+*   목적: 동일 seed 실행 시 동일 snapshot sequence를 재현하기 위한 커서/속도 상태를 저장한다.
+*   핵심 컬럼:
+    *   `replay_id`(UK, UUID), `seed`
+    *   `symbol`, `cursor_offset`, `speed_factor`
+    *   `status` (`RUNNING|PAUSED|COMPLETED`)
+*   인덱스 권장:
+    *   `UK(replay_id)`
+    *   `IDX(symbol, status, updated_at)`
+
+> 운영 규칙: reconnect 시 `fep_market_data_subscriptions.last_event_offset` 기준으로 구독 재등록 후 누락 구간을 `REPLAY`로 보정한다. MARKET 요청의 `quoteSnapshotId`는 반드시 `fep_quote_snapshots`에서 역추적 가능해야 한다.
 
 ---
 
@@ -196,7 +241,7 @@
     *   `org_code` (PK): `VARCHAR(10)` — 기관 코드 (예: `004`, `088`, `VISA`)
     *   `org_name`: `VARCHAR(100)` — 기관명 (예: `KRX 메인보드 시뮬레이터`, `KOSDAQ 시뮬레이터`)
     *   `status`: `VARCHAR(20)` — 상태. DDL: `ENUM('ACTIVE','SUSPENDED')`
-    *   `protocol_type`: `VARCHAR(30)` — **Protocol Family 식별자** (`FIX42_SIMULATOR`, `FIX42_KRX_UAT`) — 이 값은 Protocol Translator가 `fep_protocol_specs` 테이블에서 **어떤 FIX 4.2 필드 명세 세트를 로드할지 결정하는 힌트**로 사용된다. 실제 Tag 번호·데이터 타입은 `fep_protocol_specs`에 저장되며, 이 컬럼은 "같은 FIX 4.2 계열이지만 기관별 커스텀 필드가 다른" 경우를 구분하는 라우팅 키 역할만 담당한다. 두 값이 모순되면 `fep_protocol_specs` 데이터를 우선 신뢰한다. (FindingR10: ISO-8583 기관 예시 → FIX 4.2 세션 프로파일 교체)
+    *   `protocol_type`: `VARCHAR(30)` — **Protocol Family 식별자** (`FIX42_SIMULATOR`, `FIX42_KRX_UAT`) — 이 값은 Protocol Translator가 `fep_protocol_specs` 테이블에서 **어떤 FIX 4.2 필드 명세 세트를 로드할지 결정하는 힌트**로 사용된다. 실제 Tag 번호·데이터 타입은 `fep_protocol_specs`에 저장되며, 이 컬럼은 "같은 FIX 4.2 계열이지만 기관별 커스텀 필드가 다른" 경우를 구분하는 라우팅 키 역할만 담당한다. 두 값이 모순되면 `fep_protocol_specs` 데이터를 우선 신뢰한다. (FindingR10: 세션 프로파일 기준 통일 반영)
     *   `created_at`: `DATETIME NOT NULL` — 레코드 최초 생성 시각 (감사 추적)
     *   `updated_at`: `DATETIME NOT NULL` — 레코드 마지막 수정 시각 (감사 추적). DDL에서 `ON UPDATE CURRENT_TIMESTAMP`를 적용하는 것을 **권장**한다 — 애플리케이션 레이어가 UPDATE 시마다 `updated_at = NOW()`를 명시적으로 지정하지 않아도 DB가 자동으로 갱신한다. DDL 예시: `updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`. `DATETIME` 컬럼에서 `ON UPDATE CURRENT_TIMESTAMP` 지원 — MySQL 5.6.5+/MariaDB 5.3+ 이상. **⚠️ `TIMESTAMP` 대신 `DATETIME` 권장**: `fep_institutions` 레코드는 무기한 유지되므로 2038-01-19 이후에도 존재한다. `TIMESTAMP` 사용 시 해당 시점 이후 오버플로우 발생 위험 — `DATETIME`으로 교체한다. (R14/R22 — DBML R22 동기화 완료.)
 
@@ -258,7 +303,7 @@
     *   `UNIQUE KEY uk_conn_endpoint (org_code, host_ip, port)` — **동일 기관에 동일 IP:Port 중복 회선 생성 방지**. 동일 엔드포인트에 Primary + Backup 회선이 2개 등록되면 Connection Manager가 동일 소켓에 2배 연결을 시도하는 운영 사고를 보호한다. 기관 간 동일 IP:Port 공유(Load Balancer VIP 공유 등)는 드물지만 가능하므로 `org_code`를 키에 포함한다.
 
 ### `fep_routing_rules` (라우팅 규칙)
-*   **설명**: FIX 4.2 Symbol(종목코드) **또는** 거래소 코드에 따라 어떤 FIX Simulator 기관으로 주문을 라우팅할지 결정합니다. (FindingR2: ISO-8583 카드 BIN/은행코드 기반 → FIX 4.2 Symbol/Exchange 기반으로 전면 교체)
+*   **설명**: FIX 4.2 Symbol(종목코드) **또는** 거래소 코드에 따라 어떤 FIX Simulator 기관으로 주문을 라우팅할지 결정합니다. (FindingR2: 라우팅 기준을 Symbol/Exchange로 통일)
 *   **컬럼**:
     *   `id` (PK): `BIGINT UNSIGNED AUTO_INCREMENT` — **Surrogate PK**. **DB 내부 전용 — 외부 노출 금지.** Admin/라우팅 API는 반드시 `rule_id`(UUID) 사용.
     *   `rule_id` (UK): `CHAR(36) NOT NULL` — **Business UUID** — 규칙 식별자. 외부 노출 전용(Admin API, SYMBOL_PREFIX 중복 검사 기준). DDL: `CHAR(36) UNIQUE NOT NULL`.
@@ -309,17 +354,17 @@
     *   `INDEX idx_routing_default (routing_type, is_active, priority)` — **DEFAULT 폴백 라우팅 인덱스**. `WHERE routing_type = 'DEFAULT' AND is_active = TRUE ORDER BY priority DESC, created_at ASC LIMIT 1`.
 
 ### `fep_protocol_specs` (기관별 프로토콜 필드 명세)
-*   **설명**: 기관별 **FIX 4.2 필드 명세**(Tag 번호, 데이터 타입 등)를 DB로 관리합니다. 기존 `spec.json` 파일 방식 대신 DB 방식을 사용하면 **코드 배포 없이** 신규 기관 추가 및 필드 변경이 가능합니다. (FindingR12: "ISO-8583 필드 명세" → "FIX 4.2 필드 명세" 교체)
+*   **설명**: 기관별 **FIX 4.2 필드 명세**(Tag 번호, 데이터 타입 등)를 DB로 관리합니다. 기존 `spec.json` 파일 방식 대신 DB 방식을 사용하면 **코드 배포 없이** 신규 기관 추가 및 필드 변경이 가능합니다. (FindingR12: FIX 4.2 필드 명세 기준으로 통일)
 *   **컬럼**:
     *   `id` (PK): `BIGINT UNSIGNED AUTO_INCREMENT` — **Surrogate PK**. **DB 내부 전용 — 외부 노출 금지.** Admin API는 반드시 `spec_id`(UUID) 사용.
     *   `spec_id` (UK): `CHAR(36) NOT NULL` — **Business UUID** — 스펙 식별자. 외부 노출 전용(Admin API). NULL `msg_type` 중복 방지 Trigger에서 자기 자신 제외 기준. DDL: `CHAR(36) UNIQUE NOT NULL`.
     *   `org_code` (FK → `fep_institutions.org_code`, **ON DELETE RESTRICT**): `VARCHAR(10)` — 기관 코드. 프로토콜 명세가 남아있는 기관의 물리 삭제를 DB 레벨에서 차단한다.
-    *   `msg_type`: `VARCHAR(2)` — FIX 4.2 MsgType (tag 35) 코드 (`D`=NewOrderSingle, `8`=ExecutionReport, `F`=OrderCancelRequest, `G`=OrderCancelReplaceRequest, `9`=OrderCancelReject). NULL허용 — `NULL`이면 해당 기관의 **모든 MsgType**에 공통 적용되는 필드. `NULL`이 아니면 해당 MsgType 전용 필드 명세. 예: `NewOrderSingle(D)`에는 Symbol(Tag 55)이 필수이지만 `OrderCancelRequest(F)`에서 Price(Tag 44)는 선택사항. (FindingR11: 0200/0400 MTI + DE52(PIN Data) → FIX 4.2 MsgType 예시 교체)
-    *   `field_no`: `INT` — FIX 4.2 Tag 번호. 예: `11` (ClOrdID), `35` (MsgType), `55` (Symbol), `54` (Side), `44` (Price), `38` (OrderQty), `14` (CumQty), `151` (LeavesQty). (FindingR1: ISO-8583 DE 번호 1~128 → FIX 4.2 Tag 번호 체계로 교체)
-    *   `field_name`: `VARCHAR(50)` — 필드 명칭 (예: `ClOrdID`, `Symbol`, `Side`, `Price`, `OrdType`, `OrderQty`). (FindingR1: PAN/STAN/PIN_DATA → FIX 4.2 태그명 교체)
-    *   `data_type`: `VARCHAR(15)` — FIX 4.2 필드 타입. DDL: `ENUM('INT','FLOAT','CHAR','STRING','BOOLEAN','PRICE','QTY','CURRENCY','EXCHANGE','UTCTIMESTAMP')`. ISO-8583 카드 결제용 타입(`N`/`AN`/`ANS`/`B`/`Z`)에서 FIX 4.2 표준 데이터 타입으로 교체. `VARCHAR(15)`은 DBML MySQL ENUM 미지원으로 인한 ERD 도구 호환 목적; 실제 DDL은 `ENUM` 사용 권장. (FindingR7: ISO-8583 카드 전문 타입 → FIX 4.2 표준 타입 교체)
+    *   `msg_type`: `VARCHAR(2)` — FIX 4.2 MsgType (tag 35) 코드 (`D`=NewOrderSingle, `8`=ExecutionReport, `F`=OrderCancelRequest, `G`=OrderCancelReplaceRequest, `9`=OrderCancelReject). NULL허용 — `NULL`이면 해당 기관의 **모든 MsgType**에 공통 적용되는 필드. `NULL`이 아니면 해당 MsgType 전용 필드 명세. 예: `NewOrderSingle(D)`에는 Symbol(Tag 55)이 필수이지만 `OrderCancelRequest(F)`에서 Price(Tag 44)는 선택사항.
+    *   `field_no`: `INT` — FIX 4.2 Tag 번호. 예: `11` (ClOrdID), `35` (MsgType), `55` (Symbol), `54` (Side), `44` (Price), `38` (OrderQty), `14` (CumQty), `151` (LeavesQty).
+    *   `field_name`: `VARCHAR(50)` — 필드 명칭 (예: `ClOrdID`, `Symbol`, `Side`, `Price`, `OrdType`, `OrderQty`).
+    *   `data_type`: `VARCHAR(15)` — FIX 4.2 필드 타입. DDL: `ENUM('INT','FLOAT','CHAR','STRING','BOOLEAN','PRICE','QTY','CURRENCY','EXCHANGE','UTCTIMESTAMP')`. `VARCHAR(15)`은 DBML MySQL ENUM 미지원으로 인한 ERD 도구 호환 목적이며 실제 DDL은 `ENUM` 사용 권장.
     *   `max_length`: `INT` — 최대 길이 (바이트 기준). FIX 4.2 STRING/CHAR 타입에만 유효; numeric/boolean 타입은 프로토콜 레벨에서 길이 제한 없음.
-    *   `length_type`: `VARCHAR(10)` — FIX 4.2는 `\x01`(SOH) 구분자 방식이므로 ISO-8583의 LLVAR/LLLVAR 가변 길이 헤더 개념이 없음. 값은 `FIXED`(고정 포맷 tag) 또는 `VARIABLE`(가변 길이 tag). DDL: `ENUM('FIXED','VARIABLE')`. ISO-8583 `LLVAR`/`LLLVAR`는 FIX 4.2에 적용 불가 — 교체 필수. `VARCHAR(10)`은 DBML 호환 목적. (FindingR7)
+    *   `length_type`: `VARCHAR(10)` — FIX 4.2는 `\x01`(SOH) 구분자 기반이므로 값은 `FIXED`(고정 포맷 tag) 또는 `VARIABLE`(가변 길이 tag)로 관리한다. DDL: `ENUM('FIXED','VARIABLE')`. `VARCHAR(10)`은 DBML 호환 목적.
     *   `is_mandatory`: `TINYINT(1) DEFAULT 1` — 필수 여부. 신규 DE 등록 시 기본값 `1`(필수). `FALSE`(`0`)이면 해당 DE 없이도 전문 생성 가능
     *   `is_active`: `TINYINT(1) DEFAULT 1` — 활성화 여부. 신규 DE 등록 시 기본값 `1`(활성). `FALSE`(`0`)로 설정 시 해당 필드는 Pack/Unpack에서 제외
     *   `created_at`: `DATETIME NOT NULL` — 레코드 생성 시각
@@ -393,14 +438,14 @@
 ## 2. Security & Key Management (FIX 4.2 TLS / Credential)
 
 ### `fep_security_keys` (보안 자격증명 저장소)
-*   **설명**: FIX 4.2 세션 보안에 사용되는 TLS 인증서·Logon 패스워드·Admin 토큰을 관리합니다. FIX 4.2는 ISO-8583 카드 결제의 HSM/ZMK/ZPK 구조와 무관하며, QuickFIX/J ↔ Simulator 간 TLS 및 FIX 세션 레벨 인증 자격증명을 DB로 중앙 관리합니다. (FindingR3: ZMK/ZPK/ZAK/PVK HSM 키 관리 → FIX 4.2 TLS/세션 자격증명 관리로 전면 교체)
+*   **설명**: FIX 4.2 세션 보안에 사용되는 TLS 인증서·Logon 패스워드·Admin 토큰을 관리합니다. QuickFIX/J ↔ Simulator 간 TLS 및 FIX 세션 레벨 인증 자격증명을 DB로 중앙 관리합니다. (FindingR3: TLS/세션 자격증명 관리 모델로 통일)
 *   **컬럼**:
     *   `id` (PK): `BIGINT UNSIGNED AUTO_INCREMENT` — **Surrogate PK**. **DB 내부 전용 — 외부 노출 금지.** Admin API는 반드시 `key_id`(UUID) 사용.
     *   `key_id` (UK): `CHAR(36) NOT NULL` — **Business UUID** — 키 식별자. 외부 노출 전용(Admin API, PKI/CA 연동). `rotated_from_key_id` Self-FK 참조 대상 — `key_id`가 UNIQUE KEY이므로 MySQL/MariaDB DDL에서 FK 선언 가능. DDL: `CHAR(36) UNIQUE NOT NULL`.
     *   `org_code` (FK → `fep_institutions.org_code`, **ON DELETE RESTRICT**): `VARCHAR(10)` — 기관 코드. 보안 자격증명이 남아있는 기관의 물리 삭제를 DB 레벨에서 차단한다.
     *   `key_type`: `VARCHAR(20)` — 자격증명 종류. DDL: `ENUM('TLS_CERT','LOGON_PASSWORD','ADMIN_TOKEN')`. `TLS_CERT`=FIX 세션 TLS 클라이언트 인증서, `LOGON_PASSWORD`=FIX Logon 메시지 패스워드(Tag 554), `ADMIN_TOKEN`=Admin API 인증 토큰. (FindingR3: ZMK/ZPK/ZAK/PVK → FIX 4.2 자격증명 타입으로 교체)
-    *   `credential_value_encrypted`: `VARCHAR(2048)` — AES-256으로 암호화된 자격증명 값. TLS 인증서(PEM, ~2048자), Logon 패스워드, Admin 토큰 등 자격증명 종류에 따라 길이 다름. (FindingR3: LMK 암호화 key_value_encrypted → AES-256 암호화 credential_value_encrypted 교체)
-    *   `cert_fingerprint`: `VARCHAR(128)` **NULL 허용** — TLS 인증서 지문(SHA-256 Hex, 64자). `key_type = 'TLS_CERT'`일 때만 유효. 인증서 교체 전 지문 비교로 의도치 않은 덮어쓰기 방지. (FindingR3: kcv(KCV) → cert_fingerprint 교체)
+    *   `credential_value_encrypted`: `VARCHAR(2048)` — AES-256으로 암호화된 자격증명 값. TLS 인증서(PEM, ~2048자), Logon 패스워드, Admin 토큰 등 자격증명 종류에 따라 길이 다름.
+    *   `cert_fingerprint`: `VARCHAR(128)` **NULL 허용** — TLS 인증서 지문(SHA-256 Hex, 64자). `key_type = 'TLS_CERT'`일 때만 유효. 인증서 교체 전 지문 비교로 의도치 않은 덮어쓰기 방지.
     *   `expiry_date`: `DATE` — 키 만료일
     *   `rotation_status`: `VARCHAR(20)` — 키 생명주기 상태. DDL: `ENUM('ACTIVE','ROTATED','EXPIRED')` — 각 값의 정의와 전이 트리거는 아래 참조
         *   `ACTIVE`: 현재 운용 중인 유효 키. 동일 `org_code` + `key_type` 조합에서 **반드시 1개만** 존재
@@ -486,7 +531,7 @@
             ```
             `fi.status = 'ACTIVE'` 필터가 없으면 SUSPENDED 기관의 키 만료 알림이 불필요하게 발송된다. 기관이 `ACTIVE` 복귀 시 해당 시점에 D-7 경보를 다시 평가하므로 알림 누락 문제가 없다.
         2.  **자동 갱신 불가**: 자격증명 교체는 **PKI/CA(인증 기관) 재발급 또는 수동 갱신** 절차가 필요하며 시스템이 자동 생성하지 않는다. (FindingR4-R4: 수동 HSM 작업 → PKI/CA 재발급으로 교체)
-        3.  **만료 시 사전 차단**: `expiry_date`가 도래도 교체되지 않으면 해당 `org_code`의 FIX 세션 연결·Logon을 거부하고 **서비스 레이어에서 `HTTP 503 CREDENTIAL_EXPIRED`를 반환**하여 Core Banking에 빠르게 안내함. (FindingR4-R6: RC=9005 KEY_EXPIRED ISO-8583 포맷 → HTTP 503으로 교체)
+        3.  **만료 시 사전 차단**: `expiry_date`가 도래도 교체되지 않으면 해당 `org_code`의 FIX 세션 연결·Logon을 거부하고 **서비스 레이어에서 `HTTP 503 CREDENTIAL_EXPIRED`를 반환**하여 Core Banking에 빠르게 안내함. (FindingR4-R6: 오류 표준을 HTTP 기반으로 통일)
     *   `rotated_from_key_id` (FK self → `key_id` UK): `CHAR(36)` — 이 키가 교체한 이전 키의 ID. 키 교체 이력 체인 추적용. 최초 키는 `NULL`. `key_id`가 UNIQUE KEY이므로 MySQL/MariaDB에서 FK 선언 가능(FK는 PK 또는 UNIQUE KEY 참조 가능).
     *   `alert_sent_at`: `DATETIME` — 만료 D-7 경보 발송 시각. `NULL`이면 미발송 — 스케줄러가 알림 발송 완료 후 `NOW()`로 업데이트하여 중복 발송 방지. 발송 조건: `alert_sent_at IS NULL AND expiry_date < NOW() + INTERVAL 7 DAY AND rotation_status = 'ACTIVE'`. 키 교체(`ROTATED`) 시 `NULL`로 리셋하여 신규 키 발급 후 재알림 가능하게 한다.
         *   **⚠️ EXPIRED 전이 시 alert_sent_at 정책**: 키가 `ACTIVE → EXPIRED`로 자동 전이될 때 `alert_sent_at`은 **리셋하지 않는다**. D-7 경보는 이미 발송됐으며 `EXPIRED` 상태에서 추가 경보는 별도 채널(Escalation Alert)을 통해 관리한다. `alert_sent_at`을 `NULL`로 리셋하면 만료 스케줄러가 다음 실행 시 동일 키에 대해 D-7 경보를 재발송하는 혼란을 초래한다.
@@ -498,7 +543,7 @@
     *   `alert_escalated_at`: `DATETIME` — 키 만료(`ACTIVE → EXPIRED`) 전이 후 **Escalation Alert 발송 시각**. `NULL`이면 미발송. 스케줄러가 `rotation_status = 'EXPIRED' AND alert_sent_at IS NOT NULL AND alert_escalated_at IS NULL` 조건으로 Escalation 대상을 탐지하여 발송 후 `NOW()`로 업데이트 — 중복 Escalation 방지. `alert_sent_at`은 D-7 사전 경보용, `alert_escalated_at`은 만료 후 Escalation용으로 역할을 분리한다. 키 교체(`ROTATED`) 시 `NULL`로 리셋.
         *   **⚠️ 발송 성공 후 DB 업데이트 실패 시 at-least-once 정책**: Escalation 발송 직후 DB `UPDATE alert_escalated_at = NOW()`가 일시적 DB 장애 등으로 실패하면 `alert_escalated_at`이 `NULL`로 남아 다음 스케줄러 실행 시 중복 발송이 발생한다. 이를 완전히 방지하려면 **멱등성 보장 Escalation 채널**(예: 알림 시스템의 dedup key = `key_id`)을 사용하거나, **DB 업데이트 실패 시 최대 3회 재시도 후 알림 실패 로그를 남기고 다음 주기에 재발송**하는 at-least-once 정책을 허용한다. 정확히 1회(exactly-once)를 보장하려면 Outbox Pattern 등 별도 아키텍처가 필요하며, 키 만료 Escalation 도메인에서는 at-least-once 중복 발송이 at-most-once 미발송보다 운영 관점에서 허용 가능하다.
     *   `created_at`: `DATETIME NOT NULL` — 키 생성 시각 (감사 추적 + 교체 주기 계산 기준)
-    *   **ℹ️ `updated_at` 컬럼 부재 — 설계 의도**: `fep_security_keys`는 사실상 **Append-Only + 상태 전이만 허용**하는 테이블이다. 자격증명 값(`credential_value_encrypted`, `cert_fingerprint`)은 생성 후 변경되지 않으며, `rotation_status`의 전이(`ACTIVE → ROTATED/EXPIRED`)는 단방향으로만 진행된다. (FindingR4-R5: 구버전 컬럼명 `key_value_encrypted`/`kcv` → `credential_value_encrypted`/`cert_fingerprint`로 교체) `updated_at`이 필요한 주요 용도인 "폴링 기반 캐시 무효화"가 이 테이블에는 없으며 (`fep_protocol_specs`, `fep_routing_rules`와 달리 인메모리 캐시 없음), 자격증명 교체 이력은 `rotated_from_key_id` Self-FK 체인으로 추적한다. `alert_sent_at`/`alert_escalated_at`은 알림 상태 전용 시각 컬럼으로 `updated_at` 역할을 대체한다. 따라서 `updated_at` 컬럼을 의도적으로 생략한다.
+    *   **ℹ️ `updated_at` 컬럼 부재 — 설계 의도**: `fep_security_keys`는 사실상 **Append-Only + 상태 전이만 허용**하는 테이블이다. 자격증명 값(`credential_value_encrypted`, `cert_fingerprint`)은 생성 후 변경되지 않으며, `rotation_status`의 전이(`ACTIVE → ROTATED/EXPIRED`)는 단방향으로만 진행된다. `updated_at`이 필요한 주요 용도인 "폴링 기반 캐시 무효화"가 이 테이블에는 없으며 (`fep_protocol_specs`, `fep_routing_rules`와 달리 인메모리 캐시 없음), 자격증명 교체 이력은 `rotated_from_key_id` Self-FK 체인으로 추적한다. `alert_sent_at`/`alert_escalated_at`은 알림 상태 전용 시각 컬럼으로 `updated_at` 역할을 대체한다. 따라서 `updated_at` 컬럼을 의도적으로 생략한다.
 *   **인덱스 전략**:
     ```sql
     -- PK: Surrogate PK (내부 JOIN 전용)
@@ -532,14 +577,15 @@
     *   `tx_id` (UK): `CHAR(36) NOT NULL` — **Business UUID**. 외부 노출 식별자 — Core Banking 연동, 감사 로그, 장애 조사, Simulator 연계 조회에 사용. DDL: `UNIQUE KEY uk_tx_id (tx_id)`. 앱 레이어에서 UUID 생성 후 INSERT.
         *   **⚠️ 혼용 금지 규칙**: 엔드포인트 응답·에러 로그·감사 보고서에는 반드시 `tx_id` 사용. `id` 값을 외부에 반환하면 순차 노출로 총 주문 건수·INSERT 순서가 유추 가능하여 보안 위험.
     *   `core_ref_id` (UK): `VARCHAR(64)` — Core Banking이 전달한 멱등성 키 — **중복 전문 방지의 핵심**. 동일 `core_ref_id`로 재요청 시 대외계 재발송 없이 저장된 `response_code` 반환
-    *   `msg_seq_num`: `INT UNSIGNED` — FIX 4.2 MsgSeqNum (Tag 34) — QuickFIX/J 세션이 메시지마다 자동 할당하는 시퀀스 번호. Simulator 측 QuickFIX/J 로그와의 메시지 추적 연결 고리. (FindingR7: ISO-8583 STAN → FIX 4.2 MsgSeqNum 교체)
-        *   **⚠️ MsgSeqNum 재사용 주의**: FIX 4.2 세션 Logon(35=A) 시 QuickFIX/J가 시퀀스를 `1`로 리셋한다. 세션 재시작 시 동일 `msg_seq_num` 값이 재사용된다. 주문 조회 시 반드시 `(org_code, session_date, msg_seq_num)` 3중 조합으로 유일성을 확인해야 한다. `msg_seq_num` 단독 조회는 세션 재시작 전후 동일 시퀀스 값의 다른 주문이 혼용된다. 비즈니스 레벨 상관관계는 `cl_ord_id`(Tag 11)를 우선 사용.
-    *   `tx_status`: `VARCHAR(20)` — 거래 처리 생명주기 상태. DDL: `ENUM('PENDING','COMPLETED','TIMEOUT','REVERSED','MALFORMED','CIRCUIT_REJECTED')`
+    *   `msg_seq_num`: `INT UNSIGNED` — FIX 4.2 MsgSeqNum (Tag 34) — QuickFIX/J 세션이 메시지마다 자동 할당하는 시퀀스 번호. Simulator 측 QuickFIX/J 로그와의 메시지 추적 연결 고리. (FindingR7: MsgSeqNum 추적 기준으로 통일)
+        *   **⚠️ MsgSeqNum 재사용 주의**: FIX 4.2 세션 Logon(35=A) 시 QuickFIX/J가 시퀀스를 `1`로 리셋한다. 세션 재시작 시 동일 `msg_seq_num` 값이 재사용된다. 주문 조회 시 반드시 `(org_code, DATE(req_timestamp), msg_seq_num)` 3중 조합으로 유일성을 확인해야 한다. `msg_seq_num` 단독 조회는 세션 재시작 전후 동일 시퀀스 값의 다른 주문이 혼용된다. 비즈니스 레벨 상관관계는 `cl_ord_id`(Tag 11)를 우선 사용.
+    *   `tx_status`: `VARCHAR(20)` — 거래 처리 생명주기 상태. DDL: `ENUM('PENDING','COMPLETED','TIMEOUT','REVERSED','MALFORMED','UNKNOWN','CIRCUIT_REJECTED')`
         *   `PENDING`: 전문 발송 후 응답 대기 중
-        *   `COMPLETED`: 응답 수신 완료 (성공/거절 무관)
+        *   `COMPLETED`: 응답 수신 완료 (성공/거절/부분체결 포함). 세부 결과는 `execution_result` 컬럼으로 구분
         *   `TIMEOUT`: 응답 수신 시한 초과 — **`response_code = NULL`인 미처리 주문과 구분하는 핵심 컬럼**. 금융사고 조사 시 "응답 미수신 주문" 식별에 사용
-        *   `REVERSED`: FIX 4.2 `OrderCancelRequest(35=F)` 발송 → `ExecutionReport(35=8, OrdStatus=4 Cancelled)` 수신 완료. (FindingR3-R3: ISO-8583 취소 MTI `0400` → FIX 4.2 취소 플로우로 교체)
+        *   `REVERSED`: FIX 4.2 `OrderCancelRequest(35=F)` 발송 → `ExecutionReport(35=8, OrdStatus=4 Cancelled)` 수신 완료.
         *   `MALFORMED`: 응답 전문이 수신됐으나 파싱 실패 (MAC 불일치, 규격 위반 포함). `response_code = NULL`이며 `failure_reason`에 원인 코드 기록. `RC=9097 MAC_MISMATCH` 등 보안 경보 대상이며 `fep_circuit_breaker_state.failure_count` 증가 트리거
+        *   `UNKNOWN`: Requery(OrderStatusRequest) 이후에도 거래소가 주문 상태를 확인해주지 못한 경우. 수동 조사/추가 재조회 대상
         *   `CIRCUIT_REJECTED`: Circuit Breaker `OPEN` 상태로 인해 대외계 발송 없이 **Gateway 내부에서 fast-fail 거절**된 주문. `response_code = NULL`, `failure_reason = 'CIRCUIT_OPEN'`, `msg_seq_num = NULL` (FIX 메시지를 보내지 않으므로 MsgSeqNum 미채번), `res_timestamp = req_timestamp` (즉시 반환). 금융감독원 검사 시 "CB로 인해 거절된 건수" 집계 기준. (FindingR7)
             *   **⚠️ INSERT 정책**: fast-fail이지만 `core_ref_id` (멱등성 키) 기준으로 반드시 레코드를 INSERT한다. 동일 `core_ref_id`로 Core Banking이 재시도하면 CB 상태 재확인 후 `CIRCUIT_REJECTED` 재반환 또는 정상 처리. INSERT 폭발 위험 완화를 위해 **동일 `org_code`에서 초당 INSERT 건수가 임계치(기본 100 TPS) 초과 시 로깅만 수행하고 INSERT를 스킵**하는 Throttle 정책을 애플리케이션 레이어에서 구현할 것을 권장한다.
             *   **⚠️ core_ref_id 중복 충돌 방지 — SELECT-before-INSERT 필수 흐름**:
@@ -569,37 +615,39 @@
     > 위 `30`은 기본값이며, 배포 시 `gateway.read-timeout-seconds` 값으로 치환하여 실행한다. Startup 시퀀스에서 이 값을 환경 변수로 주입하는 것을 권장한다.
     *   **⚠️ Reconciliation 주의**: Gateway가 대외계로부터 응답을 수신한 후 DB에 `COMPLETED`로 저장하기 전 재시작된 경우, Core는 TIMEOUT으로 취소 처리하지만 실제 주문이 체결된 데이터 불일치가 발생한다. 이를 다루기 위해:
         1.  `needs_reconciliation TINYINT(1) DEFAULT 0` 컬럼 추가. Startup Recovery 시 `PENDING → TIMEOUT` 전이된 모든 행을 `1`(TRUE)로 설정
-        2.  야간 배치에서 `needs_reconciliation = TRUE` 행에 대해 **FIX 4.2 `OrderStatusRequest(35=H)`를 Simulator에 발송**하여 `ExecutionReport(35=8)` 응답으로 실제 처리 결과를 확인 후 레코드 수정. 조회 키: `OrigClOrdID(Tag 41)` = 원주문 `cl_ord_id`. (FindingR8: ISO-8583 `0220` Authorization Advice → FIX 4.2 `OrderStatusRequest(35=H)` 교체)
+        2.  야간 배치에서 `needs_reconciliation = TRUE` 행에 대해 **FIX 4.2 `OrderStatusRequest(35=H)`를 Simulator에 발송**하여 `ExecutionReport(35=8)` 응답으로 실제 처리 결과를 확인 후 레코드 수정. 조회 키: `OrigClOrdID(Tag 41)` = 원주문 `cl_ord_id`.
         3.  Reconciliation 완료 후 `needs_reconciliation = FALSE`로 업데이트
     *   `org_code` (FK → `fep_institutions.org_code`, **ON DELETE RESTRICT**): `VARCHAR(10)` — 대상 기관. 거래 원장이 남아있는 기관의 물리 삭제를 DB 레벨에서 차단한다. 5년 보존 의무 중인 원장의 참조 기관 삭제를 방지하는 안전장치다.
-    *   `msg_type`: `VARCHAR(2)` — FIX 4.2 MsgType (tag 35). `D`=NewOrderSingle, `8`=ExecutionReport, `F`=OrderCancelRequest, `G`=OrderCancelReplaceRequest, `9`=OrderCancelReject. ISO-8583 MTI와 다르며 알파벳 기반 태그 식별자. (FindingR6: ISO-8583 MTI `message_type` → FIX 4.2 문자형 `msg_type` 교체)
-    *   `cl_ord_id`: `VARCHAR(64)` — FIX 4.2 ClOrdID (tag 11) — 클라이언트 주문 고유 식별자. 채널/계정계에서 생성하여 FEP로 전달되는 멱등 키. `uk_core_ref(core_ref_id)` 와 함께 이중 멱등성 보장. (FindingR5: ISO-8583 카드 도메인 `pan_masked` → FIX 4.2 증권 도메인 `cl_ord_id` 교체)
+    *   `msg_type`: `VARCHAR(2)` — FIX 4.2 MsgType (tag 35). `D`=NewOrderSingle, `8`=ExecutionReport, `F`=OrderCancelRequest, `G`=OrderCancelReplaceRequest, `9`=OrderCancelReject.
+    *   `cl_ord_id`: `VARCHAR(64)` — FIX 4.2 ClOrdID (tag 11) — 클라이언트 주문 고유 식별자. 채널/계정계에서 생성하여 FEP로 전달되는 멱등 키. `uk_core_ref(core_ref_id)` 와 함께 이중 멱등성 보장.
+    *   `execution_result`: `VARCHAR(32)` — 주문 실행 상세 결과. DDL: `ENUM('APPROVED','PARTIAL_FILL','PARTIAL_FILL_CANCEL','CANCELED','DECLINED','UNKNOWN')`. `tx_status='COMPLETED'`일 때 상세 체결 결과를 구분하기 위한 컬럼이며, `PENDING/TIMEOUT/MALFORMED/CIRCUIT_REJECTED`에서는 `NULL`
     *   `amount`: `DECIMAL(19,4)` — 거래 금액
         *   **⚠️ 음수 금액 방지**: `CHECK (amount >= 0)` 제약 권장. MySQL 8.0.16+ / MariaDB 10.2.1+에서 `CHECK` 제약이 실제 강제(enforced)된다. 구버전에서는 구문 파싱은 되지만 강제 적용되지 않으므로 **애플리케이션 레이어**에서 음수 금액 거절 로직을 필수로 추가한다. `CIRCUIT_REJECTED` 주문의 `amount`는 Core Banking 요청 값을 그대로 저장(**실제 주문 발송 없음** — CB OPEN으로 FIX NewOrderSingle 미발송). (FindingR4-R7)
     *   `currency`: `VARCHAR(3)` — 통화 코드 (ISO 4217 세 자리: `KRW`, `USD`, `JPY`)
         *   **⚠️ 집계 쿼리 충돌 경고**: `SUM(amount)` 집계 시 반드시 `WHERE currency = ?` 조건을 포함해야 한다. `KRW`와 `USD`를 합산하면 의미 없는 숫자가 만들어지며 이를 누락한 쿼리는 실제 발생하지만 인지하기 어려운 금융 오류를 유발한다.
-    *   `response_code`: `VARCHAR(10)` — FIX 4.2 `OrdStatus` 값(Tag 39) 또는 내부 에러 코드. 예: `0`=New, `1`=PartiallyFilled, `2`=Filled, `4`=Cancelled, `8`=Rejected. `PENDING`/`TIMEOUT`/`MALFORMED`/`CIRCUIT_REJECTED` 상태에서 `NULL`; `COMPLETED`/`REVERSED`에서 non-NULL. (FindingR3-R4: ISO-8583 응답 코드 `0000`/`0051`/`9999` → FIX 4.2 OrdStatus 체계로 교체)
+    *   `response_code`: `VARCHAR(10)` — FIX 4.2 `OrdStatus` 값(Tag 39) 또는 내부 에러 코드. 예: `0`=New, `1`=PartiallyFilled, `2`=Filled, `4`=Cancelled, `8`=Rejected. `PENDING`/`TIMEOUT`/`MALFORMED`/`CIRCUIT_REJECTED` 상태에서 `NULL`; `COMPLETED`/`REVERSED`에서 non-NULL.
     *   `req_timestamp`: `DATETIME(3)` — 요청 시각 (밀리초 정밀도). DBML R15에서 `datetime(3)`으로 확정. **`TIMESTAMP`는 초(second) 단위 저장이므로 `duration_ms` DB 내부 유도 시 1000ms 배수값만 산출됨 — `DATETIME(3)`이 맞는 타입. (R14/R15)**
     *   `res_timestamp`: `DATETIME(3)` — 응답 시각. `PENDING` 상태에서는 `NULL`. `CIRCUIT_REJECTED` 시 `res_timestamp = req_timestamp` (즉시 반환, 대외계 미발송). (R14/R15)
         *   **⚠️ `TIMESTAMP` 타입 미사용 이유**: MySQL `TIMESTAMP`는 초(second) 단위 저장이므로 `TIMESTAMPDIFF(MICROSECOND, req_timestamp, res_timestamp) / 1000`으로 `duration_ms`를 DB 내부에서 유도하면 **항상 1000ms 배수 값**만 나온다. `DATETIME(3)` 사용 시 밀리초 단위 타임스탬프가 보존되어 시각 자체의 정밀도가 높아진다. 단, `DATETIME(3)` 으로 변경해도 **`duration_ms`는 여전히 애플리케이션이 직접 계산하여 삽입**해야 한다 (아래 참조).
     *   `duration_ms`: `INT` **NULL 허용** — 처리 소요 시간 (밀리초). **`PENDING` 상태에서는 `NULL`** — 요청 중에 얻는 시간은 알 수 없기 때문. 응답 수신 시(`COMPLETED`/`TIMEOUT`/`MALFORMED`/`REVERSED`) UPDATE 시점에 애플리케이션이 `System.currentTimeMillis()` 또는 `System.nanoTime()` 기반으로 측정하여 **DB INSERT/UPDATE 시 하드코딩**하는 값이다. `req_timestamp`/`res_timestamp` 컬럼 차이로 DB 내부에서 유도하지 않는다 — 불필요한 계산을 피하고, TIMESTAMP 초 단위 제한으로 인한 부정확성을 제거하기 위함. `CIRCUIT_REJECTED` 주문에서는 INSERT 시점에 `0` 또는 극소값 하드코딩.
     *   `needs_reconciliation`: `TINYINT(1) DEFAULT 0` — Startup Recovery 시 `PENDING → TIMEOUT` 전이된 행을 `1`(TRUE)로 마킹. 야간 배치에서 대외계 조회 후 실제 처리 결과로 보정. 보정 완료 후 `0`(FALSE)로 갱신. DDL: MySQL `BOOLEAN`은 `TINYINT(1)` 동의어이나 다른 Boolean 컬럼(`is_primary`, `is_mandatory`, `is_active`)과 타입 표기 통일.
-    *   `failure_reason`: `VARCHAR(100)` — NULL허용 — 실패 원인 코드. `tx_status IN ('TIMEOUT', 'MALFORMED', 'CIRCUIT_REJECTED')` 일 때 필수. 예: `TIMEOUT`, `MAC_MISMATCH`, `MALFORMED_RESP`, `CIRCUIT_OPEN`, `POOL_EXHAUSTED`. 감사 조사 시 "왜 이 주문이 실패했는가?"를 설명하는 근거가 되며 `tx_status = TIMEOUT`만으로는 불분명한 원인을 구분한다.
-    *   `reversal_ref_tx_id` (FK self → `tx_id`, NULLABLE): `CHAR(36)` — `tx_status = REVERSED`일 때 이 취소 주문이 참조하는 원주문 `tx_id`. 취소↔원주문 체인 추적 필수. 원주문(최초 `NewOrderSingle(35=D)`)는 `NULL`. (FindingR3-R5: ISO-8583 `0200` → FIX 4.2 `NewOrderSingle(35=D)` 교체)
+    *   `failure_reason`: `VARCHAR(100)` — NULL허용 — 실패 원인 코드. `tx_status IN ('TIMEOUT', 'MALFORMED', 'UNKNOWN', 'CIRCUIT_REJECTED')` 일 때 필수. 예: `TIMEOUT`, `MAC_MISMATCH`, `MALFORMED_RESP`, `UNKNOWN_ON_REQUERY`, `CIRCUIT_OPEN`, `POOL_EXHAUSTED`. 감사 조사 시 "왜 이 주문이 실패했는가?"를 설명하는 근거가 되며 `tx_status = TIMEOUT`만으로는 불분명한 원인을 구분한다.
+    *   `reversal_ref_tx_id` (FK self → `tx_id`, NULLABLE): `CHAR(36)` — `tx_status = REVERSED`일 때 이 취소 주문이 참조하는 원주문 `tx_id`. 취소↔원주문 체인 추적 필수. 원주문(최초 `NewOrderSingle(35=D)`)는 `NULL`.
         *   **⚠️ 단방향 체인 규칙 (애플리케이션 레이어 강제)**: DB CHECK 제약으로 순환 참조를 막기 어려우므로 애플리케이션 레이어에서 다음 규칙을 강제한다:
             1.  `reversal_ref_tx_id`는 **`msg_type = 'F'` (OrderCancelRequest) 주문만 채울 수 있다** — `msg_type = 'D'` NewOrderSingle 저장 시 이 필드는 반드시 `NULL`로 삽입
-            2.  참조 대상(`reversal_ref_tx_id`가 가리키는 원주문)의 `msg_type`은 반드시 `'D'`(NewOrderSingle)이어야 한다 — 취소(`'F'`)가 취소를 참조하는 연쇄 취소 방지. `OrderCancelReplaceRequest(35=G)` AMEND 수정 주문은 이 `reversal_ref_tx_id` 체인에 포함하지 않는다 — AMEND는 취소 없이 다른 `cl_ord_id`로 새 주문을 대체하는 FIX 4.2 표준 흐름이므로 `msg_type = 'G'` 주문은 `reversal_ref_tx_id = NULL`로 저장한다. (FindingR3-R11: OrderCancelReplaceRequest(35=G) AMEND 정책 명확화)
+            2.  참조 대상(`reversal_ref_tx_id`가 가리키는 원주문)의 `msg_type`은 반드시 `'D'`(NewOrderSingle)이어야 한다 — 취소(`'F'`)가 취소를 참조하는 연쇄 취소 방지. `OrderCancelReplaceRequest(35=G)` AMEND 수정 주문은 이 `reversal_ref_tx_id` 체인에 포함하지 않는다 — AMEND는 취소 없이 다른 `cl_ord_id`로 새 주문을 대체하는 FIX 4.2 표준 흐름이므로 `msg_type = 'G'` 주문은 `reversal_ref_tx_id = NULL`로 저장한다.
             3.  동일 `reversal_ref_tx_id` 값이 중복 삽입되면 이중 취소(Double Reversal)로 판단하여 거절 — `INDEX(reversal_ref_tx_id)` 기반 존재 여부 확인 후 처리
     *   **유효 상태 조합** (CHECK 권장):
         *   `PENDING` → `response_code IS NULL`, `msg_seq_num IS NOT NULL`
-        *   `COMPLETED` → `response_code IS NOT NULL`, `msg_seq_num IS NOT NULL`
+        *   `COMPLETED` → `response_code IS NOT NULL`, `msg_seq_num IS NOT NULL`, `execution_result IS NOT NULL`
         *   `TIMEOUT` → `response_code IS NULL`, `failure_reason IS NOT NULL`, `msg_seq_num IS NOT NULL`
         *   `MALFORMED` → `response_code IS NULL`, `failure_reason IS NOT NULL`, `msg_seq_num IS NOT NULL`
+        *   `UNKNOWN` → `response_code IS NULL`, `failure_reason IS NOT NULL`, `msg_seq_num IS NOT NULL`
         *   `REVERSED` → `response_code IS NOT NULL`, `msg_seq_num IS NOT NULL`
         *   `CIRCUIT_REJECTED` → `response_code IS NULL`, `failure_reason = 'CIRCUIT_OPEN'`, `msg_seq_num IS NULL` (FIX 메시지 미발송이므로 MsgSeqNum 미채번)
     *   **⚠️ MsgSeqNum ↔ Simulator QuickFIX/J 로그 크로스 매핑 정책** (FindingR7):
         *   Gateway의 `fep_transaction_journal.msg_seq_num` 과 Simulator QuickFIX/J 세션 로그의 MsgSeqNum(Tag 34)은 **동일한 값**으로 대응한다.
-        *   양쪽 시스템을 연계 조회할 때는 반드시 `(org_code, session_date, msg_seq_num)` 3중 조합을 사용해야 한다. `msg_seq_num` 단독 조회는 세션 재시작 전후 재사용으로 오매핑이 발생한다. **비즈니스 레벨 1차 상관관계는 `cl_ord_id`(Tag 11) 사용 권장.**
+        *   양쪽 시스템을 연계 조회할 때는 반드시 `(org_code, DATE(req_timestamp), msg_seq_num)` 3중 조합을 사용해야 한다. `msg_seq_num` 단독 조회는 세션 재시작 전후 재사용으로 오매핑이 발생한다. **비즈니스 레벨 1차 상관관계는 `cl_ord_id`(Tag 11) 사용 권장.**
         *   `CIRCUIT_REJECTED` 상태의 주문은 `msg_seq_num = NULL`이므로 Simulator 측 로그와 매핑 불가. 이는 의도된 동작이다 (FIX 메시지가 발송되지 않았으므로 Simulator 측 기록 없음).
 *   **인덱스 전략**:
     ```sql
@@ -617,7 +665,7 @@
     INDEX idx_audit (org_code, req_timestamp, tx_status)
 
     -- 4. MsgSeqNum 기반 주문 추적 (Gateway↔Simulator QuickFIX/J 로그 연계) (FindingR7)
-    --    반드시 (org_code, session_date, msg_seq_num) 3중 조합으로 사용. 비즈니스 상관관계는 cl_ord_id 우선.
+    --    반드시 (org_code, DATE(req_timestamp), msg_seq_num) 3중 조합으로 사용. 비즈니스 상관관계는 cl_ord_id 우선.
     INDEX idx_msg_seq_lookup (org_code, msg_seq_num, req_timestamp)
 
     -- 5. 취소 원주문 역방향 조회 (Double Reversal 방지 + 감사)
@@ -673,7 +721,7 @@
             2.  **[대안] 스케줄러**: 야간 배치에서 `fep_protocol_log.tx_id IS NOT NULL AND tx_id NOT IN (SELECT tx_id FROM fep_transaction_journal)` 고아 레코드를 탐지하여 `NULL`로 일괄 업데이트한다.
         *   이 문서에서 FK와 `ON DELETE SET NULL`로 표기한 것은 **설계 의도**이며, 실제 DDL에서는 FK 없이 위 앱 레이어/배치 방식으로 동작을 구현해야 한다.
         *   **고아 레코드 관리**: `tx_id IS NULL AND msg_type NOT IN ('0','1','2','3','4','5','A')`인 레코드는 정상 상태가 아니므로(비즈니스 메시지인데 tx_id가 없음) 주기적 점검 쿼리 대상으로 운영 모니터링에 포함한다. `0`,`1`,`2`,`3`,`4`,`5`,`A`는 FIX 4.2 세션 관리 메시지로 tx_id = NULL이 정상. (FindingR6)
-    *   `msg_type`: `VARCHAR(2)` — FIX 4.2 MsgType (tag 35) 코드 — `tx_id = NULL`인 세션 레벨 메시지 식별에 필수. 비즈니스 메시지: `D`/`8`/`F`/`G`/`9`. 세션 관리 메시지(tx_id = NULL 허용): `A`=Logon, `5`=Logout, `0`=Heartbeat, `1`=TestRequest, `2`=ResendRequest, `3`=Reject, `4`=SequenceReset. (FindingR6: ISO-8583 MTI 4자리 고정 → FIX 4.2 알파벳/숫자 MsgType 교체)
+    *   `msg_type`: `VARCHAR(2)` — FIX 4.2 MsgType (tag 35) 코드 — `tx_id = NULL`인 세션 레벨 메시지 식별에 필수. 비즈니스 메시지: `D`/`8`/`F`/`G`/`9`. 세션 관리 메시지(tx_id = NULL 허용): `A`=Logon, `5`=Logout, `0`=Heartbeat, `1`=TestRequest, `2`=ResendRequest, `3`=Reject, `4`=SequenceReset.
     *   `direction`: `ENUM('IN','OUT')` — 송수신 방향. DDL에서 `ENUM('IN','OUT')`으로 정의; DBML에서는 ERD 도구 ENUM 미지원으로 `varchar(3)` 표기. (R19/R21)
     *   `raw_header`: `TEXT` — 전문 헤더 (Hex)
     *   `raw_body`: `TEXT` — 전문 바디 (Hex)

@@ -76,6 +76,7 @@ Sim ledger to simulate position/balance updates on the counterpart side.
 - `currency`: string (ISO 4217)
 - `status`: enum (ACTIVE, FROZEN, CLOSED)
 - `version`: integer (DEFAULT 0) — **낙관적 잠금(Optimistic Locking)** 용. 잔액 업데이트 시 `WHERE id = ? AND version = ?` 조건으로 동시성 충돌 감지. 업데이트 행수 = 0이면 재시도
+    - **Boundary Note:** 이는 시뮬레이터 내부 상태 관리에만 적용되는 정책이다. CoreBanking 도메인은 별도 ADR에 따라 `(account_id, symbol)` 비관적 락(`SELECT ... FOR UPDATE`)을 사용하며, 두 정책을 혼용하지 않는다.
     - **중요**: 성공 시 반드시 `version = version + 1`로 증가해야 락이 작동한다. 올바른 패턴:
     ```sql
     UPDATE sim_accounts
