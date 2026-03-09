@@ -1,7 +1,6 @@
 # Story 10.3: [FEP] FEP Resilience Drills
 
 Status: ready-for-dev
-
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
 ## Story
@@ -10,12 +9,20 @@ As a FEP owner,
 I want repeatable resilience drills,
 So that operational recovery confidence is proven.
 
+> `FEP Simulator`는 외부 기관 응답을 모의하는 테스트 시스템을 의미합니다.
+
 ## Acceptance Criteria
 
-1. Given timeout and failure drill setup When test run executes Then CB open behavior is verified.
-2. Given recovery drill scenario When downstream recovers Then state closes and normal flow resumes.
-3. Given replay/requery drill When unresolved order simulated Then recovery workflow converges or escalates as designed.
+1. Given `FEP Simulator` timeout/failure drill setup When test run executes Then CB open behavior is verified.
+2. Given `FEP Simulator` recovery drill scenario When downstream recovers Then state closes and normal flow resumes.
+3. Given `FEP Simulator` replay/requery drill When unresolved order simulated Then recovery workflow converges or escalates as designed.
 4. Given drill evidence requirement When drill completes Then report/log artifacts are attached.
+
+## Scenario Catalog (Plain Language)
+
+- `E10-RES-001`: `FEP Simulator`에서 지연/실패 응답을 반복 주입했을 때 보호 동작이 열리는지 확인합니다.
+- `E10-RES-002`: `FEP Simulator`를 정상 응답으로 전환했을 때 서비스가 정상 처리로 복귀하는지 확인합니다.
+- `E10-RES-003`: `FEP Simulator` 기준 미해결 주문이 재조회/재처리로 수렴하거나 관리자 조치로 이관되는지 확인합니다.
 
 ## Tasks / Subtasks
 

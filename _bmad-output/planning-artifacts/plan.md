@@ -1,5 +1,7 @@
 # Java 21·Spring Boot 기반 채널계 Monolith + 계정계·대외계 연계 시뮬레이터 구축 명세서
 
+> Historical artifact. This early planning document preserves prior discovery context and may diverge from the current canonical target contract, architecture, and Epic 12 governance package. For active design truth, refer to `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/prd.md`, `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/channels/api-spec.md`, `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/architecture.md`, and Epic 12 documentation.
+
 ## 범위와 현실성 가정
 
 이 문서는 “채널계(고객 접점) Monolith + 계정계(Core Banking) + 대외계(FEP) 연계”를 **국내 금융사에서 흔히 이야기되는 층위(채널/계정/정보/대외)의 개념**에 맞춰, **취업 준비생 포트폴리오 수준에서 직접 구현 가능한 형태로 구체화한 프로젝트 명세**다. citeturn9view0turn4search11

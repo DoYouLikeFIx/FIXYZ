@@ -1,7 +1,6 @@
 # Story 10.4: [INT/CH] Full-stack Smoke & Rehearsal
 
 Status: ready-for-dev
-
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
 ## Story
@@ -16,6 +15,15 @@ So that deployment readiness is validated before production cut.
 2. Given critical API/docs endpoints When smoke checks run Then mandatory endpoints respond correctly.
 3. Given rollback rehearsal plan When exercise performed Then recovery procedure is executable and documented.
 4. Given rehearsal completion When reviewed Then go/no-go checklist can be updated.
+5. Given observability stack verification When smoke rehearsal runs Then Prometheus targets are UP and Grafana dashboard is reachable.
+
+## Scenario Catalog (Plain Language)
+
+- `E10-SMOKE-001`: 전체 환경 기동 직후 핵심 서비스 상태가 정상인지 확인합니다.
+- `E10-SMOKE-002`: 필수 API/문서 주소가 모두 응답하는지 확인합니다.
+- `E10-SMOKE-003`: 장애 시 롤백 절차를 실제로 실행할 수 있는지 확인합니다.
+- `E10-OBS-001`: Prometheus에서 각 서비스 상태가 `UP`으로 보이는지 확인합니다.
+- `E10-OBS-002`: Grafana 대시보드에 접속되고 기본 패널이 보이는지 확인합니다.
 
 ## Tasks / Subtasks
 
@@ -27,6 +35,8 @@ So that deployment readiness is validated before production cut.
   - [ ] Add test coverage for AC 3
 - [ ] Implement acceptance-criteria scope 4 (AC: 4)
   - [ ] Add test coverage for AC 4
+- [ ] Implement acceptance-criteria scope 5 (AC: 5)
+  - [ ] Add test coverage for AC 5
 
 ## Dev Notes
 

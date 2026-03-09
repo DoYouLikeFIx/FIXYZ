@@ -6,6 +6,8 @@
 > **세션 타임아웃**: 30분 비활성 (UX 타협 — 금감원 권고 10~15분 대비 완화, MVP 단계 적용. 실 운영 시 단축 검토 필요)  
 > **MVP 제약**: 단일 Redis 인스턴스 (SPOF) — P2 Sentinel 전환 예정  
 > **대상 독자**: 구현 개발자, 면접관 설명용
+>
+> **Canonical target flow note**: This document describes the product-level target flow, not the current Story 0.7 scaffold parity surface. Current direct scaffold exposure is still partial, and the public edge baseline still uses legacy `/api/v1/channel/*` aliases. When this document uses `GET /api/v1/auth/session`, `POST /api/v1/orders/sessions/{id}/otp`, or `GET /api/v1/orders/sessions/{id}`, treat them as canonical target-contract flows and refer to Epic 12 parity inventory for current baseline divergence.
 
 ---
 
@@ -846,7 +848,7 @@ ALTER TABLE member ADD COLUMN totp_enrolled_at TIMESTAMP NULL;
 | 동작 | Vault API (HTTP) | 발생 시점 |
 |------|------------------|-----------|
 | Secret 저장 | `PUT /v1/secret/fix/member/{memberId}/totp-secret` | `POST /totp/enroll` |
-| Secret 조회 | `GET /v1/secret/fix/member/{memberId}/totp-secret` | `POST /totp/confirm` + `POST /api/v1/orders/sessions/{sessionId}/otp/verify` |
+| Secret 조회 | `GET /v1/secret/fix/member/{memberId}/totp-secret` | `POST /totp/confirm` + `POST /api/v1/orders/sessions/{orderSessionId}/otp` |
 | Secret 삭제 | `DELETE /v1/secret/fix/member/{memberId}/totp-secret` | `DELETE /totp` |
 
 ### OtpService 인터페이스
@@ -1064,3 +1066,39 @@ server:
 - [ ] 1기기 제한 정책 사용자 약관 반영 (MA2) — Story 1.2
 
 > **[B3] Story 연결**: 각 DoD 항목 끝의 `(Story N.N)` 레이블로 스프린트 추적 가능. 미표기 항목은 Epic 1 전체에 해당.
+
+---
+
+## Password Recovery Flow Addendum (Story 1.7, 2026-03-05)
+
+### Flow A: Forgot Request (`POST /api/v1/auth/password/forgot`)
+
+1. Normalize username: `NFKC(trim(username)).toLowerCase(Locale.ROOT)`
+2. Apply rate limits (`per-IP`, `per-username`, `mail-cooldown`) and challenge gate decision
+3. If challenge-gated, require `challengeToken + challengeAnswer` validation
+4. Always return fixed `202` response envelope (no eligibility disclosure)
+5. If account is eligible and policy passes, issue reset token asynchronously and dispatch email
+
+### Flow B: Challenge Bootstrap (`POST /api/v1/auth/password/forgot/challenge`)
+
+1. Return fixed `200` contract regardless of account existence/status
+2. Issue signed challenge token (`ttl=300s`) with username-hash binding
+3. Persist nonce in Redis using atomic create (`SET NX EX 300`)
+4. Enforce challenge endpoint rate limits (`per-IP`, `per-username`, `endpoint-global`)
+
+### Flow C: Reset (`POST /api/v1/auth/password/reset`)
+
+1. Derive token hash with active+previous pepper versions
+2. Validate token state under equalized timing policy (`120ms + jitter 0~20ms`)
+3. In one DB transaction:
+   - update `members.password_hash`
+   - update `members.password_changed_at`
+   - mark reset token consumed
+4. Post-commit: invalidate active sessions; if delayed, auth filter blocks stale sessions via `AUTH-016`
+
+### Security Notes
+
+- CSRF is mandatory for forgot/challenge/reset.
+- CSRF retry policy for all password recovery submits: one re-fetch + one retry only.
+- Retry must preserve payload/idempotency fields exactly.
+- Challenge replay is blocked by Redis atomic nonce consume.

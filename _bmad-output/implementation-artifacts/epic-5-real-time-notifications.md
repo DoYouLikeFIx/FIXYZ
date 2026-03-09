@@ -118,7 +118,7 @@ So that I receive immediate results without polling and never miss a notificatio
 **When** SSE 3-fail or dashboard recovery scenario  
 **Then** Reuse same `recoverOrderSession()` function (no duplicate implementation)
 
-**Given** `vitest` unit test with `MockEventSource` stub (`src/test/setup.ts`)  
+**Given** `vitest` unit test with `MockEventSource` stub (`tests/setup.ts`)  
 **When** test execution  
 **Then** Simulate `onerror` with `EventSource` mock → Verify 3 connection retries  
 **And** Verify `recoverOrderSession()` call after 3 failures

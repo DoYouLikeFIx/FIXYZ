@@ -1,5 +1,7 @@
 # Epic 4: Order Execution & Position Integrity
 
+> Historical artifact. This document preserves prior implementation context and may diverge from the current canonical target contract. For active design truth, refer to `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/prd.md`, `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/channels/api-spec.md`, and Epic 12 documentation for scaffold-divergence handling.
+
 > **⚠️ Epic Numbering Note**: This supplemental file was numbered from the securities-order domain and corresponds to **Epic 5 in epics.md: Account Ledger, Limits, Idempotency, Concurrency**. The canonical story authority is always `_bmad-output/planning-artifacts/epics.md`.
 
 
@@ -245,7 +247,7 @@ So that I can verify accuracy and receive proof of order execution.
 **Given** browser tab closed and reopened (session recovery, FR-18)  
 **When** `DashboardPage` mounts (`useEffect`)  
 **Then** `sessionStorage.getItem('lastOrderSessionId')` checked  
-**And** if key exists, call `GET /api/v1/orders/sessions/{sessionId}/status`  
+**And** if key exists, call `GET /api/v1/orders/sessions/{sessionId}`
 **And** Status `COMPLETED` → Auto-show result Modal + delete key  
 **And** Status `FAILED` → Show failure Modal  
 **And** Status `PENDING_NEW` + `remainingSeconds > 0` → "Previous order is pending. Continue?" popup  

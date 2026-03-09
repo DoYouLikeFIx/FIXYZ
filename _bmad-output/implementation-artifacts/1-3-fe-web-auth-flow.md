@@ -32,6 +32,19 @@ so that authenticated routes behave predictably.
   - [x] Handle SSE/session expiry warning and 401 fallback paths
   - [x] Ensure cleanup/reconnect strategy for event stream
 - [x] Add FE tests for route guard + auth error + expiry guidance (AC: 2, 3, 4)
+- [x] Implement login/register screens and submission flow (AC: 1)
+  - [x] Integrate with auth APIs using shared client
+  - [x] Persist authenticated member state via approved global store pattern
+- [x] Implement private-route guard and navigation rules (AC: 2)
+  - [x] Redirect unauthenticated users to `/login`
+  - [x] Preserve predictable post-auth navigation behavior
+- [x] Implement standardized auth error UX (AC: 3)
+  - [x] Map backend auth error codes to user-facing messages
+  - [x] Prevent duplicate/conflicting error surfaces
+- [x] Implement session-expiry event handling and re-auth guidance (AC: 4)
+  - [x] Handle SSE/session expiry warning and 401 fallback paths
+  - [x] Ensure cleanup/reconnect strategy for event stream
+- [x] Add FE tests for route guard + auth error + expiry guidance (AC: 2, 3, 4)
 
 ## Dev Notes
 
@@ -110,10 +123,10 @@ so that authenticated routes behave predictably.
   - Attach negative-path replay result for `N-1`, `N`, `N+1` boundaries and session expiry paths.
   - Attach one correlation sample linking client-visible error to server-side security event/log.
 - Party review resolution status (2026-02-25):
-  - [ ] Private-route redirect loop prevention evidence attached (no infinite redirect/retry behavior).
-  - [ ] Auth error mapping evidence attached showing single consistent UX surface per backend code.
-  - [ ] Session-expiry event + 401 fallback evidence attached with deterministic re-auth guidance.
-  - [ ] FE behavior parity evidence recorded against shared Epic 1 session behavior matrix.
+  - [x] Private-route redirect loop prevention evidence attached (no infinite redirect/retry behavior).
+  - [x] Auth error mapping evidence attached showing single consistent UX surface per backend code.
+  - [x] Session-expiry event + 401 fallback evidence attached with deterministic re-auth guidance.
+  - [x] FE behavior parity evidence recorded against shared Epic 1 session behavior matrix.
 
 - Execution reference:
   - Run Epic 1 focused checklist: `_bmad-output/implementation-artifacts/epic-1-qa-reinforcement-checklist.md`.

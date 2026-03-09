@@ -28,6 +28,15 @@ so that account access rules stay consistent across clients.
 - [x] Implement app-resume session check behavior (AC: 4)
   - [x] Revalidate session/auth state on resume and clear stale auth state
 - [x] Add mobile tests for auth stack transitions and stale-session handling
+- [x] Implement mobile login/register flow parity with web contract (AC: 1)
+  - [x] Wire auth endpoints and navigation stack transitions
+- [x] Implement protected-route/session invalidation handling (AC: 2)
+  - [x] On auth-required response, route to re-auth flow deterministically
+- [x] Implement standardized mobile auth error UX (AC: 3)
+  - [x] Support field-level and global error surfaces by code type
+- [x] Implement app-resume session check behavior (AC: 4)
+  - [x] Revalidate session/auth state on resume and clear stale auth state
+- [x] Add mobile tests for auth stack transitions and stale-session handling
 
 ## Dev Notes
 
