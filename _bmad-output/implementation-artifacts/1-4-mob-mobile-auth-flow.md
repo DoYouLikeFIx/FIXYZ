@@ -61,6 +61,9 @@ so that account access rules stay consistent across clients.
 - Use centralized mobile network/auth layers from foundation scaffold.
 - Keep secure storage and token/session handling policy compliant with mobile security baseline.
 - Avoid custom auth branches that diverge from FE semantics unless required by platform lifecycle.
+- Mobile auth presentation follows MVVM:
+  `useAuthFlowViewModel (flow ViewModel) -> LoginScreen/RegisterScreen (View) + useLoginViewModel/useRegisterViewModel (screen ViewModel) -> mobile-auth-service -> auth-store/auth-api`.
+- Screen components keep only React Native view concerns such as keyboard visibility, focus refs, and scroll positioning.
 
 ### Library / Framework Requirements
 
@@ -74,6 +77,7 @@ so that account access rules stay consistent across clients.
 
 - Expected touched areas:
   - `MOB/src/screens/auth/**`
+  - `MOB/src/auth/use-*-view-model.ts`
   - `MOB/src/navigation/**`
   - `MOB/src/network/**`
   - `MOB/src/store/**`
@@ -166,6 +170,7 @@ GPT-5 Codex (Codex desktop)
 - Verified live mobile `register -> protected route` flow on `iPhone 17` against the real backend.
 - Verified live mobile existing-account `login -> protected route` flow on `iPhone 17` against the same backend runtime.
 - Preserved mobile parity for invalidated-by-new-login and stale-session re-auth routing in the current automated suite.
+- Refactored auth presentation to MVVM by moving app-level auth orchestration into `useAuthFlowViewModel` and login/register form state into dedicated screen ViewModel hooks.
 - Re-ran backend integration coverage supporting mobile auth/session semantics: `ChannelAuthFlowTest (5)`, `ChannelAuthSessionIntegrationTest (16)`, `ChannelContainersIntegrationTest (2)`, `ChannelSessionTimeoutIntegrationTest (1)`.
 - Mobile closeout remains backed by `npm run ci-mobile`, mock-backed Maestro auth regression, and live Maestro auth flows.
 
@@ -175,6 +180,17 @@ GPT-5 Codex (Codex desktop)
 - /Users/yeongjae/fixyz/MOB/tests/e2e/mobile-auth-flow.e2e.test.ts
 - /Users/yeongjae/fixyz/MOB/e2e/maestro/auth-live/01-register-success-live-be.yaml
 - /Users/yeongjae/fixyz/MOB/e2e/maestro/auth-live/02-login-success-live-be.yaml
+- /Users/yeongjae/fixyz/MOB/src/auth/use-auth-flow-view-model.ts
+- /Users/yeongjae/fixyz/MOB/src/auth/mobile-auth-service.ts
+- /Users/yeongjae/fixyz/MOB/src/auth/use-login-view-model.ts
+- /Users/yeongjae/fixyz/MOB/src/auth/use-register-view-model.ts
+- /Users/yeongjae/fixyz/MOB/src/auth/auth-flow-view-model.ts
+- /Users/yeongjae/fixyz/MOB/App.tsx
+- /Users/yeongjae/fixyz/MOB/src/screens/auth/LoginScreen.tsx
+- /Users/yeongjae/fixyz/MOB/src/screens/auth/RegisterScreen.tsx
+- /Users/yeongjae/fixyz/MOB/src/navigation/AppNavigator.tsx
+- /Users/yeongjae/fixyz/MOB/tests/unit/auth/mobile-auth-service.test.ts
+- /Users/yeongjae/fixyz/MOB/tests/unit/auth/auth-flow-view-model.test.ts
 - /Users/yeongjae/fixyz/MOB/src/network/csrf.ts
 - /Users/yeongjae/fixyz/BE/channel-service/src/test/java/com/fix/channel/integration/ChannelAuthFlowTest.java
 - /Users/yeongjae/fixyz/BE/channel-service/src/test/java/com/fix/channel/integration/ChannelAuthSessionIntegrationTest.java

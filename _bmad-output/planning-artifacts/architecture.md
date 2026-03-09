@@ -1054,6 +1054,7 @@ Trunk-based with short-lived feature branches:
 | RULE-074 | 서비스 배포 순서                          |
 | RULE-075 | docker-compose healthcheck 표준           |
 | RULE-076 | 인증 상태 Zustand `useAuthStore` 패턴   |
+| RULE-080 | MOB 인증 MVVM 패턴                        |
 
 ---
 
@@ -2057,6 +2058,50 @@ export const useAuthStore = create<AuthState>((set) => ({
 
 ---
 
+### RULE-080: MOB 인증 MVVM 패턴
+
+```ts
+// View
+// - src/screens/auth/LoginScreen.tsx
+// - src/screens/auth/RegisterScreen.tsx
+// 역할: React Native 레이아웃, keyboard inset, focus ref, animation binding만 담당
+
+// ViewModel
+// - src/auth/use-auth-flow-view-model.ts
+// - src/auth/use-login-view-model.ts
+// - src/auth/use-register-view-model.ts
+// 역할: auth flow route 상태, lifecycle/bootstrap, 입력값, 단계 진행,
+//       field/global feedback, submitting 상태, submit intent 관리
+
+// Application Service / Model
+// - src/auth/mobile-auth-service.ts
+// - src/store/auth-store.ts
+// - src/api/auth-api.ts
+// 역할: API 호출, session recovery, reauth 판정, auth persistence 제공
+
+// App shell
+// - App.tsx / src/navigation/AppNavigator.tsx
+// 역할: runtime wiring + ViewModel 바인딩
+
+// ✅ 허용:
+//    - Screen 컴포넌트의 useState/useRef는 keyboard visibility, scroll, focus ref 같은
+//      순수 view concern에 한정
+//    - ViewModel은 화면 전용 프레젠테이션 상태와 submit action을 소유
+//
+// ❌ 금지:
+//    - LoginScreen/RegisterScreen 안에서 auth API 호출, authStore mutation,
+//      navigation mutation을 직접 수행
+//    - validation / submit / step progression을 Screen JSX 내부에 다시 인라인 구현
+//    - App.tsx에서 bootstrap / session refresh / route mutation을 직접 orchestration
+//
+// 참고:
+//    - Web FE는 RULE-076의 Zustand 패턴을 유지한다.
+//    - Mobile은 useSyncExternalStore 기반 authStore +
+//      auth-flow ViewModel + screen-scoped ViewModel hook 조합을 사용한다.
+```
+
+---
+
 ### 파일 생성 보일러플레이트
 
 ```java
@@ -2563,6 +2608,26 @@ fix/                                          # 모노레포 루트
             │   └── portfolioFixtures.ts
             └── __mocks__/
                 └── axios.ts
+
+└── MOB/
+    ├── App.tsx                              # runtime wiring only
+    └── src/
+        ├── auth/
+        │   ├── create-mobile-auth-runtime.ts
+        │   ├── mobile-auth-service.ts       # application service / use-case orchestration
+        │   ├── use-auth-flow-view-model.ts  # auth flow ViewModel
+        │   ├── use-login-view-model.ts      # LoginScreen ViewModel
+        │   └── use-register-view-model.ts   # RegisterScreen ViewModel
+        ├── navigation/
+        │   ├── AppNavigator.tsx             # route shell + scene transition
+        │   └── auth-navigation.ts           # auth/app route state reducer helpers
+        ├── screens/auth/
+        │   ├── LoginScreen.tsx              # View
+        │   └── RegisterScreen.tsx           # View
+        ├── store/
+        │   └── auth-store.ts                # useSyncExternalStore 기반 external auth store
+        └── network/
+            └── csrf.ts                      # session-bound CSRF token lifecycle
 ```
 
 ---
@@ -3215,6 +3280,9 @@ eventsource.onerror = () => {
 - 인증 상태는 **Zustand `useAuthStore`** 전역 스토어 사용 — `AuthContext.Provider` 미사용 (P-B1)
 - `useAuth.ts` 훈 = `export const useAuth = () => useAuthStore()` 래퍼
 - ❌ 금지: 컴포넌트에서 `auth state`를 `useState` 또는 `Context`로 별도 관리
+- MOB 인증 흐름은 **MVVM** 사용: `useAuthFlowViewModel -> Screen(View) + use*ViewModel -> mobile-auth-service -> authStore/authApi`
+- MOB Screen에는 keyboard/focus/scroll 같은 view concern만 남기고 validation, submit, step progression은 ViewModel로 올린다
+- App.tsx는 ViewModel을 생성하고 AppNavigator에 바인딩만 한다. auth flow orchestration은 App.tsx에 두지 않는다
 
 **Sprint DoD:**
 
