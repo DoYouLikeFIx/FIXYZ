@@ -185,16 +185,16 @@ GPT-5 Codex (Codex desktop)
 - FE/package-lock.json (deleted)
 - FE/package.json
 - FE/pnpm-lock.yaml
-- FE/src/App.test.tsx
+- FE/tests/integration/App.test.tsx
 - FE/src/App.tsx
 - FE/src/index.css
-- FE/src/lib/axios.test.ts
+- FE/tests/unit/lib/axios.test.ts
 - FE/src/lib/axios.ts
 - FE/src/lib/errors.ts
 - FE/src/lib/health.ts
-- FE/src/lib/health.test.ts
+- FE/tests/unit/lib/health.test.ts
 - FE/src/main.tsx
-- FE/src/test/setup.ts
+- FE/tests/setup.ts
 - FE/src/types/api.ts
 - FE/src/types/health.ts
 - FE/src/vite-env.d.ts

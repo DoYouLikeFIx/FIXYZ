@@ -1,6 +1,6 @@
 # Story 1.3: FE Web Auth Flow
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -19,19 +19,19 @@ so that authenticated routes behave predictably.
 
 ## Tasks / Subtasks
 
-- [ ] Implement login/register screens and submission flow (AC: 1)
-  - [ ] Integrate with auth APIs using shared client
-  - [ ] Persist authenticated member state via approved global store pattern
-- [ ] Implement private-route guard and navigation rules (AC: 2)
-  - [ ] Redirect unauthenticated users to `/login`
-  - [ ] Preserve predictable post-auth navigation behavior
-- [ ] Implement standardized auth error UX (AC: 3)
-  - [ ] Map backend auth error codes to user-facing messages
-  - [ ] Prevent duplicate/conflicting error surfaces
-- [ ] Implement session-expiry event handling and re-auth guidance (AC: 4)
-  - [ ] Handle SSE/session expiry warning and 401 fallback paths
-  - [ ] Ensure cleanup/reconnect strategy for event stream
-- [ ] Add FE tests for route guard + auth error + expiry guidance (AC: 2, 3, 4)
+- [x] Implement login/register screens and submission flow (AC: 1)
+  - [x] Integrate with auth APIs using shared client
+  - [x] Persist authenticated member state via approved global store pattern
+- [x] Implement private-route guard and navigation rules (AC: 2)
+  - [x] Redirect unauthenticated users to `/login`
+  - [x] Preserve predictable post-auth navigation behavior
+- [x] Implement standardized auth error UX (AC: 3)
+  - [x] Map backend auth error codes to user-facing messages
+  - [x] Prevent duplicate/conflicting error surfaces
+- [x] Implement session-expiry event handling and re-auth guidance (AC: 4)
+  - [x] Handle SSE/session expiry warning and 401 fallback paths
+  - [x] Ensure cleanup/reconnect strategy for event stream
+- [x] Add FE tests for route guard + auth error + expiry guidance (AC: 2, 3, 4)
 
 ## Dev Notes
 
@@ -110,10 +110,10 @@ so that authenticated routes behave predictably.
   - Attach negative-path replay result for `N-1`, `N`, `N+1` boundaries and session expiry paths.
   - Attach one correlation sample linking client-visible error to server-side security event/log.
 - Party review resolution status (2026-02-25):
-  - [ ] Private-route redirect loop prevention evidence attached (no infinite redirect/retry behavior).
-  - [ ] Auth error mapping evidence attached showing single consistent UX surface per backend code.
-  - [ ] Session-expiry event + 401 fallback evidence attached with deterministic re-auth guidance.
-  - [ ] FE behavior parity evidence recorded against shared Epic 1 session behavior matrix.
+  - [x] Private-route redirect loop prevention evidence attached (no infinite redirect/retry behavior).
+  - [x] Auth error mapping evidence attached showing single consistent UX surface per backend code.
+  - [x] Session-expiry event + 401 fallback evidence attached with deterministic re-auth guidance.
+  - [x] FE behavior parity evidence recorded against shared Epic 1 session behavior matrix.
 
 - Execution reference:
   - Run Epic 1 focused checklist: `_bmad-output/implementation-artifacts/epic-1-qa-reinforcement-checklist.md`.
@@ -140,8 +140,8 @@ so that authenticated routes behave predictably.
 
 ### Story Completion Status
 
-- Status set to `ready-for-dev`.
-- Completion note: Ultimate context engine analysis completed - comprehensive developer guide created.
+- Status moved to `review`.
+- Completion note: FE auth flow implementation completed and QA automation evidence attached for Story 1.3 review handoff.
 
 ### References
 
@@ -161,12 +161,95 @@ GPT-5 Codex (Codex desktop)
 
 ### Debug Log References
 
-- Generated via create-story workflow instructions with Epic 1 artifact synthesis.
+- `pnpm test`
+- `npm test`
+- `pnpm type-check`
+- `pnpm lint`
+- `pnpm build`
 
 ### Completion Notes List
 
-- Added explicit FE auth-state and route-guard guardrails for implementation.
+- Implemented BrowserRouter auth flow with login/register pages, protected `/portfolio` routing, redirect preservation, and Zustand-backed member session state.
+- Added shared auth client support for CSRF bootstrap/retry handling, centralized auth error mapping, and interceptor-based re-auth state handling for session-cookie flows.
+- Added session-expiry EventSource warning UI with keep-alive refresh, deterministic login redirect fallback, and reconnect-safe stream cleanup behavior.
+- Added FE unit and integration coverage for login/register success, private-route redirects, standardized auth errors, and session-expiry guidance/fallback behavior.
+- QA pass added auth service contract coverage for session fetch, CSRF refresh, and register-side token reset.
+- QA pass attached Story 1.3 automation evidence and published `_bmad-output/implementation-artifacts/tests/test-summary.md`.
+- QA follow-up pass recorded FE/MOB parity and Story 1.5 ownership in `_bmad-output/implementation-artifacts/epic-1-qa-reinforcement-checklist.md`.
+- QA follow-up pass added FE traceId/auth-guardrail contract assertions and MOB auth-code preservation coverage.
 
 ### File List
 
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/1-3-fe-web-auth-flow.md
+- FE/package.json
+- FE/pnpm-lock.yaml
+- FE/tests/integration/App.test.tsx
+- FE/src/App.tsx
+- FE/src/components/auth/AuthFrame.tsx
+- FE/src/components/layout/ProtectedLayout.tsx
+- FE/src/hooks/useAuth.ts
+- FE/src/hooks/useSessionExpiry.ts
+- FE/src/index.css
+- FE/tests/unit/lib/axios.test.ts
+- FE/tests/unit/lib/auth-errors.test.ts
+- FE/src/lib/auth-errors.ts
+- FE/tests/unit/api/authApi.test.ts
+- FE/src/lib/auth.ts
+- FE/src/lib/axios.ts
+- FE/src/pages/LoginPage.tsx
+- FE/src/pages/PortfolioPage.tsx
+- FE/src/pages/RegisterPage.tsx
+- FE/src/router/AppRouter.tsx
+- FE/src/router/PrivateRoute.tsx
+- FE/src/router/PublicOnlyRoute.tsx
+- FE/src/router/navigation.ts
+- FE/tests/unit/store/useAuthStore.test.ts
+- FE/src/store/useAuthStore.ts
+- FE/src/types/api.ts
+- FE/src/types/auth.ts
+- MOB/tests/unit/network/errors.test.ts
+- _bmad-output/implementation-artifacts/epic-1-qa-reinforcement-checklist.md
+- _bmad-output/implementation-artifacts/tests/test-summary.md
+
+## Change Log
+
+- 2026-03-07: Implemented FE auth flow, protected routing, CSRF/session handling, and validation coverage for Story 1.3; story moved to `review`.
+- 2026-03-07: QA automation pass added redirect-loop, auth-error, session-expiry reconnect, and auth service coverage; published Story 1.3 test summary.
+- 2026-03-07: Epic 1 QA reinforcement checklist created; FE/MOB parity matrix and Story 1.5 lockout/correlation ownership linked for Story 1.3 review handoff.
+- 2026-03-08: FE auth UI refinement regression pass revalidated inline login/register errors, independent password toggles, clickable register submit validation path, and localized 403 refresh copy.
+- 2026-03-08: FE QA rerun revalidated restored auth-gated `/portfolio` access and protected portfolio interaction after preview rollback.
+
+## QA Results
+
+### Reviewer
+
+- Codex (QA automation), 2026-03-08
+
+### Gate Decision
+
+- PASS (Story 1.3 FE scope revalidated after auth UI refinements and restored auth-gated protected portfolio flow; shared Epic 1 reinforcement evidence remains linked)
+
+### Acceptance Criteria Validation
+
+1. AC1 (login/register success routes to protected area): PASS
+   - Evidence: successful login, post-register login, preserved redirect-target coverage, and protected portfolio interaction regression coverage in `FE/tests/integration/App.test.tsx`; auth service request flow in `FE/tests/unit/api/authApi.test.ts`
+2. AC2 (private-route guard redirects anonymous users): PASS
+   - Evidence: anonymous `/portfolio` access redirects to `/login`, and authenticated auth-page redirect loops are sanitized in `FE/tests/integration/App.test.tsx`
+3. AC3 (standardized auth error UX): PASS
+   - Evidence: canonical backend error-code mapping in `FE/tests/unit/lib/auth-errors.test.ts`, localized forbidden-refresh guidance in `FE/tests/unit/lib/axios.test.ts`, and single inline login/register error surface coverage in `FE/tests/integration/App.test.tsx`
+4. AC4 (session-expiry warning + re-auth guidance): PASS
+   - Evidence: warning banner display, extend-session success, re-auth fallback, EventSource reconnect, and reconnect cleanup coverage in `FE/tests/integration/App.test.tsx`
+
+### Executed Verification
+
+- `cd FE && pnpm test -- --run` -> PASS (8 files, 40 tests)
+- `cd FE && pnpm build` -> PASS
+- `cd FE && pnpm type-check` -> PASS
+- `cd FE && pnpm lint` -> PASS
+- Shared MOB parity evidence remains the 2026-03-07 `cd MOB && npm test` pass (8 files, 27 tests); no MOB code changed in this rerun
+
+### Shared Evidence References
+
+- Shared Epic 1 FE/MOB session behavior matrix is recorded in `_bmad-output/implementation-artifacts/epic-1-qa-reinforcement-checklist.md`.
+- Story `1.5` ownership for lockout `N-1` / `N` / `N+1`, cooldown/reset, and security-event persistence is linked explicitly in the shared checklist.
+- Correlation contract sample linking FE-visible auth copy to backend code + `traceId` capture is recorded in the shared checklist with Story `1.5` and Epic `8.x` ownership references.
+- This rerun adds FE evidence for inline validation messaging, independent register password toggles, localized 403 refresh guidance, and restored protected portfolio interaction without changing the prior FE/MOB parity ownership map.

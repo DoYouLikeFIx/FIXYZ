@@ -1,6 +1,6 @@
 # Story 1.4: MOB Mobile Auth Flow
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -19,15 +19,15 @@ so that account access rules stay consistent across clients.
 
 ## Tasks / Subtasks
 
-- [ ] Implement mobile login/register flow parity with web contract (AC: 1)
-  - [ ] Wire auth endpoints and navigation stack transitions
-- [ ] Implement protected-route/session invalidation handling (AC: 2)
-  - [ ] On auth-required response, route to re-auth flow deterministically
-- [ ] Implement standardized mobile auth error UX (AC: 3)
-  - [ ] Support field-level and global error surfaces by code type
-- [ ] Implement app-resume session check behavior (AC: 4)
-  - [ ] Revalidate session/auth state on resume and clear stale auth state
-- [ ] Add mobile tests for auth stack transitions and stale-session handling
+- [x] Implement mobile login/register flow parity with web contract (AC: 1)
+  - [x] Wire auth endpoints and navigation stack transitions
+- [x] Implement protected-route/session invalidation handling (AC: 2)
+  - [x] On auth-required response, route to re-auth flow deterministically
+- [x] Implement standardized mobile auth error UX (AC: 3)
+  - [x] Support field-level and global error surfaces by code type
+- [x] Implement app-resume session check behavior (AC: 4)
+  - [x] Revalidate session/auth state on resume and clear stale auth state
+- [x] Add mobile tests for auth stack transitions and stale-session handling
 
 ## Dev Notes
 
@@ -149,12 +149,49 @@ GPT-5 Codex (Codex desktop)
 
 ### Debug Log References
 
-- Generated via create-story workflow instructions with Epic 1 artifact synthesis.
+- `npm run typecheck`
+- `npm run lint`
+- `npm test`
+- `npm run bundle:dry-run`
 
 ### Completion Notes List
 
-- Added lifecycle/session revalidation guardrails specific to mobile.
+- Implemented Figma-aligned mobile login/register screens plus a protected authenticated home stack without introducing new runtime dependencies.
+- Added a centralized mobile auth controller/runtime that reuses the existing HTTP + CSRF foundation and keeps re-auth routing deterministic for protected session checks.
+- Added field/global auth error handling parity with FE semantics, including duplicate-username and password-policy code mapping plus canonical session-expiry guidance.
+- Added AppState resume revalidation so stale sessions are rejected on foreground return and the app routes back to login with preserved protected-stack intent.
+- Added controller, store, navigation, and auth-error coverage for login/register success, protected-session re-auth, and stale-session rejection on resume.
 
 ### File List
 
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/1-4-mob-mobile-auth-flow.md
+- MOB/App.tsx
+- MOB/src/index.ts
+- MOB/src/api/auth-api.ts
+- MOB/src/auth/auth-errors.ts
+- MOB/src/auth/create-mobile-auth-runtime.ts
+- MOB/src/auth/form-validation.ts
+- MOB/src/auth/mobile-auth-controller.ts
+- MOB/src/components/auth/AuthField.tsx
+- MOB/src/components/auth/AuthScaffold.tsx
+- MOB/src/components/auth/auth-styles.ts
+- MOB/src/lib/password-policy.ts
+- MOB/src/navigation/AppNavigator.tsx
+- MOB/src/navigation/auth-navigation.ts
+- MOB/src/screens/app/AuthenticatedHomeScreen.tsx
+- MOB/src/screens/auth/BootScreen.tsx
+- MOB/src/screens/auth/LoginScreen.tsx
+- MOB/src/screens/auth/RegisterScreen.tsx
+- MOB/src/store/auth-store.ts
+- MOB/src/types/auth.ts
+- MOB/src/types/auth-ui.ts
+- MOB/tests/unit/auth/auth-errors.test.ts
+- MOB/tests/unit/auth/mobile-auth-controller.test.ts
+- MOB/tests/unit/navigation/auth-navigation.test.ts
+- MOB/tests/unit/store/auth-store.test.ts
+- _bmad-output/implementation-artifacts/1-4-mob-mobile-auth-flow.md
+- _bmad-output/implementation-artifacts/sprint-status.yaml
+
+## Change Log
+
+- 2026-03-08: Implemented mobile auth flow UI, centralized auth/session controller, deterministic re-auth navigation, and AppState resume revalidation for Story 1.4.
+- 2026-03-08: Added MOB unit coverage for auth error mapping, store transitions, navigation state transitions, and stale-session rejection during protected refresh/resume.

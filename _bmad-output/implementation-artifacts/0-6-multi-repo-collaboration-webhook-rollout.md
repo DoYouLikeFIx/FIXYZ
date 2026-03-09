@@ -190,9 +190,9 @@ GPT-5 Codex (Codex desktop)
 - MOB/.github/scripts/collab-webhook/post-to-mattermost.js
 - MOB/.github/scripts/collab-webhook/retry-utils.js
 - MOB/package.json
-- MOB/test/collab-webhook/notification-utils.test.js
-- MOB/test/collab-webhook/package.json
-- MOB/test/collab-webhook/retry-utils.test.js
+- MOB/tests/collab-webhook/notification-utils.test.js
+- MOB/tests/collab-webhook/package.json
+- MOB/tests/collab-webhook/retry-utils.test.js
 
 ### Change Log
 

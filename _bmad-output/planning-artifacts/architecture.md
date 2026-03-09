@@ -278,12 +278,12 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
-    setupFiles: ["./src/test/setup.ts"],
+    setupFiles: ["./tests/setup.ts"],
   },
 });
 ```
 
-**Day-1 required — `src/test/setup.ts` (EventSource mock):**
+**Day-1 required — `tests/setup.ts` (EventSource mock):**
 
 ```ts
 // EventSource not available in jsdom — must be stubbed globally
@@ -429,7 +429,11 @@ fix/                              ← root Gradle project (7-module 확정 구�
     src/
       lib/axios.ts                ← axios instance (withCredentials, baseURL from env)
       utils/format.ts             ← formatKRW() and shared formatters
-      test/setup.ts               ← EventSource mock stub
+    tests/
+      setup.ts                    ← EventSource mock stub
+      integration/                ← app/router/auth flow tests
+      unit/                       ← lib/store/component tests
+      collab-webhook/             ← node:test workflow script tests
   docker-compose.yml              ← channel + corebank + fep-gateway + fep-simulator + mysql + redis
   .env.example                    ← committed; .env gitignored
   .github/
@@ -517,6 +521,7 @@ _Flat reference for implementers. Every named decision, rule, and ADR. Reference
 | D-022 | Password policy: min 8 chars, 1 uppercase, 1 digit, 1 special; `AUTH-007`                       | Auth & Security             |
 | D-023 | `useEffect` + `axios` for data fetching; React Router `loader` not used                         | Frontend Architecture       |
 | D-024 | Global `ErrorBoundary` catch-all; per-screen `try/catch` → inline error state; no toast library | Frontend Architecture       |
+| D-026 | Lane-level automated tests are centralized under `<workspace>/tests/**`                          | Frontend Architecture       |
 | D-025 | Decision numbering: `D-XXX` / `ADR-XXX` / `RULE-XXX`                                            | Architecture Document       |
 
 **Rules (RULE-XXX) — How we enforce:**
@@ -862,6 +867,17 @@ export function NotificationProvider({ children }) {
 - `<ErrorBoundary>` wraps `<App />` — catch-all for unhandled React errors
 - All expected API errors (ORD-001, AUTH-003, FEP-003, etc.) handled inline per UX spec Korean messages
 - No toast library — inline error `<div>` per screen per UX spec exactly
+
+**D-026 — Centralized automated test roots**
+
+- All lane-local automated tests live under a top-level `tests/` directory so `src/` stays production-only.
+- Recommended buckets:
+  - `tests/unit/**` for pure logic/component/store tests
+  - `tests/integration/**` for app/router/API wiring tests
+  - `tests/e2e/**` for runtime-backed lane flows
+  - `tests/collab-webhook/**` for Node-only workflow script tests
+  - `tests/setup.ts` for shared test bootstrap such as `EventSource` stubs
+- Backend already follows this convention with `BE/tests/**`; FE and MOB must not add new `src/**/*.test.*`, `src/test/**`, or `test/**` paths.
 
 ---
 
@@ -2502,11 +2518,7 @@ fix/                                          # 모노레포 루트
         │   │   ├── OrderConfirm.tsx
         │   │   ├── OtpInput.tsx               # RULE-029
         │   │   ├── OrderProcessing.tsx
-        │   │   ├── OrderResult.tsx
-        │   │   └── __tests__/
-        │   │       ├── OrderInputForm.test.tsx
-        │   │       ├── OtpInput.test.tsx       # userEvent.type
-        │   │       └── OrderResult.test.tsx
+        │   │   └── OrderResult.tsx
         │   └── common/
         │       ├── AsyncStateWrapper.tsx       # RULE-027
         │       ├── LoadingSpinner.tsx
@@ -2514,24 +2526,16 @@ fix/                                          # 모노레포 루트
         │       ├── NavigationBar.tsx
         │       ├── PrivateRoute.tsx            # 인증 보호 래퍼 (R2)
         │       ├── ErrorBoundary.tsx           # D-024
-        │       ├── KrwAmountDisplay.tsx        # formatKRW 래퍼 (R2)
-        │       └── __tests__/
-        │           └── AsyncStateWrapper.test.tsx
+        │       └── KrwAmountDisplay.tsx        # formatKRW 래퍼 (R2)
         ├── context/
-        │   ├── NotificationContext.tsx         # SSE lifecycle RULE-045
-        │   └── __tests__/
-        │       └── NotificationContext.test.tsx  # R5
+        │   └── NotificationContext.tsx         # SSE lifecycle RULE-045
         ├── store/
-        │   ├── useAuthStore.ts                 # Zustand: isAuthenticated, member, login(), logout() (P-B1)
-        │   └── __tests__/
-        │       └── useAuthStore.test.ts        # login/logout 상태 전환 단위 테스트 (P-C6)
+        │   └── useAuthStore.ts                 # Zustand: isAuthenticated, member, login(), logout() (P-B1)
         ├── hooks/
         │   ├── useOrder.ts                    # useReducer RULE-046
         │   ├── useAuth.ts                      # useAuthStore wrapper: const useAuth = () => useAuthStore()
         │   ├── usePortfolio.ts
-        │   ├── useNotification.ts              # NotificationContext 소비 (R2)
-        │   └── __tests__/
-        │       └── useOrder.test.ts
+        │   └── useNotification.ts              # NotificationContext 소비 (R2)
         ├── lib/
         │   ├── axios.ts                        # 단일 인스턴스 RULE-047
         │   └── schemas/
@@ -2544,8 +2548,16 @@ fix/                                          # 모노레포 루트
         │   └── auth.ts                         # LoginRequest, Member (R9)
         ├── utils/
         │   └── formatters.ts                   # formatKRW RULE-028
-        └── test/
+        └── tests/
             ├── setup.ts                        # jsdom + EventSource mock
+            ├── unit/
+            │   ├── components/
+            │   ├── context/
+            │   ├── hooks/
+            │   ├── lib/
+            │   └── store/
+            ├── integration/
+            │   └── app/
             ├── fixtures/
             │   ├── orderFixtures.ts
             │   └── portfolioFixtures.ts
