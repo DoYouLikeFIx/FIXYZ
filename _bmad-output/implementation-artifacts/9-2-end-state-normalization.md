@@ -33,7 +33,7 @@ So that clients can render outcomes without service-specific branching.
 ### Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 9.
-- No supplemental epic artifact detected for this epic at generation time.
+- Supplemental artifact `_bmad-output/implementation-artifacts/epic-9-integration-orchestration-and-end-to-end-recovery.md` is available for epic-level context; canonical story ID authority remains `epics.md`.
 - Depends on: Story 9.1.
 
 ### Technical Requirements
@@ -60,6 +60,7 @@ So that clients can render outcomes without service-specific branching.
 ### References
 
 - `_bmad-output/planning-artifacts/epics.md` (Epic 9, Story 9.2)
+- `_bmad-output/implementation-artifacts/epic-9-integration-orchestration-and-end-to-end-recovery.md`
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
 

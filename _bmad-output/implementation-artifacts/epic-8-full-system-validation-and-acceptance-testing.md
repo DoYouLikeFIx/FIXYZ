@@ -2,7 +2,9 @@
 
 > Historical artifact. This document preserves prior implementation context and may diverge from the current canonical target contract. For active design truth, refer to `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/prd.md`, `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/channels/api-spec.md`, and Epic 12 documentation for current perimeter validation governance.
 
-> **⚠️ Epic Numbering Note**: This supplemental file was numbered from the securities-order domain and corresponds to **Epic 10 in epics.md: Full Validation & Release Readiness**. The canonical story authority is always `_bmad-output/planning-artifacts/epics.md`.
+> **Current Companion Note**: The active supplemental companion for canonical **Epic 10 in epics.md** is now `/Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/epic-10-full-validation-and-release-readiness.md`. This file is retained only as a legacy validation reference.
+>
+> **⚠️ Epic Numbering Note**: This supplemental file was numbered from the securities-order domain and overlaps with **Epic 10 in epics.md: Full Validation & Release Readiness**, but it is not the primary current Epic 10 companion. The canonical story authority is always `_bmad-output/planning-artifacts/epics.md`.
 
 
 ## Summary

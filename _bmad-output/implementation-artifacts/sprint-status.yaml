@@ -57,7 +57,7 @@ development_status:
   1-3-fe-web-auth-flow: done
   1-4-mob-mobile-auth-flow: done
   1-5-be-auth-guardrails-lockout-rate-limit: done
-  1-6-fe-mob-auth-error-standardization: ready-for-dev
+  1-6-fe-mob-auth-error-standardization: done
   1-7-be-password-forgot-reset-api: ready-for-dev
   epic-1-retrospective: optional
 
@@ -71,7 +71,7 @@ development_status:
   epic-2-retrospective: optional
 
   epic-3: in-progress
-  3-1-fep-dto-client-contract: review
+  3-1-fep-dto-client-contract: done
   3-2-external-error-taxonomy: done
   3-3-referenceid-and-idempotency-policy: ready-for-dev
   3-4-fep-status-query-api: ready-for-dev

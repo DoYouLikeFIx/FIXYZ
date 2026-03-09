@@ -43,7 +43,7 @@ So that deployment readiness is validated before production cut.
 ### Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 10.
-- No supplemental epic artifact detected for this epic at generation time.
+- Supplemental artifact `_bmad-output/implementation-artifacts/epic-10-full-validation-and-release-readiness.md` is available for epic-level context; canonical story ID authority remains `epics.md`.
 - Depends on: Story 10.1.
 
 ### Technical Requirements
@@ -70,6 +70,7 @@ So that deployment readiness is validated before production cut.
 ### References
 
 - `_bmad-output/planning-artifacts/epics.md` (Epic 10, Story 10.4)
+- `_bmad-output/implementation-artifacts/epic-10-full-validation-and-release-readiness.md`
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
 
