@@ -1,6 +1,6 @@
 # Story 1.4: MOB Mobile Auth Flow
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -19,15 +19,15 @@ so that account access rules stay consistent across clients.
 
 ## Tasks / Subtasks
 
-- [ ] Implement mobile login/register flow parity with web contract (AC: 1)
-  - [ ] Wire auth endpoints and navigation stack transitions
-- [ ] Implement protected-route/session invalidation handling (AC: 2)
-  - [ ] On auth-required response, route to re-auth flow deterministically
-- [ ] Implement standardized mobile auth error UX (AC: 3)
-  - [ ] Support field-level and global error surfaces by code type
-- [ ] Implement app-resume session check behavior (AC: 4)
-  - [ ] Revalidate session/auth state on resume and clear stale auth state
-- [ ] Add mobile tests for auth stack transitions and stale-session handling
+- [x] Implement mobile login/register flow parity with web contract (AC: 1)
+  - [x] Wire auth endpoints and navigation stack transitions
+- [x] Implement protected-route/session invalidation handling (AC: 2)
+  - [x] On auth-required response, route to re-auth flow deterministically
+- [x] Implement standardized mobile auth error UX (AC: 3)
+  - [x] Support field-level and global error surfaces by code type
+- [x] Implement app-resume session check behavior (AC: 4)
+  - [x] Revalidate session/auth state on resume and clear stale auth state
+- [x] Add mobile tests for auth stack transitions and stale-session handling
 
 ## Dev Notes
 
@@ -129,8 +129,8 @@ so that account access rules stay consistent across clients.
 
 ### Story Completion Status
 
-- Status set to `ready-for-dev`.
-- Completion note: Ultimate context engine analysis completed - comprehensive developer guide created.
+- Status set to `done`.
+- Completion note: Implementation and closeout verification completed on 2026-03-09, including live iOS simulator verification against the real `channel-service` runtime.
 
 ### References
 
@@ -149,12 +149,25 @@ GPT-5 Codex (Codex desktop)
 
 ### Debug Log References
 
-- Generated via create-story workflow instructions with Epic 1 artifact synthesis.
+- MOB closeout evidence rerun on 2026-03-09 on `iPhone 17` against live BE `http://127.0.0.1:18080`.
+- Backend auth/session integration evidence rerun on 2026-03-09 via `:channel-service:test --tests 'com.fix.channel.integration.*'`.
 
 ### Completion Notes List
 
-- Added lifecycle/session revalidation guardrails specific to mobile.
+- Verified live mobile `register -> protected route` flow on `iPhone 17` against the real backend.
+- Verified live mobile existing-account `login -> protected route` flow on `iPhone 17` against the same backend runtime.
+- Preserved mobile parity for invalidated-by-new-login and stale-session re-auth routing in the current automated suite.
+- Re-ran backend integration coverage supporting mobile auth/session semantics: `ChannelAuthFlowTest (5)`, `ChannelAuthSessionIntegrationTest (16)`, `ChannelContainersIntegrationTest (2)`, `ChannelSessionTimeoutIntegrationTest (1)`.
+- Mobile closeout remains backed by `npm run ci-mobile`, mock-backed Maestro auth regression, and live Maestro auth flows.
 
 ### File List
 
 - /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/1-4-mob-mobile-auth-flow.md
+- /Users/yeongjae/fixyz/MOB/tests/e2e/mobile-auth-flow.e2e.test.ts
+- /Users/yeongjae/fixyz/MOB/e2e/maestro/auth-live/01-register-success-live-be.yaml
+- /Users/yeongjae/fixyz/MOB/e2e/maestro/auth-live/02-login-success-live-be.yaml
+- /Users/yeongjae/fixyz/MOB/src/network/csrf.ts
+- /Users/yeongjae/fixyz/BE/channel-service/src/test/java/com/fix/channel/integration/ChannelAuthFlowTest.java
+- /Users/yeongjae/fixyz/BE/channel-service/src/test/java/com/fix/channel/integration/ChannelAuthSessionIntegrationTest.java
+- /Users/yeongjae/fixyz/BE/channel-service/src/test/java/com/fix/channel/integration/ChannelContainersIntegrationTest.java
+- /Users/yeongjae/fixyz/BE/channel-service/src/test/java/com/fix/channel/integration/ChannelSessionTimeoutIntegrationTest.java

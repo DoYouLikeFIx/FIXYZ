@@ -54,8 +54,8 @@ development_status:
   epic-1: backlog
   1-1-be-registration-login-session: ready-for-dev
   1-2-be-logout-profile-session-security: ready-for-dev
-  1-3-fe-web-auth-flow: ready-for-dev
-  1-4-mob-mobile-auth-flow: ready-for-dev
+  1-3-fe-web-auth-flow: done
+  1-4-mob-mobile-auth-flow: done
   1-5-be-auth-guardrails-lockout-rate-limit: ready-for-dev
   1-6-fe-mob-auth-error-standardization: ready-for-dev
   epic-1-retrospective: optional
