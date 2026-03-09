@@ -1,6 +1,6 @@
 # Story 1.6: FE/MOB Auth Error Standardization
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -18,16 +18,16 @@ so that users receive consistent guidance regardless of client.
 
 ## Tasks / Subtasks
 
-- [ ] Define shared auth error mapping contract for FE + MOB (AC: 1)
-  - [ ] Create canonical code-to-message semantics table
-  - [ ] Keep language/action consistency across clients
-- [ ] Implement lockout/expired/rate-limit UX parity (AC: 2)
-  - [ ] Ensure recoverable next steps are shown consistently
-  - [ ] Align redirect/retry guidance between clients
-- [ ] Implement unknown-code fallback with traceability (AC: 3)
-  - [ ] Provide safe generic message
-  - [ ] Surface correlation id for support diagnostics
-- [ ] Add cross-client contract tests or snapshot assertions for parity
+- [x] Define shared auth error mapping contract for FE + MOB (AC: 1)
+  - [x] Create canonical code-to-message semantics table
+  - [x] Keep language/action consistency across clients
+- [x] Implement lockout/expired/rate-limit UX parity (AC: 2)
+  - [x] Ensure recoverable next steps are shown consistently
+  - [x] Align redirect/retry guidance between clients
+- [x] Implement unknown-code fallback with traceability (AC: 3)
+  - [x] Provide safe generic message
+  - [x] Surface correlation id for support diagnostics
+- [x] Add cross-client contract tests or snapshot assertions for parity
 
 ## Dev Notes
 
@@ -153,15 +153,43 @@ GPT-5 Codex (Codex desktop)
 
 ### Debug Log References
 
-- Generated via create-story workflow instructions with Epic 1 artifact synthesis.
+- Story key check passed before implementation: `1-6-fe-mob-auth-error-standardization` matched filename and sprint tracker entry.
+- `FE`: `npm test -- tests/unit/lib/auth-errors.test.ts tests/unit/lib/axios.test.ts`
+- `MOB`: `npm test -- tests/unit/auth/auth-errors.test.ts tests/unit/network/errors.test.ts`
+- `FE`: `npm test`, `npm run lint`, `npm run type-check`
+- `MOB`: `npm test`, `npm run lint`, `npm run typecheck`
+
+### Implementation Plan
+
+- Introduce a repo-level auth error contract artifact and keep FE/MOB resolver semantics aligned to it.
+- Export structured FE/MOB auth error presentations so parity tests can validate message plus recovery action, not only raw strings.
+- Preserve mobile correlation ids through transport normalization and append them only on the unknown fallback path.
 
 ### Completion Notes List
 
-- Added cross-client parity guardrails and fallback/correlation-id requirements.
+- Added `docs/contracts/auth-error-standardization.json` as the canonical FE/MOB auth error semantics table for parity tests.
+- Refactored FE and MOB auth error resolvers to return structured semantics (`semantic`, `recoveryAction`, `message`) while preserving existing user-facing copy for known auth cases.
+- Standardized unknown-code fallback to a deterministic safe message and appended visible correlation ids for support diagnostics.
+- Propagated `traceId` through the mobile network error normalizer so fallback handling can surface the same support reference data as FE.
+- Added cross-client contract assertions in FE and MOB unit tests to prevent mapping drift over time.
+- Verified FE package test, lint, and type-check flows; verified MOB package test, lint, and typecheck flows.
+
+### Change Log
+
+- 2026-03-09: Standardized FE/MOB auth error semantics, added shared contract coverage, and surfaced correlation ids on unknown auth fallbacks.
 
 ### File List
 
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/1-6-fe-mob-auth-error-standardization.md
+- _bmad-output/implementation-artifacts/1-6-fe-mob-auth-error-standardization.md
+- _bmad-output/implementation-artifacts/sprint-status.yaml
+- docs/contracts/auth-error-standardization.json
+- FE/src/lib/auth-errors.ts
+- FE/tests/unit/lib/auth-errors.test.ts
+- MOB/src/auth/auth-errors.ts
+- MOB/src/network/errors.ts
+- MOB/src/network/types.ts
+- MOB/tests/unit/auth/auth-errors.test.ts
+- MOB/tests/unit/network/errors.test.ts
 
 ---
 

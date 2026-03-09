@@ -2,7 +2,7 @@
 stepsCompleted: [1, 2, "3-epic0", "3-epic1", "3-epic2", "3-epic3", "3-epic4", "3-epic5", "3-epic6", "3-epic7", "3-epic8", "3-epic9", "3-epic10", "3-epic11", "3-epic12"]
 step3Progress: "Bottom-up detailed epics complete (Epic 0~12, BE/FE/MOB ownership)"
 version: "v2-detailed-bottom-up"
-updated: "2026-03-07"
+updated: "2026-03-09"
 inputDocuments:
   - "_bmad-output/planning-artifacts/prd.md"
   - "_bmad-output/planning-artifacts/architecture.md"
@@ -23,6 +23,11 @@ inputDocuments:
   - "_bmad-output/implementation-artifacts/epic-6-security-audit-and-administration.md"
   - "_bmad-output/implementation-artifacts/epic-7-observability-api-docs-and-readme.md"
   - "_bmad-output/implementation-artifacts/epic-8-full-system-validation-and-acceptance-testing.md"
+supplementalEpicArtifacts:
+  epic-9: "_bmad-output/implementation-artifacts/epic-9-integration-orchestration-and-end-to-end-recovery.md"
+  epic-10: "_bmad-output/implementation-artifacts/epic-10-full-validation-and-release-readiness.md"
+legacyEpicArtifactOverlaps:
+  epic-10-historical-overlap: "_bmad-output/implementation-artifacts/epic-8-full-system-validation-and-acceptance-testing.md"
 ---
 
 # FIX - Epic Breakdown (Bottom-up V2 Detailed)

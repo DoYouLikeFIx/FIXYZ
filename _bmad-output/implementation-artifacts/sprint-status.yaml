@@ -57,7 +57,7 @@ development_status:
   1-3-fe-web-auth-flow: done
   1-4-mob-mobile-auth-flow: done
   1-5-be-auth-guardrails-lockout-rate-limit: ready-for-dev
-  1-6-fe-mob-auth-error-standardization: ready-for-dev
+  1-6-fe-mob-auth-error-standardization: review
   1-7-be-password-forgot-reset-api: ready-for-dev
   epic-1-retrospective: optional
 

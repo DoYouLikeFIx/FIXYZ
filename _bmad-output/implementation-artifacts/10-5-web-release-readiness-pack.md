@@ -37,7 +37,7 @@ So that web deployment quality is auditable.
 ### Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 10.
-- No supplemental epic artifact detected for this epic at generation time.
+- Supplemental artifact `_bmad-output/implementation-artifacts/epic-10-full-validation-and-release-readiness.md` is available for epic-level context; canonical story ID authority remains `epics.md`.
 - Depends on: Story 9.5, Story 10.1, Story 10.4.
 
 ### Technical Requirements
@@ -64,6 +64,7 @@ So that web deployment quality is auditable.
 ### References
 
 - `_bmad-output/planning-artifacts/epics.md` (Epic 10, Story 10.5)
+- `_bmad-output/implementation-artifacts/epic-10-full-validation-and-release-readiness.md`
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
 

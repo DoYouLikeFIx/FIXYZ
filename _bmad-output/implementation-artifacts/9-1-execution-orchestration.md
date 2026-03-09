@@ -33,7 +33,7 @@ So that order paths are controlled through a single domain flow.
 ### Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 9.
-- No supplemental epic artifact detected for this epic at generation time.
+- Supplemental artifact `_bmad-output/implementation-artifacts/epic-9-integration-orchestration-and-end-to-end-recovery.md` is available for epic-level context; canonical story ID authority remains `epics.md`.
 - Depends on: Story 4.3, Story 5.2, Story 5.3, Story 3.2.
 
 ### Technical Requirements
@@ -60,6 +60,7 @@ So that order paths are controlled through a single domain flow.
 ### References
 
 - `_bmad-output/planning-artifacts/epics.md` (Epic 9, Story 9.1)
+- `_bmad-output/implementation-artifacts/epic-9-integration-orchestration-and-end-to-end-recovery.md`
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
 
