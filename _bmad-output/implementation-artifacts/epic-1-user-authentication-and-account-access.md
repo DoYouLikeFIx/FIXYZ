@@ -1,5 +1,7 @@
 # Epic 1: User Authentication & Account Access
 
+> Historical artifact. This document preserves prior implementation context and may diverge from the current canonical target contract. For active design truth, refer to `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/prd.md`, `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/channels/api-spec.md`, `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/ux-design-specification.md`, and Epic 12 documentation for scaffold-divergence handling.
+
 ## Summary
 
 Users can log in and maintain their session via Spring Session Redis-backed session cookies with a 30-minute sliding TTL, safely view their account list and balances, recover access through anti-enumeration password recovery endpoints, and receive an SSE warning notification 5 minutes before session expiry to extend the session. On logout or password reset, active sessions are invalidated.

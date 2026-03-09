@@ -2,7 +2,7 @@
 stepsCompleted: [1, 2, "3-epic0", "3-epic1", "3-epic2", "3-epic3", "3-epic4", "3-epic5", "3-epic6", "3-epic7", "3-epic8", "3-epic9", "3-epic10", "3-epic11", "3-epic12"]
 step3Progress: "Bottom-up detailed epics complete (Epic 0~12, BE/FE/MOB ownership)"
 version: "v2-detailed-bottom-up"
-updated: "2026-03-06"
+updated: "2026-03-07"
 inputDocuments:
   - "_bmad-output/planning-artifacts/prd.md"
   - "_bmad-output/planning-artifacts/architecture.md"
@@ -91,7 +91,7 @@ To avoid over-scoping and to produce a demonstrable working core early, implemen
 
 **P0 completion signal:**
 
-- One end-to-end trade flow is runnable: order request → execution result persisted → position/balance reflects the execution consistently.
+- One end-to-end trade flow is runnable: order request -> execution result persisted -> position/balance reflects the execution consistently.
 
 ### P1 (Layer on top after P0 proves stable)
 
@@ -263,13 +263,15 @@ Defines simulator-grade market data contracts (LIVE/DELAYED/REPLAY), quote fresh
 
 ### Epic 12: Financial DMZ Boundary and Perimeter Hardening
 
-Defines finance-grade DMZ boundary controls to enforce strict ingress/egress segmentation, protected internal exposure, and auditable perimeter operations.
+Defines the documentation package for future finance-grade DMZ boundary controls.
 
-**Execution Boundary:** Story 0.7 remains the baseline owner for TLS termination, basic security headers, and route forwarding. Epic 12 extends that baseline with DMZ segmentation profiles, abuse controls, trust-boundary hardening, and drill gates.
+**Execution Boundary:** Story 0.7 remains the active runtime owner for TLS termination, basic security headers, and route forwarding. Epic 12 currently carries design, governance, and handoff documents only.
 
-**Deployment Transition Policy:** Preserve current baseline contract (`default compose`: channel-service host exposure) and add DMZ contract (`dmz profile`: edge-only host exposure). Promotion to DMZ contract is explicit and reversible.
+**Deployment Transition Policy:** Any future DMZ runtime rollout must be introduced through new reviewed runtime artifacts. No Epic 12-specific runtime overlay or drill automation is currently active in this repository.
 
 **Priority Policy (planning metadata):** Default Medium. Move to Low only with an explicit risk-acceptance record in `docs/ops/risk-acceptance/<YYYYMMDD>-epic12.md`.
+
+**PRD Anchors:** `NFR-S8`, `NFR-S9`, post-MVP hardened perimeter governance note
 
 **Story Hints:**
 - Story 12.1: BE/OPS DMZ Network Segmentation Profile
@@ -423,7 +425,7 @@ So that release/quality state is visible in real time without manual polling.
   **Then** source-specific dedupe contract is explicit and auditable (`GitHub`: Actions cache key `mm-dedupe-{dedupe_hash}-{window_bucket_10m}` where `window_bucket_10m=floor(event_epoch/600)`; `Jira`: entity/property `mm_last_hash` + `mm_last_ts` with 10-minute timestamp comparison).
 - **Given** outbound posting failure to MatterMost  
   **When** network timeout or non-2xx response occurs  
-  **Then** source retry policy executes with bounded retries (`max_attempts=3`) using source-specific backoff contract (`GitHub`: `2s`,`5s` + jitter `±20%`; `Jira`: fixed `2s`,`5s` without jitter due platform limits), per-source+per-entity ordering guard, and final failure visibility in run/audit logs.
+  **Then** source retry policy executes with bounded retries (`max_attempts=3`) using source-specific backoff contract (`GitHub`: `2s`,`5s` + jitter `+/-20%`; `Jira`: fixed `2s`,`5s` without jitter due platform limits), per-source+per-entity ordering guard, and final failure visibility in run/audit logs.
 - **Given** reliability validation runbook execution  
   **When** duplicate and failure scenarios are replayed  
   **Then** evidence artifacts are indexed under `docs/ops/webhook-validation/<YYYYMMDD>/` with reproducible naming and enforced retention configuration (`>=90 days`).
@@ -826,7 +828,7 @@ So that every registered member has a usable account baseline.
   **When** transaction is rolled back  
   **Then** failure reason is returned with normalized code.
 
-> **Seed Data (R__seed_data.sql):** `demo` account — 포지션 005930 삼성전자 500주, 000660 SK하이닉스 300주, 현금 ₩5,000,000 / `admin` account — ROLE_ADMIN.
+> **Seed Data (R__seed_data.sql):** `demo` account starts with 500 shares of `005930`, 300 shares of `000660`, and KRW 1,000,000 cash. `admin` account has `ROLE_ADMIN`.
 
 ### Story 2.2: [BE][AC] Position & Available-Quantity API
 
@@ -863,10 +865,10 @@ So that I can inspect recent order activity.
 
 - **Given** owned account with order records  
   **When** order history API is called  
-  **Then** results are paginated, include symbol/qty/status/clOrdID, and ordered by created time desc.
+  **Then** results are paginated, include symbol/qty/status/clOrdId, and ordered by created time desc.
 - **Given** order history table columns  
   **When** rendered  
-  **Then** columns are: 종목명(symbolName), 구분(side: BUY/SELL), 수량(qty), 체결단가(unitPrice), 체결금액(totalAmount), 상태(status), ClOrdID.
+  **Then** columns are: symbol (`symbolName`), side (`BUY`/`SELL`), quantity (`qty`), unit price (`unitPrice`), total amount (`totalAmount`), status, and `ClOrdID`.
 - **Given** empty history  
   **When** query executes  
   **Then** empty content contract is returned consistently.
@@ -959,7 +961,7 @@ So that channel-to-FEP integration is deterministic.
 
 - **Given** outbound order payload  
   **When** mapped to FEP DTO  
-  **Then** required fields (clOrdID, symbol, qty, side) are validated before send.
+  **Then** required fields (clOrdId, symbol, qty, side) are validated before send.
 - **Given** response payload from FEP  
   **When** parsed  
   **Then** internal contract is mapped with explicit status values.
@@ -1138,14 +1140,14 @@ As a **domain owner**,
 I want explicit order session transition rules,  
 So that invalid state progression cannot occur.
 
-> **Reference:** OrderSession FSM transition table is defined in `architecture.md §OrderSession FSM`.  
-> Valid transitions: `PENDING_NEW → AUTHED → EXECUTING → (COMPLETED|FAILED|CANCELED|REQUERYING)`, `REQUERYING → (COMPLETED|CANCELED|ESCALATED)`, `ESCALATED → (COMPLETED|FAILED|CANCELED)`, `PENDING_NEW|AUTHED → EXPIRED`.
+> **Reference:** OrderSession FSM transition table is defined in `architecture.md`, section `OrderSession FSM`.  
+> Valid transitions: `PENDING_NEW -> AUTHED -> EXECUTING -> (COMPLETED|FAILED|CANCELED|REQUERYING)`, `REQUERYING -> (COMPLETED|CANCELED|ESCALATED)`, `ESCALATED -> (COMPLETED|FAILED|CANCELED)`, `PENDING_NEW|AUTHED -> EXPIRED`.
 
 **Depends On:** Story 4.2
 
 **Acceptance Criteria:**
 
-- **Given** order session FSM definition (see `architecture.md §OrderSession FSM`)  
+- **Given** order session FSM definition (see `architecture.md`, section `OrderSession FSM`)  
   **When** state transition command is applied  
   **Then** only allowed transitions are accepted.
 - **Given** invalid transition request  
@@ -1297,7 +1299,7 @@ So that order attempts respect position constraints and policy limits.
   **When** date boundary changes  
   **Then** counters reset according to timezone rule.
 
-> **MVP Scope Note:** `InsufficientPositionException` (available_qty < requested qty)와 `DailySellLimitExceededException` 모두 MVP에서 강제한다.
+> **MVP Scope Note:** `InsufficientPositionException` (available_qty < requested qty) and `DailySellLimitExceededException` are both MVP-scope rejection paths and must return deterministic metadata.
 
 ### Story 5.2: [BE][AC] Order Execution & Position Update
 
@@ -1311,7 +1313,7 @@ So that position integrity is preserved.
 
 - **Given** authorized order execution  
   **When** execution occurs  
-  **Then** position deduction and `orders`/`executions` 기록이 원자적으로 커밋된다.
+  **Then** position deduction and `orders`/`executions` records are committed atomically.
 - **Given** `MARKET` order with opposite-side liquidity  
   **When** matching runs  
   **Then** engine sweeps opposite book levels in price-time order until requested qty or liquidity exhaustion.
@@ -1320,7 +1322,7 @@ So that position integrity is preserved.
   **Then** request is rejected with deterministic no-liquidity contract and no position mutation.
 - **Given** execution failure mid-transaction  
   **When** transaction aborts  
-  **Then** partial position update나 `orders`/`executions` 잔존이 없어야 한다.
+  **Then** no partial position update or orphaned `orders`/`executions` record remains.
 - **Given** insufficient position quantity condition  
   **When** availability pre-check fails  
   **Then** no position mutation occurs.
@@ -1340,7 +1342,7 @@ So that local position state stays consistent with FEP execution lifecycle.
 
 - **Given** FEP-routed order execution request  
   **When** pre-execution position reservation occurs  
-  **Then** order state records FEP reference and clOrdID metadata.
+  **Then** order state records FEP reference and clOrdId metadata.
 - **Given** simulator mode execution  
   **When** local Order Book match commits  
   **Then** local `executions` is treated as canonical position truth and FEP report is used for confirmation/recovery only.
@@ -1352,7 +1354,7 @@ So that local position state stays consistent with FEP execution lifecycle.
   **Then** position state remains reconcilable for later recovery.
 - **Given** FEP order FILLED  
   **When** finalized  
-  **Then** final order status (FILLED) and clOrdID references are consistent.
+  **Then** final order status (FILLED) and clOrdId references are consistent.
 
 ### Story 5.4: [BE][AC] Idempotent Posting
 
@@ -1393,12 +1395,12 @@ So that concurrent orders cannot produce negative or corrupted position quantiti
 - **Given** lock contention  
   **When** threshold exceeded  
   **Then** request fails with deterministic conflict/error contract.
-- **Given** 10-thread concurrency test on single symbol (005930 삼성전자)  
+- **Given** 10-thread concurrency test on single symbol (`005930`)  
   **When** executed in CI  
   **Then** expected success/failure counts and final available_qty assertions pass.
-- **Given** concurrent orders on two different symbols (005930 삼성전자 / 000660 SK하이닉스)  
+- **Given** concurrent orders on two different symbols (`005930` / `000660`)  
   **When** executed in parallel  
-  **Then** symbol-level lock isolation is verified — each symbol's available_qty converges independently without cross-symbol blocking.
+  **Then** symbol-level lock isolation is verified and each symbol's available_qty converges independently without cross-symbol blocking.
 - **Given** lock duration observation  
   **When** measured  
   **Then** operational threshold alerting is available.
@@ -1531,7 +1533,7 @@ So that ambiguous orders can converge to terminal states.
 
 - **Given** order in UNKNOWN/EXECUTING timeout state  
   **When** scheduler runs  
-  **Then** clOrdID status requery is executed with backoff policy.
+  **Then** clOrdId status requery is executed with backoff policy.
 - **Given** requery returns accepted/completed  
   **When** reconciliation runs  
   **Then** order state converges to terminal success (FILLED).
@@ -1950,7 +1952,7 @@ So that all sell orders are consistently routed to KRX via FEP Gateway.
 
 - **Given** AUTHED order session  
   **When** execute command issued  
-  **Then** `OrderExecutionService` initiates FEP-routed execution and records clOrdID.
+  **Then** `OrderExecutionService` initiates FEP-routed execution and records clOrdId.
 - **Given** FEP execution completed  
   **When** FILLED/REJECTED received from FEP simulator  
   **Then** order session state reflects terminal outcome deterministically.
@@ -2228,7 +2230,7 @@ All mandatory scenarios must pass before merge/release approval.
 
 | Category | Scenario | Primary Risk Controlled | Pass Condition |
 |---|---|---|---|
-| Core acceptance | Order request → execution → completion happy path | Broken core transaction flow | Full flow succeeds with correct final state |
+| Core acceptance | Order request -> execution -> completion happy path | Broken core transaction flow | Full flow succeeds with correct final state |
 | Core acceptance | Concurrent sell (10-thread) on same position | Over-sell / race corruption | No over-sell; final quantity remains consistent |
 | Core acceptance | OTP failure blocks execution | Missing step-up auth control | Execution blocked with deterministic failure |
 | Core acceptance | Duplicate client order key replay | Double execution from retry | Idempotent response; no duplicate posting |
@@ -2265,7 +2267,7 @@ So that quote ingestion and downstream valuation use a single contract.
   **When** replay seed and cursor are fixed  
   **Then** identical input produces identical quote snapshot sequence (including `quoteSnapshotId`) with `quoteSourceMode=REPLAY`.
 - **Given** KIS real-time frame `encFlag|trId|count|payload`  
-  **When** `count>1` 또는 `encFlag=1` frame is received  
+  **When** `count>1` or `encFlag=1` frame is received  
   **Then** adapter splits multi-record payload by `count`, decrypts encrypted payload via key/iv, and emits normalized snapshots with `quoteSourceMode=LIVE`.
 
 ### Story 11.2: [BE][MD] Quote Snapshot Freshness Guard
@@ -2353,37 +2355,31 @@ So that I understand valuation confidence before execution.
 
 ## Epic 12: Financial DMZ Boundary and Perimeter Hardening
 
-> **Scope note:** Story 0.7 already owns baseline edge functions (TLS termination, base headers, upstream forwarding, and internal/admin path blocking). Epic 12 adds hardening layers and DMZ operating controls only.
-> **Transition note:** Default profile and PRD baseline remain valid during migration. DMZ profile is introduced as an explicit rollout mode.
+> **Scope note:** Story 0.7 remains the active runtime baseline. Epic 12 is currently documentation-only and exists to preserve a complete DMZ design package without keeping partial runtime code in the repository.
+> **Transition note:** Future Epic 12 implementation must reintroduce runtime assets through a new reviewed change set that updates the design documents at the same time.
 
 ### Story 12.1: [BE/OPS][CH] DMZ Network Segmentation Profile
 
 As a **platform security owner**,  
 I want explicit DMZ network segmentation profiles,  
-So that public ingress, internal service traffic, and operations paths are isolated by design.
+So that public ingress, channel traffic, and private dependencies are isolated by design before code is reintroduced.
 
-**Depends On:** Story 0.7, Story 0.9
+**Depends On:** Story 0.7, Story 0.9, Story 0.13
 
 **Acceptance Criteria:**
 
-- **Given** default runtime profile  
-  **When** host exposure is inspected  
-  **Then** baseline contract is preserved (`channel-service:8080` exposed; corebank/fep-gateway/fep-simulator non-exposed) to remain compatible with existing PRD scope.
-- **Given** DMZ deployment profile `docker-compose.dmz.yml`  
-  **When** service-to-network membership is inspected  
-  **Then** logical zone mapping is enforced (`edge zone`, `application zone`, `core private zone`) and no service is attached to all zones simultaneously.
-- **Given** architecture network-isolation baseline  
-  **When** DMZ profile documentation is reviewed  
-  **Then** logical zone mapping explicitly traces to architecture isolation lanes (`external-net`, `core-net`, `gateway-net`, `fep-net`) to avoid naming drift.
-- **Given** network mapping evidence document  
-  **When** review is executed  
-  **Then** `docs/ops/dmz-network-mapping.md` maps default `fix-net` and DMZ profile zones with explicit migration steps.
-- **Given** DMZ profile host exposure inventory  
-  **When** compose config is rendered  
-  **Then** only `edge-gateway` publishes `80/443` and `channel-service`, `corebank-service`, `fep-gateway`, `fep-simulator` publish no host ports.
-- **Given** boundary verification drill from host network  
-  **When** probes are executed for `localhost:8080/8081/8082/8083` under DMZ profile  
-  **Then** all direct probes fail and only edge-routed channel APIs remain reachable.
+- **Given** the active Story 0.7 baseline
+  **When** `docs/ops/dmz-network-mapping.md` is reviewed
+  **Then** current host exposure, services without direct host ports, and edge-visible baseline exceptions are explicitly documented.
+- **Given** the target Epic 12 topology
+  **When** the design package is reviewed
+  **Then** edge/application/core-private zones, allowed flows, and owner services are explicitly documented.
+- **Given** future implementation planning
+  **When** Story 12.1 is reviewed
+  **Then** the expected future repository-owned runtime specification, default compose filename if Compose is used, verification points, and rollback triggers are documented.
+- **Given** architecture isolation concerns
+  **When** Story 12.1 is reviewed
+  **Then** any lane split or lane collapse decisions are explicit instead of hidden inside deployment config.
 
 ### Story 12.2: [BE/OPS][CH] Edge Perimeter Policy Hardening
 
@@ -2397,19 +2393,31 @@ So that only approved routes and methods are reachable from external clients.
 
 - **Given** explicit route-method matrix in `docs/ops/dmz-route-policy.md`  
   **When** a request targets disallowed path or method  
-  **Then** edge returns deterministic deny mapping (`404` for unknown path or disallowed method, `403` for internal namespace).
-- **Given** abuse-control thresholds  
-  **When** traffic exceeds limits (`unknown routes: 60 req/min/IP, burst 20`; `sensitive routes: 20 req/min/IP, burst 5`)  
+  **Then** edge returns deterministic deny mapping with stable machine codes (`404 EDGE_ROUTE_NOT_ALLOWED` for unknown path, `404 EDGE_METHOD_NOT_ALLOWED` for disallowed method, `403 EDGE_INTERNAL_NAMESPACE_DENIED` for internal namespace).
+- **Given** abuse-control thresholds
+  **When** traffic exceeds limits (`unknown routes: 60 req/min/source_identity, burst 20`; `sensitive routes: 20 req/min/source_identity, burst 5`)
   **Then** edge returns `429` with retry metadata and request-id for audit trace.
-- **Given** repeated abuse from same source  
-  **When** an IP triggers at least 5 rate-limit violations within 5 minutes  
-  **Then** temporary deny rule is applied for 10 minutes via `docs/ops/dmz-abuse-response.md` procedure and a security event is recorded.
+- **Given** repeated abuse from same source
+  **When** the same normalized `source_identity` triggers at least 5 rate-limit violations within 5 minutes
+  **Then** the design package defines a 10-minute temporary deny, `Retry-After` behavior, deterministic response contract, and required security event fields in `docs/ops/dmz-abuse-response.md`.
 - **Given** client identity extraction for abuse controls  
   **When** request source is evaluated  
   **Then** limiter key uses trusted proxy chain policy (`X-Forwarded-For` only from trusted ingress, otherwise `remote_addr`).
 - **Given** trusted ingress allowlist source  
   **When** runtime configuration is inspected  
-  **Then** trusted CIDR sources come only from `EDGE_TRUSTED_PROXY_CIDR_*` environment variables managed in DMZ profile configuration and documented in `docs/ops/dmz-trusted-proxies.md`.
+  **Then** trusted CIDR ownership, review flow, and future configuration surface are documented in `docs/ops/dmz-trusted-proxies.md`.
+- **Given** active Story 0.7 scaffold routes
+  **When** Story 12.2 is reviewed
+  **Then** scaffold-only public paths and missing scaffold coverage relative to the canonical target contract are explicitly inventoried instead of being implied.
+- **Given** the current Story 0.7 edge alias surface
+  **When** Story 12.2 is reviewed
+  **Then** `/api/v1/channel/*` is explicitly treated as a legacy edge-only alias that must be denied in hardened mode unless an ADR-backed migration exception is approved.
+- **Given** ambiguous request path encodings or trailing-slash variants
+  **When** the perimeter policy is reviewed
+  **Then** canonical path normalization and route matching rules are explicit.
+- **Given** privileged DMZ operator flows
+  **When** Story 12.2 is reviewed
+  **Then** the public edge policy explicitly excludes privileged operator surfaces from the public allowlist and points to the private Story 12.4 operator path.
 
 ### Story 12.3: [BE/OPS][SEC] Service Boundary Trust Hardening (Internal Secret Rotation + mTLS Readiness)
 
@@ -2417,22 +2425,22 @@ As a **service trust owner**,
 I want hardened service-boundary trust controls with rotation safety,  
 So that east-west traffic is resilient to spoofing and stale credential risk.
 
-**Depends On:** Story 0.8, Story 8.3, Story 12.1
+**Depends On:** Story 0.8, Story 0.13, Story 8.3, Story 12.1
 
 **Acceptance Criteria:**
 
-- **Given** internal secret rotation runbook  
-  **When** rotation starts  
-  **Then** dual-secret overlap window of 15 minutes allows safe cutover without rejecting valid in-flight service calls.
-- **Given** rotation cutover completion  
-  **When** overlap window expires  
-  **Then** previous secret is fully invalidated within 10 minutes and stale-secret requests are rejected.
-- **Given** rotation availability SLO  
-  **When** rotation drill is executed for a 15-minute window with at least 500 service-to-service requests  
-  **Then** 5xx rate stays at or below 0.5% and no continuous outage exceeds 30 seconds.
-- **Given** phase-2 trust roadmap  
-  **When** architecture artifacts are reviewed  
-  **Then** mTLS readiness ADR and one service-pair PoC profile exist as non-blocking MVP outputs.
+- **Given** trust-hardening design review
+  **When** `docs/ops/dmz-trust-hardening.md` is reviewed
+  **Then** dual-secret overlap window, invalidation timing, and stale-secret behavior are explicit.
+- **Given** trust validation planning
+  **When** Story 12.3 is reviewed
+  **Then** service pairs, workload shape, numerator/denominator calculation, and pass/fail thresholds are explicit.
+- **Given** mTLS readiness scope
+  **When** Story 12.3 is reviewed
+  **Then** ADR output, the fixed `channel-service -> corebank-service` PoC scope, and deferred items are explicit.
+- **Given** non-local Vault constraints
+  **When** Story 12.3 is reviewed
+  **Then** Story 0.13 requirements are carried forward as mandatory upstream context.
 
 ### Story 12.4: [OPS][SEC] Admin Access Control Path for DMZ Operations
 
@@ -2440,19 +2448,28 @@ As a **security operations lead**,
 I want controlled DMZ administration access paths,  
 So that privileged operations are restricted, temporary, and fully auditable.
 
-**Depends On:** Story 0.8, Story 7.5, Story 8.1
+**Depends On:** Story 0.13, Story 7.5, Story 8.1
 
 **Acceptance Criteria:**
 
 - **Given** privileged DMZ maintenance requests  
   **When** access is granted  
-  **Then** access uses Vault short-lived credentials with TTL at or below 30 minutes and least-privilege policy scope.
+  **Then** `docs/ops/dmz-admin-access.md` defines Vault-issued short-lived credentials with TTL at or below 30 minutes, least-privilege scope, and non-local environment constraints.
 - **Given** credential TTL expiry  
   **When** TTL elapses  
-  **Then** privileged access is auto-revoked without Keycloak dependency within 60 seconds and subsequent privileged calls are denied.
+  **Then** Story 12.4 defines auto-revocation target within 60 seconds and deterministic denial after expiry.
 - **Given** privileged action execution  
   **When** audit/security events are queried  
-  **Then** actor, action, target, timestamp, correlation-id, reason, and ticket-id are all mandatory fields.
+  **Then** actor, action, target, timestamp, correlation-id, reason, ticket-id, credential reference, approver, environment, and listener scope are all mandatory fields.
+- **Given** privileged credential issuance
+  **When** Story 12.4 is reviewed
+  **Then** the bootstrap identity that may call `issue` and the private operator access path are explicit.
+- **Given** approved automation issuance
+  **When** Story 12.4 is reviewed
+  **Then** workload identity registration, rotation, suspension, and scope-separation rules are explicit.
+- **Given** task-specific privileged controls such as temp deny management
+  **When** Story 12.4 is reviewed
+  **Then** the shared operator contract explicitly allows task-specific operations and response fields without diverging from the common `dmz:access:*` model.
 
 ### Story 12.5: [BE/OPS][INT] DMZ Security Drill and Evidence Gate
 
@@ -2464,21 +2481,24 @@ So that perimeter controls are proven before deployment promotion.
 
 **Acceptance Criteria:**
 
-- **Given** DMZ drill scenarios (`blocked direct internal access`, `route-method deny`, `abuse rate-limit`, `stale-secret rejection`, `admin credential TTL expiry`)  
+- **Given** DMZ drill scenarios (`blocked direct internal access`, `route-method deny`, `abuse rate-limit`, `trusted proxy untrusted spoof rejected`, `trusted proxy malformed-chain fallback`, `trusted proxy right-most hop selection`, `stale-secret rejection`, `admin credential TTL expiry`)
   **When** scheduled validation runs  
-  **Then** any failed scenario blocks promotion with explicit failure reason and owner assignment.
-- **Given** Story 12.3 or Story 12.4 is still `backlog`  
-  **When** weekly scheduled DMZ drill runs  
-  **Then** `stale-secret rejection` and `admin credential TTL expiry` may be recorded as `pending`, and promotion enforcement must rerun with trust-scenario enforcement enabled.
+  **Then** any failed or not-yet-implemented required scenario blocks promotion with explicit failure reason and owner assignment.
 - **Given** drill evidence packaging  
   **When** artifacts are generated  
-  **Then** artifacts are stored under `docs/ops/evidence/dmz/<YYYYMMDD>/` with naming `dmz-<scenario>-<YYYYMMDDTHHMMSSZ>.json` plus `summary-index.json`.
+  **Then** artifacts follow `docs/ops/evidence/dmz/README.md` exactly, including execution mode, environment, control state, and `review_window_id`.
 - **Given** first DMZ promotion gate  
   **When** release readiness is reviewed  
-  **Then** at least one full successful DMZ drill result within the last 7 days and unresolved findings are linked from the release checklist.
+  **Then** at least one full successful DMZ drill result within the last 7 days and unresolved findings with owner, disposition, and reviewer evidence are linked from the release checklist.
 - **Given** steady-state DMZ operation after first promotion  
   **When** periodic governance review runs  
   **Then** rolling last four weekly drill results are retained and linked.
-- **Given** DMZ drill automation ownership  
-  **When** operations controls are reviewed  
-  **Then** `.github/workflows/dmz-security-drill.yml` exists with weekly schedule and explicit `SEC` owner metadata.
+- **Given** a flaky or repeated drill scenario in the same review window
+  **When** the scenario is rerun
+  **Then** a new `drill_set_id` is created and the previous set is treated as superseded rather than mutated in place.
+- **Given** release checklist lineage requirements
+  **When** Story 12.5 is reviewed
+  **Then** the checklist template records `review_window_id`, `supersedes_drill_set_id` when applicable, and links the rolling last four consecutive weekly same-environment drill sets using the latest non-superseded set for each week.
+- **Given** DMZ drill governance ownership
+  **When** operations controls are reviewed
+  **Then** `docs/ops/dmz-drill-governance.md` defines owner `SEC`, intended cadence, and promotion semantics.

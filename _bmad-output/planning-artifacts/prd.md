@@ -175,6 +175,7 @@ All seven must pass in CI before the MVP is considered complete:
 - Grafana alert tuning + Alertmanager integration (pager/webhook routing)
 - Keycloak SSO integration (demonstrates enterprise IDP awareness)
 - Advanced rate limiting and fraud detection simulation
+- DMZ perimeter hardening design package and promotion evidence gate for future hardened ingress mode
 
 ### Vision (Future)
 
@@ -974,6 +975,8 @@ services:
 
 **OTP / rate-limit interaction:** attempt exhaustion is an application-state outcome, not a Bucket4j outcome. In other words, `CHANNEL-002` and `CHANNEL-003` remain the canonical business responses, while `429 + Retry-After` is reserved for explicit debounce or rate-limit enforcement.
 
+**Epic 12 perimeter interaction (future hardened mode):** Epic 12 may add pre-auth edge IP-based limits for unknown/sensitive routes and temporary deny controls. Those perimeter controls do not replace the application/session/user-level limits above. The stricter rejecting layer wins at runtime, and evidence must record whether rejection occurred at the edge or application layer. Edge-generated denials must emit `enforcement_layer=edge` and the applied `limit_key_type`; application throttles must emit `enforcement_layer=application` with their session/user/object key type in audit or security-event evidence.
+
 ---
 
 ### Standard Response Envelope
@@ -1364,6 +1367,8 @@ jobs:
 - **FR-41:** Developer can verify full system operation by running a provided startup procedure that requires no manual configuration
 - **FR-42:** System can attach a consistent distributed trace identifier to all inter-service requests so that a complete request chain can be reconstructed from logs
 
+> **Post-MVP governance note:** Hardened perimeter design-package maintenance and promotion-evidence review remain outside the numbered 61-FR MVP capability contract. Those future controls are tracked by Epic 12 and enforced through `NFR-S8` and `NFR-S9`.
+
 ---
 
 > **Traceability summary:** All 7 acceptance scenarios trace to FRs. All 4 User Journeys fully covered. All 5 React screens designable from FRs alone, and the password recovery API contract is now included in the MVP auth surface. No FR contains implementation details (HOW). Growth-scope capabilities (notification read/filter, admin UI, Keycloak) intentionally excluded.
@@ -1372,7 +1377,7 @@ jobs:
 
 ## Non-Functional Requirements
 
-35 NFRs across 10 categories. Each NFR includes a concrete measurement method to enable objective verification.
+37 NFRs across 10 categories. Each NFR includes a concrete measurement method to enable objective verification.
 
 ### Performance
 
@@ -1416,6 +1421,12 @@ jobs:
 
 - **NFR-S7:** All state-changing endpoints must require authenticated session. Requests without a valid session must receive an authentication-required response, not a data response or server error.
   _Measurement: Integration test calls a state-changing endpoint with no session cookie and receives `401 Unauthorized`._
+
+- **NFR-S8:** Any hardened perimeter mode must have a versioned design package defining topology mapping, public route/method contract, trusted proxy extraction rules, service-boundary trust policy, privileged operator access policy, and drill governance before rollout approval.
+  _Measurement: Epic 12 documentation package exists, is linked from the Epic 12 index, and is referenced by the rollout proposal or story package._
+
+- **NFR-S9:** Any hardened perimeter promotion must use a full perimeter validation evidence set from the last 7 days. A scenario marked `not-implemented` invalidates the promotion package.
+  _Measurement: Release checklist links a DMZ drill summary containing `drill_set_id`, `review_window_id`, owner, environment, execution mode, scenario statuses, rerun lineage (`supersedes_drill_set_id` when applicable), and a rolling four-week same-environment drill history keyed by `week_of`, `review_window_id`, `environment`, latest non-superseded `drill_set_id`, and linked summary. The promotion package must also include unresolved finding review (`finding_id`, severity, owner, `scenario_ids`, disposition, reviewer, risk-acceptance link or mitigation due date). Any required scenario with status `not-implemented` or `fail`, any missing rerun lineage, any missing consecutive four-week linkage, any weekly row that does not use the latest non-superseded set for that window, or any unresolved finding without review disposition blocks promotion._
 
 ### Reliability
 
@@ -1511,7 +1522,7 @@ jobs:
 
 ---
 
-> **NFR Traceability summary:** 35 NFRs across 10 categories. Every NFR has a concrete, executable measurement method. Performance NFRs trace to Prometheus/Grafana metrics. Security NFRs trace to integration tests and Docker network configuration. Reliability NFRs trace to CI pipeline. Testability NFRs enforce JaCoCo thresholds and GitHub Actions timeouts. Data integrity verified on every CI run via `PositionIntegrityIntegrationTest`.
+> **NFR Traceability summary:** 37 NFRs across 10 categories. Every NFR has a concrete, executable measurement method. Performance NFRs trace to Prometheus/Grafana metrics. Security NFRs trace to integration tests, perimeter design package rules, and Docker network configuration. Reliability NFRs trace to CI pipeline and release evidence freshness. Testability NFRs enforce JaCoCo thresholds and GitHub Actions timeouts. Data integrity verified on every CI run via `PositionIntegrityIntegrationTest`.
 
 ### FR <-> NFR Cross-Reference (Key Connections)
 

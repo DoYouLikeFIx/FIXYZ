@@ -11,8 +11,9 @@ AI Agent가 즉각적으로 코드를 스캐폴딩(Scaffolding)하고 기능을 
 
 | Header Name | Required | Description |
 | :--- | :---: | :--- |
-| `X-Internal-Secret` | **Yes** | 내부 API 호출 권한 증명. `InternalSecretFilter`를 통해 검증되며 미포함 시 `403 Access Denied`. |
+| `X-Internal-Secret` | **Yes** | 내부 API 호출 권한 증명. `InternalSecretFilter`를 통해 검증되며 미포함 또는 불일치 시 `401 CORE-9401`. |
 | `X-Correlation-Id` | **Yes** | 3-Tier 전체(채널-계정-FEP) 로그 추적을 위한 UUID. 로그의 MDC(Mapped Diagnostic Context)에 주입 필수. |
+| `X-ClOrdID` | 주문 API에서 **Yes** | 주문 식별 헤더. 주문 계열 API에서는 `X-ClOrdID == body/path clOrdId` 계약을 강제하며 불일치 시 `VALIDATION-001`. |
 
 ### 금액 직렬화/연산 규칙 (고정)
 - 모든 금액 필드(`balance`, `pendingAmount`, `price`, `executedPrice`, `dailyLimit` 등)는 **DECIMAL(19,4)** 스케일을 사용한다.
@@ -110,7 +111,7 @@ OTP 검증 통과 후, 로컬 canonical 체결을 먼저 확정하고 외부 동
   ```json
   {
     "accountId": "1",
-    "clOrdID": "550e8400-e29b-41d4-a716-446655440000",
+    "clOrdId": "550e8400-e29b-41d4-a716-446655440000",
     "symbol": "005930",
     "side": "BUY", // OR "SELL"
     "orderType": "MARKET", // OR "LIMIT"
@@ -122,7 +123,7 @@ OTP 검증 통과 후, 로컬 canonical 체결을 먼저 확정하고 외부 동
     "quoteSourceMode": "DELAYED" // LIVE | DELAYED | REPLAY (MARKET 시 필수)
   }
   ```
-* **MARKET 내부 전달 필드 정책:** `quoteSnapshotId`, `quoteAsOf`, `quoteSourceMode`, `preTradePrice` 4개는 MARKET 주문에서 필수이며 LIMIT 주문에서는 `null` 허용.
+* **Header Contract (주문 계열 공통):** `X-ClOrdID` 헤더 필수. Body/path `clOrdId`와 동일해야 하며 불일치 시 `VALIDATION-001`을 반환한다.
 * **Matching 정책(고정):**
   * `LIMIT`: 매수는 `price DESC → time ASC`, 매도는 `price ASC → time ASC`
   * `MARKET`: 반대편 오더북을 최우선 가격부터 레벨 순차 소진(sweep)
@@ -133,7 +134,7 @@ OTP 검증 통과 후, 로컬 canonical 체결을 먼저 확정하고 외부 동
 * **Response (200 OK):** 
   ```json
   {
-    "clOrdID": "550e8400-e29b-41d4-a716-446655440000",
+    "clOrdId": "550e8400-e29b-41d4-a716-446655440000",
     "status": "COMPLETED", // or FAILED
     "orderId": "ORD-12345ABCD",
     "executedQty": 50,
@@ -148,12 +149,12 @@ OTP 검증 통과 후, 로컬 canonical 체결을 먼저 확정하고 외부 동
   * `409 (CORE-003)` 포지션 락 경합(동시성 충돌)
 
 #### [API-CH-07] 주문 상태 재조회 / 강제 복구 (Recovery)
-* **Endpoint:** `POST /internal/v1/orders/{clOrdID}/requery`
+* **Endpoint:** `POST /internal/v1/orders/{clOrdId}/requery`
 * **Purpose:** 채널계 스케줄러가 타임아웃/표류 상태(`EXECUTING`)의 주문을 감지하여 복구 요청. 계정계는 FEP 상태를 재조회해 외부 동기화 상태를 `COMPLETED`/`FAILED`/`CANCELED` 또는 `ESCALATED`로 확정한다(자동 포지션 역분개 없음).
 * **Response (200 OK):**
   ```json
   {
-    "clOrdID": "550e8400-e29b-41d4-a716-446655440000",
+    "clOrdId": "550e8400-e29b-41d4-a716-446655440000",
     "finalStatus": "ESCALATED", // 혹은 COMPLETED/FAILED/CANCELED
     "externalSyncStatus": "ESCALATED" // 외부 확인 상태
   }
@@ -171,15 +172,15 @@ OTP 검증 통과 후, 로컬 canonical 체결을 먼저 확정하고 외부 동
 #### [OUT-FEP-01] 외부 거래소 주문 발송
 * **HTTP Client Request:** `POST http://fep-gateway:8083/fep/v1/orders`
 * **Description:** FEP 변환 처리를 위해 발송.
-* **Headers:** `X-Internal-Secret`, `X-Correlation-Id` 주입 필수.
-* **Data Payload:** 계정계의 `POST /internal/v1/orders` Body와 동일 (`clOrdID` 활용). MARKET 주문에서는 `quoteSnapshotId`, `quoteAsOf`, `quoteSourceMode`, `preTradePrice`를 그대로 전달해 체결 근거 추적성을 유지한다.
+* **Headers:** `X-Internal-Secret`, `X-Correlation-Id`, `X-ClOrdID` 주입 필수 (`X-ClOrdID == body/path clOrdId`).
+* **Data Payload:** 계정계의 `POST /internal/v1/orders` Body와 동일 (`clOrdId` 활용). MARKET 주문에서는 `quoteSnapshotId`, `quoteAsOf`, `quoteSourceMode`, `preTradePrice`를 그대로 전달해 체결 근거 추적성을 유지한다.
 * **Resilience4j 연동 (필수):**
   * ` slidingWindowSize=3` 의 기반 **Circuit Breaker**가 적용되어야 합니다.
   * *주의 (ADR):* 해당 요청에 Retry 설정을 중첩 적용하지 않습니다. (채널계의 Recovery 스케줄러가 재시도를 관리함)
 
 #### [OUT-FEP-02] 강제 FEP 상태 조회 (Polling)
-* **HTTP Client Request:** `GET http://fep-gateway:8083/fep/v1/orders/{clOrdID}/status`
-* **Description:** [API-CH-07] 요청을 받았을 때 해당 클라이언트 주문 ID(`clOrdID`)가 실제로 외부 거래소에서 어떻게 체결되었는지 FEP 게이트웨이에 질의합니다.
+* **HTTP Client Request:** `GET http://fep-gateway:8083/fep/v1/orders/{clOrdId}/status`
+* **Headers:** `X-Internal-Secret`, `X-Correlation-Id`, `X-ClOrdID` 주입 필수. Path `clOrdId`와 동일해야 한다.
 
 ### 2.2 내부 무결성 통제 로직 (DB & Locking)
 코드 작성(Scaffolding) 단계에서 AI Agent가 반드시 준수해야 하는 엔티티 제어 정책입니다.

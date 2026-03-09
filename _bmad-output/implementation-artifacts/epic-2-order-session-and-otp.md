@@ -1,5 +1,7 @@
 # Epic 2: Order Initiation & OTP
 
+> Historical artifact. This document preserves prior implementation context and may diverge from the current canonical target contract. For active design truth, refer to `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/prd.md`, `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/channels/api-spec.md`, `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/ux-design-specification.md`, and Epic 12 documentation for scaffold-divergence handling.
+
 > **⚠️ Epic Numbering Note**: This supplemental file was numbered from the securities-order domain and corresponds to **Epic 4 in epics.md: Channel Order Session & OTP FSM**. The canonical story authority is always `_bmad-output/planning-artifacts/epics.md`.
 
 
@@ -71,7 +73,7 @@ So that I can proceed through the OTP verification step before the order is exec
 **When** UNIQUE INDEX conflict + ownership verification fails (memberId mismatch)  
 **Then** HTTP 403 `{ code: "CHANNEL-006", message: "Access denied." }`
 
-**Given** `GET /api/v1/orders/sessions/{sessionId}/status` (valid JSESSIONID cookie)  
+**Given** `GET /api/v1/orders/sessions/{sessionId}` (valid JSESSIONID cookie)
 **When** ownership confirmed via `SessionOwnershipValidator`  
 **Then** HTTP 200: `SessionStatusResponse` — includes status-specific optional fields (null fields excluded via Jackson `NON_NULL` setting):
 ```json
@@ -107,8 +109,8 @@ So that I can proceed through the OTP verification step before the order is exec
 - `service/OrderSessionService.java` — `initiate()`, `getStatus()`
 - `service/OtpService.java` — `generate()`, `verify()`
 - `service/SessionOwnershipValidator.java` — `@Component`, `validateOwner(sessionId, memberId)`
-- `controller/OrderController.java` — POST /api/v1/orders/sessions, GET /api/v1/orders/sessions/{id}/status
-- `controller/OtpController.java` — POST /api/v1/orders/sessions/{id}/otp/verify
+- `controller/OrderController.java` — POST /api/v1/orders/sessions, GET /api/v1/orders/sessions/{id}
+- `controller/OtpController.java` — POST /api/v1/orders/sessions/{id}/otp
 
 **Given** non-existent or expired sessionId queried  
 **When** no Redis key  
@@ -131,7 +133,7 @@ So that my order completes step-up authentication before execution.
 
 ### Acceptance Criteria
 
-**Given** `POST /api/v1/orders/sessions/{sessionId}/otp/verify` with `{ totpCode: "123456" }`  
+**Given** `POST /api/v1/orders/sessions/{sessionId}/otp` with `{ totpCode: "123456" }`
 **When** TOTP verification (session status: `PENDING_NEW`)  
 **Then** Session ownership verification via `SessionOwnershipValidator`  
 **And** RULE-015 debounce applied: `SET ch:otp-attempt-ts:{sessionId} NX EX 1` → if key exists HTTP 429 `{ code: "RATE-001", message: "Too many requests. Please wait 1 second." }` (no attempt consumption)  
@@ -250,7 +252,7 @@ So that the order flow feels fast and consistent with Korean HTS (Home Trading S
 
 **Given** OTP 6-digit entry completed  
 **When** last digit entered  
-**Then** automatic `POST /api/v1/orders/sessions/{sessionId}/otp/verify` call (OTP auto-submit)
+**Then** automatic `POST /api/v1/orders/sessions/{sessionId}/otp` call (OTP auto-submit)
 
 **Given** OTP verification success (HTTP 200 AUTHED)  
 **When** response received  
@@ -266,7 +268,7 @@ So that the order flow feels fast and consistent with Korean HTS (Home Trading S
 
 **Given** session expiry detected in `step: 'OTP'` state — Epic 2 temporary polling strategy  
 **When** `useEffect` polling activated (10-second interval)  
-**Then** `setInterval(() => api.get('/api/v1/orders/sessions/{sessionId}/status'), 10_000)` runs while `step === 'OTP'`  
+**Then** `setInterval(() => api.get('/api/v1/orders/sessions/{sessionId}'), 10_000)` runs while `step === 'OTP'`
 **And** response `status === 'EXPIRED'` → FSM `dispatch({ type: 'OTP_EXPIRED' })` (maps backend `EXPIRED` to frontend `OTP_EXPIRED` step)  
 **And** **this polling replaced with SSE subscription in Epic 5 Story 5.2**
 

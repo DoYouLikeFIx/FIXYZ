@@ -67,7 +67,7 @@ Six capability domains, all implemented in `channel-service` unless noted:
 | --------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | Concurrency                 | `SELECT FOR UPDATE` on `(account_id, symbol)` position writes                            | Pessimistic lock on position entity (EAGER mode); cross-symbol isolation must hold (005930 and 000660 can execute in parallel) |
 | Concurrent session race     | `AUTHED→EXECUTING` state transition must be atomic                                       | Redis `SET ch:txn-lock:{sessionId} NX EX 30` before CoreBanking call; `NX` failure → `ORD-010`      |
-| Security                    | HttpOnly + Secure + SameSite cookie, CSRF Double Submit Cookie, PII masking, step-up OTP | Spring Security + `CookieCsrfTokenRepository` (`XSRF-TOKEN` → `X-XSRF-TOKEN`) + `AccountNumber.masked()` in `channel-common`  |
+| Security                    | HttpOnly + Secure + SameSite cookie, CSRF Synchronizer Token, PII masking, step-up OTP | Spring Security + `HttpSessionCsrfTokenRepository` + CSRF bootstrap `GET /api/v1/auth/csrf` + non-GET `X-CSRF-TOKEN` + `AccountNumber.masked()` in `channel-common` |
 | Resilience                  | Circuit breaker OPEN after 3 FEP timeouts (Resilience4j `slidingWindowSize=3`); post-commit failure escalates external sync state | **단일 CB 레이어**: Resilience4j `@CircuitBreaker(name="fep")` on `FepClient` in **corebank-service** — `slidingWindowSize=3`, `failureRateThreshold=100`, `waitDurationInOpenState=10s`. CB OPEN preemptive: no `@Transactional`, no order record, no position change. Post-commit FEP failure: canonical fill 유지 + `external_sync_status=FAILED/ESCALATED`, `OrderSession=ESCALATED` for replay/requery recovery. CB state: `localhost:8081/actuator/circuitbreakers` |
 | Idempotency                 | `ClOrdID` UNIQUE at DB level                                                             | `UNIQUE INDEX idx_clordid (cl_ord_id)` in `core_db.orders`                                          |
 | Execution source of truth   | Local CoreBanking Order Book match is canonical in simulator mode                        | `executions`/`positions` are committed from local matcher; FEP `ExecutionReport` used for confirmation/recovery only |
@@ -114,18 +114,26 @@ Six capability domains, all implemented in `channel-service` unless noted:
 | Trace propagation        | All 4 backend services               | `traceparent` + `X-Correlation-Id` headers; MDC injection via `OncePerRequestFilter`                                                                                                                                                                                                                                                                                                        |
 | PII masking              | Channel layer (logs + API responses) | `AccountNumber.masked()` in `channel-common`; unit-tested — full number must never appear in output                                                                                                                                                                                                                                                                                         |
 | Error code taxonomy      | All services                         | API 응답: `AUTH-xxx` / `CHANNEL-xxx` / `ORD-xxx` / `CORE-xxx` / `FEP-xxx` / `SYS-xxx`를 외부 계약 코드로 사용하고 `GlobalExceptionHandler` 표준 봉투로 반환한다 (RULE-031, P-F5). OTP는 `CHANNEL-002/003`, `429`는 `RATE-001`만 사용. **FEP RC 코드**: `RC=9001 NO_ROUTE` / `RC=9002 POOL_EXHAUSTED` / `RC=9003 NOT_LOGGED_ON` / `RC=9004 TIMEOUT` / `RC=9005 KEY_EXPIRED` / `RC=9097 ORDER_REJECTED` / `RC=9098 CIRCUIT_OPEN` / `RC=9099 CONCURRENCY_FAILURE`                                                                                                                                                                                                                                                                                                |
-| Docker network isolation | Compose layer                        | `external-net` (Channel only, port 8080 exposed), `core-net` (Channel↔CoreBanking), `gateway-net` (CoreBanking↔FEP Gateway:8083), `fep-net` (FEP Gateway↔FEP Simulator:8082); no ports on CoreBanking, FEP Gateway, or FEP Simulator exposed to host                                                                                                                                                                                                                                                                                                                                             |
+| Docker network isolation | Compose layer                        | Current repository runtime baseline uses single `fix-net` with host-exposed `channel-service:8080` and `edge-gateway:80/443` for local/demo use; no host ports on CoreBanking, FEP Gateway, or FEP Simulator. Canonical hardened lane model for future review remains `external-net` (ingress + channel edge side), `core-net` (channel↔corebank), `gateway-net` (corebank↔FEP Gateway), `fep-net` (FEP Gateway↔FEP Simulator).                                                                                                                                                                                                                                  |
 | Internal API secret      | Service-to-service                   | `X-Internal-Secret` header validated by `OncePerRequestFilter` (copy-paste MVP); `INTERNAL_API_SECRET` env var                                                                                                                                                                                                                                                                              |
 | Saga ownership           | Channel ↔ CoreBanking                | **Channel-service is the saga orchestrator** — owns `OrderExecutionService`, calls CoreBanking execute, and on FEP failure drives `ESCALATED` replay/requery workflow; CoreBanking executes Order Book + position mutation atomically                                                                                                                                                                |
 | Audit logging            | Channel layer                        | `audit_logs` + `security_events` tables; scheduled purge (90/180 days)                                                                                                                                                                                                                                                                                                                      |
 | Rate limiting            | Channel layer                        | Bucket4j Filter on 3 endpoints only (login, OTP verify, order prepare)                                                                                                                                                                                                                                                                                                                   |
-| CSRF                     | Channel ↔ React/Mobile               | Double Submit Cookie (`CookieCsrfTokenRepository.withHttpOnlyFalse()`); `GET /api/v1/auth/csrf`로 `XSRF-TOKEN` 발급 후 모든 non-GET에 `X-XSRF-TOKEN` 주입; 로그인 성공 후 재조회 필수 (`changeSessionId()` 후 토큰 재발급) |
+| CSRF                     | Channel ↔ React/Mobile               | Synchronizer Token (`HttpSessionCsrfTokenRepository`); bootstrap endpoint `GET /api/v1/auth/csrf`에서 토큰 수령 후 모든 non-GET 요청에 `X-CSRF-TOKEN` 주입; 로그인 성공 후 `changeSessionId()` 이후 CSRF 토큰 재조회 필수 |
 | SSE lifecycle            | Channel ↔ Frontend                   | SSE endpoint is session-aware push channel; backend must push session-expiry event proactively before TTL expires; CORS `allowCredentials=true` must explicitly cover `/api/v1/notifications/stream`; production (cross-origin Vercel→EC2): `allowCredentials=true` + exact origins required (`fix-xxx.vercel.app`, `localhost:5173`); `EventSource({ withCredentials: true })` on frontend |
 | Demo infrastructure      | Actuator + FEP chaos                 | `circuitbreakers` + `health` accessible without auth for screenshare; `PUT /fep-internal/rules` robustly designed (chaos endpoint is a demo use case, not test-only)                                                                                                                                                                                                                       |
 | ADR format               | Architecture document                | Key decisions use lightweight ADR: Context → Decision → Consequences; pessimistic lock rationale and simulation boundaries documented for verbatim interview narration                                                                                                                                                                                                                      |
 
 ---
 
+### PR-00 정본 결정표
+
+| 결정 항목 | 정본 값(확정) | 적용 규칙 |
+| --- | --- | --- |
+| 세션 쿠키명 | `SESSION` | Spring Session 기본 쿠키명을 사용하며 별도 쿠키명 커스터마이징을 적용하지 않는다 |
+| CSRF | Synchronizer Token + `HttpSessionCsrfTokenRepository` | 프론트 bootstrap: `GET /api/v1/auth/csrf`로 토큰 수신 후 모든 non-GET에 `X-CSRF-TOKEN` 포함. 로그인 성공 후 토큰 재조회 |
+| Gateway↔Simulator 통신 | Data plane=`FIX 4.2 TCP (QuickFIX/J)`, Control plane=`HTTP + X-Internal-Secret` | 주문/체결은 FIX만 사용, 카오스/운영 제어 API만 HTTP 사용 |
+| 주문 식별자 표기 | field/path=`clOrdId`, header=`X-ClOrdID` | 주문 계열 요청에서 `X-ClOrdID` 필수, `X-ClOrdID == body/path clOrdId` 계약 강제 |
 ### Intentional Simplifications
 
 _Decisions that look like shortcuts but are deliberate, with the production path documented. Demonstrating this reasoning is a senior engineering signal._
@@ -236,7 +244,7 @@ testImplementation "org.testcontainers:junit-jupiter:${versions.testcontainers}"
 | Decision    | Value                                             |
 | ----------- | ------------------------------------------------- |
 | Web layer   | Spring MVC (servlet stack) — `SseEmitter` for SSE |
-| Security    | Spring Security 6.x (Lambda DSL config)           |
+| Security                    | HttpOnly + Secure + SameSite cookie, CSRF Synchronizer Token, PII masking, step-up OTP | Spring Security + `HttpSessionCsrfTokenRepository` + CSRF bootstrap `GET /api/v1/auth/csrf` + non-GET `X-CSRF-TOKEN` + `AccountNumber.masked()` in `channel-common` |
 | Session     | Spring Session Redis (`@EnableRedisHttpSession`)  |
 | Data access | Spring Data JPA + Hibernate 6.x                   |
 | Migrations  | Flyway auto-run on startup                        |
@@ -270,12 +278,12 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
-    setupFiles: ["./src/test/setup.ts"],
+    setupFiles: ["./tests/setup.ts"],
   },
 });
 ```
 
-**Day-1 required — `src/test/setup.ts` (EventSource mock):**
+**Day-1 required — `tests/setup.ts` (EventSource mock):**
 
 ```ts
 // EventSource not available in jsdom — must be stubbed globally
@@ -328,8 +336,12 @@ export const formatKRW = (amount: number): string =>
 To make the network model explainable to non-project stakeholders:
 
 - **Frontend is in the DMZ-facing channel zone** (web/mobile entry).
-- **Backend core services run in internal zones** (corebank/fep-gateway/fep-simulator are not host-exposed).
-- **Only channel-service is externally reachable**; internal services communicate through private compose networks.
+- **Current local compose baseline exposes `edge-gateway:80/443` and `channel-service:8080` on host** for developer convenience.
+- **Current Story 0.7 edge configuration still carries legacy proxy paths to internal health/API namespaces plus a gateway-specific `/api/v1/channel/*` path shape**; those are baseline exceptions, not the Epic 12 hardened target, and `/api/v1/channel/*` must be removed from hardened public ingress unless a reviewed migration ADR carries it temporarily.
+- **Current Story 0.7 controller scaffold is intentionally not endpoint-complete**; product-level endpoint contracts in PRD/API/UX artifacts may lead the runtime scaffold and must be read together with the explicit scaffold-divergence inventory in Epic 12 docs.
+- **Public ingress contract is edge-first**; Epic 12 hardening aims to remove direct host exposure from `channel-service` in hardened mode.
+- **Privileged DMZ operator access is out-of-band from the public edge allowlist** and must live on a private admin/control-plane surface when Story 12.4 is implemented.
+- **Epic 12 review zones (`edge/application/core-private`) are governance groupings over the canonical lane model**, not a replacement for the architecture lane mapping.
 
 ### Cookie/Session Request Chain (Terminal → Backend)
 
@@ -350,7 +362,7 @@ This chain is the canonical explanation model for reviews:
 - Same `docker-compose.yml` used locally runs on EC2 via SSH
 - `docker compose up -d` on EC2 — no translation layer, no task definitions
 - MySQL + Redis run as compose services on EC2 (sufficient for portfolio traffic)
-- Security group: port 8080 open to internet (or behind reverse proxy); ports 8081/8082/8083 internal only
+- Security group: public ingress contract is `80/443` on `edge-gateway`; `8080` remains local/dev convenience or private-to-edge only, and ports `8081/8082/8083` stay internal only
 
 **Vercel deployment:**
 
@@ -417,7 +429,11 @@ fix/                              ← root Gradle project (7-module 확정 구�
     src/
       lib/axios.ts                ← axios instance (withCredentials, baseURL from env)
       utils/format.ts             ← formatKRW() and shared formatters
-      test/setup.ts               ← EventSource mock stub
+    tests/
+      setup.ts                    ← EventSource mock stub
+      integration/                ← app/router/auth flow tests
+      unit/                       ← lib/store/component tests
+      collab-webhook/             ← node:test workflow script tests
   docker-compose.yml              ← channel + corebank + fep-gateway + fep-simulator + mysql + redis
   .env.example                    ← committed; .env gitignored
   .github/
@@ -505,6 +521,7 @@ _Flat reference for implementers. Every named decision, rule, and ADR. Reference
 | D-022 | Password policy: min 8 chars, 1 uppercase, 1 digit, 1 special; `AUTH-007`                       | Auth & Security             |
 | D-023 | `useEffect` + `axios` for data fetching; React Router `loader` not used                         | Frontend Architecture       |
 | D-024 | Global `ErrorBoundary` catch-all; per-screen `try/catch` → inline error state; no toast library | Frontend Architecture       |
+| D-026 | Lane-level automated tests are centralized under `<workspace>/tests/**`                          | Frontend Architecture       |
 | D-025 | Decision numbering: `D-XXX` / `ADR-XXX` / `RULE-XXX`                                            | Architecture Document       |
 
 **Rules (RULE-XXX) — How we enforce:**
@@ -611,7 +628,7 @@ No MapStruct. All entity↔DTO conversions are explicit `toDto()` / `fromDto()` 
 | Rate limit bucket     | `ch:ratelimit:{endpoint}:{identifier}`                           | per Bucket4j config |
 | OTP attempt debounce  | `ch:otp-attempt-ts:{orderSessionId}`                             | 1s                  |
 | OTP attempt counter   | `ch:otp-attempts:{sessionId}`                                    | 600s (SET NX EX 600 — matches order session TTL) |
-| Idempotency key       | `ch:idempotency:{clOrdID}`                                       | 600s                |
+| Idempotency key       | `ch:idempotency:{clOrdId}`                                       | 600s                |
 | Recovery scheduler lock | `ch:recovery-lock:{sessionId}`                                 | 120s (NX — prevents double-processing of same EXECUTING session) |
 | FDS IP fail count     | `fds:ip-fail:{ip}`                                               | 10 min              |
 | FDS device            | `fds:device:{memberId}`                                          | 30 days             |
@@ -768,7 +785,7 @@ Placement rule: keep `GlobalExceptionHandler` under an `exception` package so HT
 | `MethodArgumentNotValidException`          | 422  | `VALIDATION-001`     |
 | `Exception` (catch-all)                    | 500  | `SYS-001`            |
 
-`AccessDeniedException`은 관리자 권한 부족(`ROLE_ADMIN`)에 한정한다. `clOrdID/account` 소유권 불일치는 반드시 `OwnershipMismatchException`으로 분리하여 `CHANNEL-006`으로 매핑한다.
+`AccessDeniedException`은 관리자 권한 부족(`ROLE_ADMIN`)에 한정한다. `clOrdId/account` 소유권 불일치는 반드시 `OwnershipMismatchException`으로 분리하여 `CHANNEL-006`으로 매핑한다.
 
 > ⚠️ P-D1: catch-all 코드를 `SYSTEM-001` → `SYS-001`로 통일 (RULE-031 에러코드 표 기준).
 
@@ -852,6 +869,17 @@ export function NotificationProvider({ children }) {
 - `<ErrorBoundary>` wraps `<App />` — catch-all for unhandled React errors
 - All expected API errors (ORD-001, AUTH-003, FEP-003, etc.) handled inline per UX spec Korean messages
 - No toast library — inline error `<div>` per screen per UX spec exactly
+
+**D-026 — Centralized automated test roots**
+
+- All lane-local automated tests live under a top-level `tests/` directory so `src/` stays production-only.
+- Recommended buckets:
+  - `tests/unit/**` for pure logic/component/store tests
+  - `tests/integration/**` for app/router/API wiring tests
+  - `tests/e2e/**` for runtime-backed lane flows
+  - `tests/collab-webhook/**` for Node-only workflow script tests
+  - `tests/setup.ts` for shared test bootstrap such as `EventSource` stubs
+- Backend already follows this convention with `BE/tests/**`; FE and MOB must not add new `src/**/*.test.*`, `src/test/**`, or `test/**` paths.
 
 ---
 
@@ -1028,6 +1056,7 @@ Trunk-based with short-lived feature branches:
 | RULE-074 | 서비스 배포 순서                          |
 | RULE-075 | docker-compose healthcheck 표준           |
 | RULE-076 | 인증 상태 Zustand `useAuthStore` 패턴   |
+| RULE-080 | MOB 인증 MVVM 패턴                        |
 
 ---
 
@@ -1305,7 +1334,7 @@ public final class BusinessConstants {
 | CHANNEL-003 | 403  | OTP 시도 초과(터미널 실패) | channel-service  |
 | CHANNEL-004 | 409  | 이미 진행 중인 주문 세션  | channel-service  |
 | CHANNEL-005 | 400  | 주문 수량 유효성 오류     | channel-service  |
-| CHANNEL-006 | 403  | 소유권 불일치(`clOrdID`/`accountId`) | channel-service  |
+| CHANNEL-006 | 403  | 소유권 불일치(`clOrdId`/`accountId`) | channel-service  |
 | RATE-001    | 429  | 레이트 리밋/OTP 디바운스 (`Retry-After` 포함) | channel-service  |
 | ORD-001     | 422  | 매수 자금 부족 | corebank-service |
 | ORD-002     | 422  | 일일 매도 한도 초과 | corebank-service |
@@ -1321,7 +1350,7 @@ public final class BusinessConstants {
 | FEP-003     | 400  | FEP 거부 응답 (REJECTED\_BY\_FEP, FIX ExecutionReport MsgType=j — canonical fill 유지, 외부 동기화 복구 대상) | corebank-service |
 | SYS-001     | 500  | 내부 시스템 오류          | 전체             |
 | ORD-004     | 422  | 종목코드 형식 오류 또는 수량 범위 초과 | channel-service  |
-| ORD-007     | 409  | `clOrdID` 중복 — 멱등성 위반 (FR-22) | channel-service  |
+| ORD-007     | 409  | `clOrdId` 중복 — 멱등성 위반 (FR-22) | channel-service  |
 | VALIDATION-001 | 422 | 요청 필드 유효성 오류 (`@Valid` 실패) | 전체             |
 
 ### RULE-032: FepClient 구현 패턴
@@ -1899,7 +1928,7 @@ spring:
 
 ```java
 // 헤더: X-ClOrdID: <client UUID v4>  (FIX Tag 11 새셸)
-// Redis: SET ch:idempotency:{clOrdID} {orderSessionId} NX EX 600
+// Redis: SET ch:idempotency:{clOrdId} {orderSessionId} NX EX 600
 // NX 성공 → 신규 처리
 // NX 실패 → 기존 orderSessionId 반환 (200, 재처리 없음)
 
@@ -2027,6 +2056,50 @@ export const useAuthStore = create<AuthState>((set) => ({
 //        .catch(() => {});   // 미인증 무시 — 로그인 페이지로 redirect는 PrivateRoute가 처리
 //    }, []);
 //    → 새로고침 후 Zustand 초기화, HTTP-only 쿠키 유효 시 isAuthenticated: true 복원
+```
+
+---
+
+### RULE-080: MOB 인증 MVVM 패턴
+
+```ts
+// View
+// - src/screens/auth/LoginScreen.tsx
+// - src/screens/auth/RegisterScreen.tsx
+// 역할: React Native 레이아웃, keyboard inset, focus ref, animation binding만 담당
+
+// ViewModel
+// - src/auth/use-auth-flow-view-model.ts
+// - src/auth/use-login-view-model.ts
+// - src/auth/use-register-view-model.ts
+// 역할: auth flow route 상태, lifecycle/bootstrap, 입력값, 단계 진행,
+//       field/global feedback, submitting 상태, submit intent 관리
+
+// Application Service / Model
+// - src/auth/mobile-auth-service.ts
+// - src/store/auth-store.ts
+// - src/api/auth-api.ts
+// 역할: API 호출, session recovery, reauth 판정, auth persistence 제공
+
+// App shell
+// - App.tsx / src/navigation/AppNavigator.tsx
+// 역할: runtime wiring + ViewModel 바인딩
+
+// ✅ 허용:
+//    - Screen 컴포넌트의 useState/useRef는 keyboard visibility, scroll, focus ref 같은
+//      순수 view concern에 한정
+//    - ViewModel은 화면 전용 프레젠테이션 상태와 submit action을 소유
+//
+// ❌ 금지:
+//    - LoginScreen/RegisterScreen 안에서 auth API 호출, authStore mutation,
+//      navigation mutation을 직접 수행
+//    - validation / submit / step progression을 Screen JSX 내부에 다시 인라인 구현
+//    - App.tsx에서 bootstrap / session refresh / route mutation을 직접 orchestration
+//
+// 참고:
+//    - Web FE는 RULE-076의 Zustand 패턴을 유지한다.
+//    - Mobile은 useSyncExternalStore 기반 authStore +
+//      auth-flow ViewModel + screen-scoped ViewModel hook 조합을 사용한다.
 ```
 
 ---
@@ -2289,7 +2362,7 @@ fix/                                          # 모노레포 루트
 │       │   ├── java/com/fix/channel/
 │       │   │   ├── ChannelApplication.java
 │       │   │   ├── config/
-│       │   │   │   ├── SecurityConfig.java     # Spring Session + CORS + CookieCsrfTokenRepository + permitAll
+│       │   │   │   ├── SecurityConfig.java     # Spring Session + CORS + HttpSessionCsrfTokenRepository + permitAll
 │       │   │   │   ├── CorsConfig.java         # profile별 allowedOrigins (R5)
 │       │   │   │   ├── SessionConfig.java      # @EnableRedisHttpSession + SpringSessionBackedSessionRegistry (R5)
 │       │   │   │   ├── JpaConfig.java          # @EnableJpaAuditing (R5)
@@ -2318,7 +2391,7 @@ fix/                                          # 모노레포 루트
 │       │   │   │   │   └── PrepareOrderRequest.java  # record (ClOrdID, symbol, side, qty)
 │       │   │   │   ├── response/
 │       │   │   │   │   ├── LoginResponse.java        # record
-│       │   │   │   │   ├── OrderSessionResponse.java # orderSessionId, status, clOrdID
+│       │   │   │   │   ├── OrderSessionResponse.java # orderSessionId, status, clOrdId
 │       │   │   │   │   ├── SessionStatusResponse.java
 │       │   │   │   │   └── AuditLogResponse.java     # record (R4)
 │       │   │   │   └── command/
@@ -2480,7 +2553,7 @@ fix/                                          # 모노레포 루트
     ├── vitest.config.ts
     └── src/
         ├── main.tsx
-        ├── App.tsx                            # BrowserRouter + NotificationProvider; useEffect → GET /api/v1/auth/me로 Zustand 초기화 (새로고침 시 쿠키 유효 판별)
+        ├── App.tsx                            # BrowserRouter + NotificationProvider; target-contract flow uses GET /api/v1/auth/session for Zustand initialization (current Story 0.7 scaffold parity tracked separately)
         ├── pages/
         │   ├── LoginPage.tsx                  # useAuthStore.login(), Zod 검증
         │   ├── PortfolioPage.tsx              # usePortfolio(), useNotification()
@@ -2492,11 +2565,7 @@ fix/                                          # 모노레포 루트
         │   │   ├── OrderConfirm.tsx
         │   │   ├── OtpInput.tsx               # RULE-029
         │   │   ├── OrderProcessing.tsx
-        │   │   ├── OrderResult.tsx
-        │   │   └── __tests__/
-        │   │       ├── OrderInputForm.test.tsx
-        │   │       ├── OtpInput.test.tsx       # userEvent.type
-        │   │       └── OrderResult.test.tsx
+        │   │   └── OrderResult.tsx
         │   └── common/
         │       ├── AsyncStateWrapper.tsx       # RULE-027
         │       ├── LoadingSpinner.tsx
@@ -2504,24 +2573,16 @@ fix/                                          # 모노레포 루트
         │       ├── NavigationBar.tsx
         │       ├── PrivateRoute.tsx            # 인증 보호 래퍼 (R2)
         │       ├── ErrorBoundary.tsx           # D-024
-        │       ├── KrwAmountDisplay.tsx        # formatKRW 래퍼 (R2)
-        │       └── __tests__/
-        │           └── AsyncStateWrapper.test.tsx
+        │       └── KrwAmountDisplay.tsx        # formatKRW 래퍼 (R2)
         ├── context/
-        │   ├── NotificationContext.tsx         # SSE lifecycle RULE-045
-        │   └── __tests__/
-        │       └── NotificationContext.test.tsx  # R5
+        │   └── NotificationContext.tsx         # SSE lifecycle RULE-045
         ├── store/
-        │   ├── useAuthStore.ts                 # Zustand: isAuthenticated, member, login(), logout() (P-B1)
-        │   └── __tests__/
-        │       └── useAuthStore.test.ts        # login/logout 상태 전환 단위 테스트 (P-C6)
+        │   └── useAuthStore.ts                 # Zustand: isAuthenticated, member, login(), logout() (P-B1)
         ├── hooks/
         │   ├── useOrder.ts                    # useReducer RULE-046
         │   ├── useAuth.ts                      # useAuthStore wrapper: const useAuth = () => useAuthStore()
         │   ├── usePortfolio.ts
-        │   ├── useNotification.ts              # NotificationContext 소비 (R2)
-        │   └── __tests__/
-        │       └── useOrder.test.ts
+        │   └── useNotification.ts              # NotificationContext 소비 (R2)
         ├── lib/
         │   ├── axios.ts                        # 단일 인스턴스 RULE-047
         │   └── schemas/
@@ -2534,13 +2595,41 @@ fix/                                          # 모노레포 루트
         │   └── auth.ts                         # LoginRequest, Member (R9)
         ├── utils/
         │   └── formatters.ts                   # formatKRW RULE-028
-        └── test/
+        └── tests/
             ├── setup.ts                        # jsdom + EventSource mock
+            ├── unit/
+            │   ├── components/
+            │   ├── context/
+            │   ├── hooks/
+            │   ├── lib/
+            │   └── store/
+            ├── integration/
+            │   └── app/
             ├── fixtures/
             │   ├── orderFixtures.ts
             │   └── portfolioFixtures.ts
             └── __mocks__/
                 └── axios.ts
+
+└── MOB/
+    ├── App.tsx                              # runtime wiring only
+    └── src/
+        ├── auth/
+        │   ├── create-mobile-auth-runtime.ts
+        │   ├── mobile-auth-service.ts       # application service / use-case orchestration
+        │   ├── use-auth-flow-view-model.ts  # auth flow ViewModel
+        │   ├── use-login-view-model.ts      # LoginScreen ViewModel
+        │   └── use-register-view-model.ts   # RegisterScreen ViewModel
+        ├── navigation/
+        │   ├── AppNavigator.tsx             # route shell + scene transition
+        │   └── auth-navigation.ts           # auth/app route state reducer helpers
+        ├── screens/auth/
+        │   ├── LoginScreen.tsx              # View
+        │   └── RegisterScreen.tsx           # View
+        ├── store/
+        │   └── auth-store.ts                # useSyncExternalStore 기반 external auth store
+        └── network/
+            └── csrf.ts                      # session-bound CSRF token lifecycle
 ```
 
 ---
@@ -2551,10 +2640,12 @@ fix/                                          # 모노레포 루트
 
 | 경계                               | 통신 방식       | 인증               | 네트워크     |
 | ---------------------------------- | --------------- | ------------------ | ------------ |
-| Vercel → channel-service           | HTTPS REST      | Spring Session Cookie | external-net |
+| Vercel → edge-gateway             | HTTPS REST      | TLS + forwarded session cookie | external-net |
+| edge-gateway → channel-service    | HTTP REST       | forwarded session/csrf headers | external-net |
 | channel-service → corebank-service | HTTP REST       | X-Internal-Secret  | core-net     |
 | corebank-service → fep-gateway     | HTTP REST       | X-Internal-Secret  | gateway-net  |
-| fep-gateway → fep-simulator        | HTTP REST       | X-Internal-Secret  | fep-net      |
+| fep-gateway → fep-simulator (data plane)    | FIX 4.2 TCP (QuickFIX/J) | FIX Logon credentials | fep-net |
+| fep-gateway → fep-simulator (control plane) | HTTP REST                 | X-Internal-Secret     | fep-net |
 | channel-service → SSE Client       | HTTP long-lived | Session Cookie     | external-net |
 | CI → EC2                           | SSH             | SSH Key            | 인터넷       |
 
@@ -2562,7 +2653,7 @@ fix/                                          # 모노레포 루트
 
 ```yaml
 networks:
-  external-net: # channel-service ↔ 외부
+  external-net: # edge-gateway ↔ 외부, edge-gateway ↔ channel-service
   core-net: # channel-service ↔ corebank-service
   gateway-net: # corebank-service ↔ fep-gateway
   fep-net: # fep-gateway ↔ fep-simulator
@@ -2635,7 +2726,7 @@ public class OrderSession extends BaseTimeEntity {
     @Column(nullable = false, unique = true, length = 36)
     private String orderSessionId;        // UUID (ch:order-session key suffix)
     @Column(nullable = false, unique = true, length = 36)
-    private String clOrdID;               // FIX Tag 11 — Idempotency RULE-071 (UUID v4)
+    private String clOrdId;               // FIX Tag 11 — Idempotency RULE-071 (UUID v4)
     @Column(nullable = false)
     private Long memberId;
     @Enumerated(EnumType.STRING)
@@ -2832,7 +2923,7 @@ Phase 4 — 프론트엔드:
 | Q-7-14  | docker-compose.override.yml 최소 내용: mysql:3306, redis:6379, 8081, 8082, 8083 호스트 노출                       | Important    | R5     |
 | Q-7-15  | OrderService.execute() 트랜잭션 경계: FEP 호출 트랜잭션 외부, DB 기록 트랜잭션 내부                              | **Critical** | R6     |
 | Q-7-16  | 매도 한도 검증 위치: channel-service OrderSessionService.initiate() (세션 생성 전)                               | Important    | R6     |
-| Q-7-17  | GET /api/v1/orders/{sessionId} — 세션 상태 조회 엔드포인트 (SessionStatusResponse)                               | Important    | R7     |
+| Q-7-17  | GET /api/v1/orders/sessions/{orderSessionId} — 세션 상태 조회 엔드포인트 (SessionStatusResponse)                | Important    | R7     |
 | Q-7-18  | Integration Test 격리: @Transactional 금지, @Sql cleanup 또는 deleteAll()                                         | **Critical** | R7     |
 | Q-7-19B | ~~JWT Refresh Token (Option B)~~ **폐기** — Spring Session Redis로 대체 (login-flow.md 참조)                              | 구조 변경  | R8/R9  |
 | Q-7-20  | ~~Silent Refresh~~ **폐기** — SSE 세션 만료 알림 + 401 핸들러로 대체 (login-flow.md 참조)                             | 구조 변경  | R9     |
@@ -2907,7 +2998,7 @@ logback-spring.xml 패턴: [%X{correlationId}] 포함
 
 > ⚠️ **이 설계는 Spring Session Redis 전환으로 폐기되었습니다.**  
 > 중간 결정 근거: 세션 즉각 무효화 뺈리티, 서버 완전 통제, JwtAuthFilter 제거로 코드 단순화, 부수 AT Blacklist 키 불필요.  
-> **현행 인증 설계**: login-flow.md 참조 — Spring Session Redis (`JSESSIONID` HttpOnly 쿠키, 30분 슬라이딩 TTL).
+> **현행 인증 설계**: login-flow.md 참조 — Spring Session Redis (`SESSION` HttpOnly 쿠키, 30분 슬라이딩 TTL).
 
 #### ~~Silent Refresh 패턴 (Q-7-20)~~ — **폐기**
 
@@ -3165,7 +3256,7 @@ eventsource.onerror = () => {
 1. 7개 Gradle 모듈 = Docker 네트워크 = 보안 경계 3중 일치
 2. OrderSession FSM 7+1대 Scenario 전수 커버
 3. X-Correlation-Id 전파 체인 — 3개 서비스 로그 추적 완전
-4. Spring Session Redis — `JSESSIONID` HttpOnly 쿠키, 30분 슬라이딩 TTL, 즉각 세션 무효화, log-flow.md 완전 명세
+4. Spring Session Redis — `SESSION` HttpOnly 쿠키, 30분 슬라이딩 TTL, 즉각 세션 무효화, log-flow.md 완전 명세
 5. 트랜잭션 경계 명시 — DB Lock과 HTTP 호출 분리
 
 **Areas for Future Enhancement (post-MVP):**
@@ -3191,6 +3282,9 @@ eventsource.onerror = () => {
 - 인증 상태는 **Zustand `useAuthStore`** 전역 스토어 사용 — `AuthContext.Provider` 미사용 (P-B1)
 - `useAuth.ts` 훈 = `export const useAuth = () => useAuthStore()` 래퍼
 - ❌ 금지: 컴포넌트에서 `auth state`를 `useState` 또는 `Context`로 별도 관리
+- MOB 인증 흐름은 **MVVM** 사용: `useAuthFlowViewModel -> Screen(View) + use*ViewModel -> mobile-auth-service -> authStore/authApi`
+- MOB Screen에는 keyboard/focus/scroll 같은 view concern만 남기고 validation, submit, step progression은 ViewModel로 올린다
+- App.tsx는 ViewModel을 생성하고 AppNavigator에 바인딩만 한다. auth flow orchestration은 App.tsx에 두지 않는다
 
 **Sprint DoD:**
 

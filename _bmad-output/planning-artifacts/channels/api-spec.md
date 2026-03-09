@@ -1,4 +1,4 @@
-﻿# FIX — 채널계 API 명세 (v1.0)
+# FIX — 채널계 API 명세 (v1.0)
 
 > **기준 서비스**: `channel-service:8080`  
 > **버전 정책**: `/api/v1/` 고정 (MVP), 파괴적 변경 시만 v2 발행  
@@ -8,7 +8,7 @@
 | 헤더 | 필수 | 설명 |
 |---|---|---|
 | `Content-Type` | POST/PUT | `application/json` |
-| `X-CSRF-TOKEN` | 모든 non-GET | 로그인 전후 `/auth/csrf`에서 획득 |
+| `X-CSRF-TOKEN` | 모든 non-GET | 로그인 전후 `/api/v1/auth/csrf` bootstrap에서 획득 |
 | `Cookie: SESSION` | 인증 필요 엔드포인트 | Spring Session 쿠키 (HTTP-only, Secure, SameSite) |
 
 > **공통 응답 봉투 (ApiResponse\<T\>)**:
@@ -34,6 +34,8 @@
   "traceId": "abc123def456"
 }
 ```
+
+> **Canonical contract note**: This document is the channel product/API target contract. The current Story 0.7 scaffold is intentionally partial and does not provide endpoint parity yet. Direct scaffold exposure is presently limited to `GET /api/v1/auth/csrf`, `POST /api/v1/auth/login`, `POST /api/v1/auth/otp/verify`, `POST /api/v1/orders/sessions`, `GET /api/v1/orders/sessions`, and `GET /api/v1/notifications/stream`; the public edge baseline still uses legacy `/api/v1/channel/*` aliases rather than canonical auth/order paths. Epic 12 documents those divergences separately and they must not be read back into this target contract.
 
 > **CSRF 유효성 실패 응답 형식**: Spring Security CSRF 필터(`CsrfFilter`)는 `@ControllerAdvice`나 `ApiResponse` 봉투에  도달하기 전 단계에서 동작한다. 따라서 X-CSRF-TOKEN 누락·오류 시 **공통 `ApiResponse` 봉투가 아닌** Spring Security 기본 `403 Forbidden` 응답이 반환된다. HTTP Status=`403`, Body=`{"status":403,"error":"Forbidden","message":"Forbidden"}` 형태. 클라이언트는 `403` 수신 시  `response.status === 403`으로 분기하여 CSRF 토큰을 재조회한 후 요청을 재시도해야 한다. non-GET 요청 전 **항상 CSRF 토큰을 선행 조회**하는 것이 권장된 구현 패턴이다.
 
@@ -1868,7 +1870,7 @@ flowchart LR
 | 주문 세션 TTL | 600초 (Redis `EXPIRE`) |
 | CSRF | Synchronizer Token (`HttpSessionCsrfTokenRepository`), 로그인 후 재조회 필수 |
 | PII 마스킹 | 계좌번호 `AccountNumber.masked()` — 로그·응답에서 전체 번호 노출 금지 |
-| Rate Limiting | Bucket4j (Redis 백엔드): 로그인 5/min/IP, 주문준비 10/min/userId, 주문실행(`POST /api/v1/orders/sessions/.../execute`) 세션당 1회(Redis NX lock), 주문취소(`POST /api/v1/orders/sessions/.../cancel`) 세션당 1회(Redis NX lock), 주문이력 조회(`GET /api/v1/orders`) 10/min/session, 알림 이력 조회(`GET /api/v1/notifications`) 10/min/session, CB 상태 조회(`GET /api/v1/orders/cb-status`) 10/min/session, 관리자 감사로그 조회(`GET /api/v1/admin/audit-logs`) · 수동재처리(`POST /api/v1/admin/orders/.../replay`) · 강제로그아웃(`DELETE /api/v1/admin/members/.../sessions`) 20/min/session; OTP 시도: 3/session (Redis 카운터 — Bucket4j 별도 아님, §2.2 attempt 카운터 기반) |
+| Rate Limiting | Bucket4j (Redis 백엔드): 로그인 5/min/IP, 주문준비 10/min/userId, 주문실행(`POST /api/v1/orders/sessions/.../execute`) 세션당 1회(Redis NX lock), 주문취소(`POST /api/v1/orders/sessions/.../cancel`) 세션당 1회(Redis NX lock), 주문이력 조회(`GET /api/v1/orders`) 10/min/session, 알림 이력 조회(`GET /api/v1/notifications`) 10/min/session, CB 상태 조회(`GET /api/v1/orders/cb-status`) 10/min/session, 관리자 감사로그 조회(`GET /api/v1/admin/audit-logs`) · 수동재처리(`POST /api/v1/admin/orders/.../replay`) · 강제로그아웃(`DELETE /api/v1/admin/members/.../sessions`) 20/min/session; OTP 시도: 3/session (Redis 카운터 — Bucket4j 별도 아님, §2.2 attempt 카운터 기반). 애플리케이션 레이어 한도/OTP 차단 증적에는 `enforcement_layer=application`과 `limit_key_type`(`session_id`, `user_id`, `order_session_id`)가 포함되어야 하며, Epic 12 edge 한도와 혼동되면 안 된다. |
 | 429 응답 헤더 | 모든 Rate Limit 초과 응답에 HTTP 표준 `Retry-After` 헤더 포함 (단위: 초, **동적 계산값**). Bucket4j 토큰 리필 기반으로 현재 윈도우 잔여 시간을 계산하여 반환한다. 최대값: 로그인 60초, 주문 준비 60초. OTP 디바운스: 고정 `Retry-After: 1`. |
 | Cookie | `HttpOnly=true`, `Secure=true`, `SameSite=Strict` (local) / `SameSite=None; Secure` (deploy) |
 | CORS (배포) | `SameSite=None` 적용 환경에서는 `allowedOrigins`를 명시적으로 허용 오리진 목록으로 제한해야 한다. 와일드카드(`*`) 금지. 예: `https://fix.yourdomain.com`. CORS 설정 오류 시 `SameSite=None` + `allowCredentials=true` 조합으로 CSRF 방어가 무력화될 수 있다. |

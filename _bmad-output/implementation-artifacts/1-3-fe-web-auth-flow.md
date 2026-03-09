@@ -1,6 +1,6 @@
 # Story 1.3: FE Web Auth Flow
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -19,19 +19,32 @@ so that authenticated routes behave predictably.
 
 ## Tasks / Subtasks
 
-- [ ] Implement login/register screens and submission flow (AC: 1)
-  - [ ] Integrate with auth APIs using shared client
-  - [ ] Persist authenticated member state via approved global store pattern
-- [ ] Implement private-route guard and navigation rules (AC: 2)
-  - [ ] Redirect unauthenticated users to `/login`
-  - [ ] Preserve predictable post-auth navigation behavior
-- [ ] Implement standardized auth error UX (AC: 3)
-  - [ ] Map backend auth error codes to user-facing messages
-  - [ ] Prevent duplicate/conflicting error surfaces
-- [ ] Implement session-expiry event handling and re-auth guidance (AC: 4)
-  - [ ] Handle SSE/session expiry warning and 401 fallback paths
-  - [ ] Ensure cleanup/reconnect strategy for event stream
-- [ ] Add FE tests for route guard + auth error + expiry guidance (AC: 2, 3, 4)
+- [x] Implement login/register screens and submission flow (AC: 1)
+  - [x] Integrate with auth APIs using shared client
+  - [x] Persist authenticated member state via approved global store pattern
+- [x] Implement private-route guard and navigation rules (AC: 2)
+  - [x] Redirect unauthenticated users to `/login`
+  - [x] Preserve predictable post-auth navigation behavior
+- [x] Implement standardized auth error UX (AC: 3)
+  - [x] Map backend auth error codes to user-facing messages
+  - [x] Prevent duplicate/conflicting error surfaces
+- [x] Implement session-expiry event handling and re-auth guidance (AC: 4)
+  - [x] Handle SSE/session expiry warning and 401 fallback paths
+  - [x] Ensure cleanup/reconnect strategy for event stream
+- [x] Add FE tests for route guard + auth error + expiry guidance (AC: 2, 3, 4)
+- [x] Implement login/register screens and submission flow (AC: 1)
+  - [x] Integrate with auth APIs using shared client
+  - [x] Persist authenticated member state via approved global store pattern
+- [x] Implement private-route guard and navigation rules (AC: 2)
+  - [x] Redirect unauthenticated users to `/login`
+  - [x] Preserve predictable post-auth navigation behavior
+- [x] Implement standardized auth error UX (AC: 3)
+  - [x] Map backend auth error codes to user-facing messages
+  - [x] Prevent duplicate/conflicting error surfaces
+- [x] Implement session-expiry event handling and re-auth guidance (AC: 4)
+  - [x] Handle SSE/session expiry warning and 401 fallback paths
+  - [x] Ensure cleanup/reconnect strategy for event stream
+- [x] Add FE tests for route guard + auth error + expiry guidance (AC: 2, 3, 4)
 
 ## Dev Notes
 
@@ -110,10 +123,10 @@ so that authenticated routes behave predictably.
   - Attach negative-path replay result for `N-1`, `N`, `N+1` boundaries and session expiry paths.
   - Attach one correlation sample linking client-visible error to server-side security event/log.
 - Party review resolution status (2026-02-25):
-  - [ ] Private-route redirect loop prevention evidence attached (no infinite redirect/retry behavior).
-  - [ ] Auth error mapping evidence attached showing single consistent UX surface per backend code.
-  - [ ] Session-expiry event + 401 fallback evidence attached with deterministic re-auth guidance.
-  - [ ] FE behavior parity evidence recorded against shared Epic 1 session behavior matrix.
+  - [x] Private-route redirect loop prevention evidence attached (no infinite redirect/retry behavior).
+  - [x] Auth error mapping evidence attached showing single consistent UX surface per backend code.
+  - [x] Session-expiry event + 401 fallback evidence attached with deterministic re-auth guidance.
+  - [x] FE behavior parity evidence recorded against shared Epic 1 session behavior matrix.
 
 - Execution reference:
   - Run Epic 1 focused checklist: `_bmad-output/implementation-artifacts/epic-1-qa-reinforcement-checklist.md`.
@@ -140,8 +153,8 @@ so that authenticated routes behave predictably.
 
 ### Story Completion Status
 
-- Status set to `ready-for-dev`.
-- Completion note: Ultimate context engine analysis completed - comprehensive developer guide created.
+- Status set to `done`.
+- Completion note: Implementation and closeout verification completed on 2026-03-09, including live browser verification against the real `channel-service` runtime after SSE foundation alignment.
 
 ### References
 
@@ -161,12 +174,25 @@ GPT-5 Codex (Codex desktop)
 
 ### Debug Log References
 
-- Generated via create-story workflow instructions with Epic 1 artifact synthesis.
+- FE closeout evidence rerun on 2026-03-09 against live BE `http://127.0.0.1:18080`.
+- Backend auth/session integration evidence rerun on 2026-03-09 via `:channel-service:test --tests 'com.fix.channel.integration.*'`.
 
 ### Completion Notes List
 
-- Added explicit FE auth-state and route-guard guardrails for implementation.
+- Verified live FE redirect behavior: `/portfolio -> /login?redirect=%2Fportfolio`.
+- Verified live `register -> auto-login -> /portfolio` browser flow against the real backend.
+- Verified authenticated `/api/v1/notifications/stream` now returns `200 text/event-stream` for the FE contract.
+- Re-ran backend integration coverage supporting FE auth/session semantics: `ChannelAuthFlowTest (5)`, `ChannelAuthSessionIntegrationTest (16)`, `ChannelContainersIntegrationTest (2)`, `ChannelSessionTimeoutIntegrationTest (1)`.
+- FE integration coverage remains in place for route guard, auth error mapping, preserved redirect, and invalidated-by-new-login re-auth guidance.
 
 ### File List
 
 - /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/1-3-fe-web-auth-flow.md
+- /Users/yeongjae/fixyz/FE/tests/integration/App.test.tsx
+- /Users/yeongjae/fixyz/BE/channel-service/src/main/java/com/fix/channel/controller/NotificationController.java
+- /Users/yeongjae/fixyz/BE/channel-service/src/main/java/com/fix/channel/service/NotificationSseRegistry.java
+- /Users/yeongjae/fixyz/BE/channel-service/src/main/java/com/fix/channel/config/ChannelSecurityConfig.java
+- /Users/yeongjae/fixyz/BE/channel-service/src/test/java/com/fix/channel/integration/ChannelAuthFlowTest.java
+- /Users/yeongjae/fixyz/BE/channel-service/src/test/java/com/fix/channel/integration/ChannelAuthSessionIntegrationTest.java
+- /Users/yeongjae/fixyz/BE/channel-service/src/test/java/com/fix/channel/integration/ChannelContainersIntegrationTest.java
+- /Users/yeongjae/fixyz/BE/channel-service/src/test/java/com/fix/channel/integration/ChannelSessionTimeoutIntegrationTest.java
