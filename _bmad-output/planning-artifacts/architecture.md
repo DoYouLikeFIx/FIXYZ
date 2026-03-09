@@ -625,6 +625,7 @@ No MapStruct. All entity↔DTO conversions are explicit `toDto()` / `fromDto()` 
 > ⚠️ Step 6 변경: `io.github.yeongjae.fix.*` → `com.fix.*` (포트폴리오 프로젝트에 OSS 배포 관례 과분)
 
 Layer suffixes: `controller`, `service`, `repository`, `domain`, `dto`, `config`, `filter`, `exception`
+`config` is reserved for framework wiring and bean/bootstrap configuration. HTTP exception translation such as `GlobalExceptionHandler` belongs in `exception`, not `config`.
 
 Examples:
 
@@ -753,6 +754,7 @@ Date format: ISO-8601 (`2026-02-23T14:32:11Z`). camelCase (not snake_case). Null
 **D-018 — GlobalExceptionHandler hierarchy**
 
 `@RestControllerAdvice GlobalExceptionHandler` — all services:
+Placement rule: keep `GlobalExceptionHandler` under an `exception` package so HTTP error translation stays separate from framework wiring in `config`.
 
 | Exception                                  | HTTP | Error Code           |
 | ------------------------------------------ | ---- | -------------------- |

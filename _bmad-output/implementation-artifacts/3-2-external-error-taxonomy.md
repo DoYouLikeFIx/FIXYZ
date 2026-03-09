@@ -1,6 +1,6 @@
 # Story 3.2: [FEP] External Error Taxonomy
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -19,14 +19,14 @@ So that upstream systems handle failures consistently.
 
 ## Tasks / Subtasks
 
-- [ ] Implement acceptance-criteria scope 1 (AC: 1)
-  - [ ] Add test coverage for AC 1
-- [ ] Implement acceptance-criteria scope 2 (AC: 2)
-  - [ ] Add test coverage for AC 2
-- [ ] Implement acceptance-criteria scope 3 (AC: 3)
-  - [ ] Add test coverage for AC 3
-- [ ] Implement acceptance-criteria scope 4 (AC: 4)
-  - [ ] Add test coverage for AC 4
+- [x] Implement acceptance-criteria scope 1 (AC: 1)
+  - [x] Add test coverage for AC 1
+- [x] Implement acceptance-criteria scope 2 (AC: 2)
+  - [x] Add test coverage for AC 2
+- [x] Implement acceptance-criteria scope 3 (AC: 3)
+  - [x] Add test coverage for AC 3
+- [x] Implement acceptance-criteria scope 4 (AC: 4)
+  - [x] Add test coverage for AC 4
 
 ## Dev Notes
 
@@ -74,11 +74,49 @@ GPT-5 Codex (Codex desktop)
 ### Debug Log References
 
 - Generated from canonical planning artifact for Epic 3.
+- `./gradlew.bat :core-common:test :corebank-service:test --tests com.fix.common.error.CoreCommonContractTest --tests com.fix.corebank.client.FepClientContractTest --tests com.fix.corebank.client.FepExternalErrorTaxonomyTest --tests com.fix.corebank.controller.CorebankInternalApiSkeletonTest`
+- `./gradlew.bat :channel-service:test --tests com.fix.channel.controller.ChannelErrorContractTest`
+- `./gradlew.bat :corebank-service:test --tests com.fix.corebank.contract.CorebankOpenApiCompatibilityTest --tests com.fix.corebank.controller.CorebankInternalApiSkeletonTest`
+- `./gradlew.bat :corebank-service:generateOpenApiDocs`
+- `./gradlew.bat test`
 
 ### Completion Notes List
 
-- Story scaffold generated with canonical numbering guardrail.
+- Added deterministic FEP external error taxonomy mapping for gateway/system/rejection codes with fallback unknown-external handling.
+- Extended shared error envelopes and exception types to surface `userMessageKey` and `operatorCode` without changing existing non-FEP error behavior.
+- Added regression coverage for the taxonomy matrix, adapter-level gateway error translation, upstream propagation through the corebank internal API, and channel-boundary metadata exposure via contract testing.
+- Refreshed the committed corebank OpenAPI snapshot and added a compatibility test so `userMessageKey` and `operatorCode` stay documented.
+- Added a backend end-to-end style integration test that drives the real corebank HTTP endpoint through `FepClient` against WireMock so mapped and fallback external errors are verified beyond stubbed client tests.
 
 ### File List
 
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/3-2-external-error-taxonomy.md
+- BE/channel-service/src/main/java/com/fix/channel/config/GlobalExceptionHandler.java
+- BE/channel-service/src/test/java/com/fix/channel/controller/ChannelErrorContractTest.java
+- BE/contracts/openapi/corebank-service.json
+- BE/core-common/build.gradle
+- BE/core-common/src/main/java/com/fix/common/error/ApiErrorResponse.java
+- BE/core-common/src/main/java/com/fix/common/error/BusinessException.java
+- BE/core-common/src/main/java/com/fix/common/error/ErrorCode.java
+- BE/core-common/src/main/java/com/fix/common/error/ErrorMetadata.java
+- BE/core-common/src/main/java/com/fix/common/error/FixException.java
+- BE/core-common/src/main/java/com/fix/common/error/SystemException.java
+- BE/core-common/src/test/java/com/fix/common/error/CoreCommonContractTest.java
+- BE/corebank-service/src/main/java/com/fix/corebank/client/FepClient.java
+- BE/corebank-service/src/main/java/com/fix/corebank/client/FepExternalErrorTaxonomy.java
+- BE/corebank-service/src/main/java/com/fix/corebank/config/GlobalExceptionHandler.java
+- BE/corebank-service/src/test/java/com/fix/corebank/client/FepClientContractTest.java
+- BE/corebank-service/src/test/java/com/fix/corebank/client/FepExternalErrorTaxonomyTest.java
+- BE/corebank-service/src/test/java/com/fix/corebank/contract/CorebankOpenApiCompatibilityTest.java
+- BE/corebank-service/src/test/java/com/fix/corebank/controller/CorebankInternalApiSkeletonTest.java
+- BE/corebank-service/src/test/java/com/fix/corebank/integration/CorebankExternalErrorFlowIntegrationTest.java
+- BE/corebank-service/src/test/java/com/fix/corebank/support/TestStubFepClient.java
+- BE/fep-gateway/src/main/java/com/fix/fepgateway/config/GlobalExceptionHandler.java
+- BE/fep-simulator/src/main/java/com/fix/fepsimulator/config/GlobalExceptionHandler.java
+- _bmad-output/implementation-artifacts/3-2-external-error-taxonomy.md
+- _bmad-output/implementation-artifacts/sprint-status.yaml
+
+## Change Log
+
+- 2026-03-09: Implemented external error taxonomy mapping, added envelope metadata propagation, and covered the mapping matrix plus propagation flows with automated tests.
+- 2026-03-09: Closed QA findings by adding channel-boundary metadata coverage and syncing the committed corebank OpenAPI contract with the generated document.
+- 2026-03-09: Added backend end-to-end coverage for mapped and fallback external FEP errors through the real corebank HTTP boundary.

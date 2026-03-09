@@ -125,7 +125,7 @@ Provides the common development foundation (module structure, execution infrastr
 
 ### Epic 1: Channel Auth & Session Platform
 
-Completes the channel authentication/session foundation and establishes the FE/MOB authentication UX.
+Completes the channel authentication/session foundation, adds password recovery capability, and establishes the FE/MOB authentication UX.
 
 **Story Hints:**
 - Story 1.1: BE Registration & Login Session
@@ -134,6 +134,7 @@ Completes the channel authentication/session foundation and establishes the FE/M
 - Story 1.4: MOB Auth Flow
 - Story 1.5: BE Auth Guardrails
 - Story 1.6: FE/MOB Auth Error Standardization
+- Story 1.7: BE Password Forgot/Reset API
 
 ### Epic 2: Account Domain & Inquiry APIs
 
@@ -389,7 +390,7 @@ So that mobile features follow the same contract and architecture.
   **Then** mobile persists no raw credentials/password/OTP in app storage and uses OS-approved secure storage controls for any sensitive client-side secret material.
 - **Given** cookie-session + CSRF contract for state-changing API calls  
   **When** mobile sends non-GET request  
-  **Then** client includes credentials and `X-XSRF-TOKEN` header derived from `XSRF-TOKEN` cookie after explicit CSRF bootstrap/refresh (`GET /api/v1/auth/csrf`) on app start/login/resume.
+  **Then** client includes credentials and `X-CSRF-TOKEN` header after explicit CSRF bootstrap/refresh (`GET /api/v1/auth/csrf`) on app start/login/resume.
 - **Given** foundation CI runs bundle-only checks  
   **When** PR is prepared for merge  
   **Then** AC1 is satisfied only after manual simulator/device smoke evidence (boot log/screenshot + health-call capture) is attached in PR checklist.
@@ -771,6 +772,32 @@ So that users receive consistent guidance regardless of client.
 - **Given** untranslated or unknown code  
   **When** received  
   **Then** fallback message and correlation id are surfaced.
+
+### Story 1.7: [BE][CH] Password Forgot/Reset API
+
+As a **locked-out or forgetful user**,  
+I want a secure password recovery API,  
+So that I can regain access without leaking whether my account exists.
+
+**Depends On:** Story 1.1, Story 1.2, Story 1.5, Story 1.6
+
+**Acceptance Criteria:**
+
+- **Given** `POST /api/v1/auth/password/forgot`  
+  **When** any normalized username is submitted  
+  **Then** API always returns the fixed `202 Accepted` recovery envelope and only eligible accounts receive an asynchronously issued reset email.
+- **Given** `POST /api/v1/auth/password/forgot/challenge`  
+  **When** challenge bootstrap is requested  
+  **Then** API returns the fixed `200 OK` challenge contract with signed challenge token, `ttl=300s`, and replay-safe nonce handling.
+- **Given** `POST /api/v1/auth/password/reset` with a valid reset token and a password different from the current password  
+  **When** request succeeds  
+  **Then** password hash update, `password_changed_at` update, and reset-token consume happen atomically and response is `204 No Content`.
+- **Given** invalid, expired, consumed, same-password, or rate-limited recovery requests  
+  **When** API rejects the operation  
+  **Then** contracted error codes `AUTH-012` through `AUTH-015` and `Retry-After` semantics are returned without revealing account eligibility.
+- **Given** a successful password reset for a member with active sessions  
+  **When** reset transaction commits  
+  **Then** active sessions are invalidated and stale follow-up requests are rejected with `AUTH-016`.
 
 ---
 
