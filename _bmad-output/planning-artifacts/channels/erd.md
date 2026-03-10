@@ -535,20 +535,22 @@ erDiagram
 
 ---
 
-## Password Recovery ERD Addendum (Story 1.7, 2026-03-05)
+## Password Recovery ERD Addendum (Story 1.7 / Story 1.10, 2026-03-11)
 
 ### Entity: PASSWORD_RESET_TOKENS
 
 | Column Name | Type | Key | Nullable | Description |
 | :--- | :--- | :--- | :--- | :--- |
 | `id` | BIGINT UNSIGNED | PK | NO | Internal key |
-| `member_uuid` | CHAR(36) | IDX | NO | Target member UUID |
+| `member_id` | BIGINT UNSIGNED | IDX | NO | Target member internal ID (`MEMBERS.id`) |
 | `token_hash` | CHAR(64) | UK | NO | HMAC-derived token hash only |
 | `pepper_version` | SMALLINT | | NO | Pepper key version |
 | `active_slot` | TINYINT | | YES | `1` active, `NULL` terminal |
 | `issued_at` | DATETIME(6) | | NO | Issued timestamp |
 | `expires_at` | DATETIME(6) | IDX | NO | Expiry timestamp |
 | `consumed_at` | DATETIME(6) | IDX | YES | Consumed timestamp |
+| `terminal_reason` | VARCHAR(20) | | YES | `CONSUMED`, `SUPERSEDED`, or `EXPIRED` |
+| `terminalized_at` | DATETIME(6) | IDX | YES | Terminalization timestamp and purge anchor |
 | `request_ip` | VARCHAR(45) | | YES | Masked source IP |
 | `request_user_agent_hash` | CHAR(64) | | YES | User-agent hash |
 | `created_at` | DATETIME(6) | | NO | Insert timestamp |
@@ -556,16 +558,18 @@ erDiagram
 
 Constraints:
 - `UNIQUE(token_hash)`
-- `UNIQUE(member_uuid, active_slot)`
+- `UNIQUE(member_id, active_slot)`
 - `CHECK (active_slot IS NULL OR active_slot = 1)`
+- `CHECK (terminal_reason IS NULL OR terminal_reason IN ('CONSUMED', 'SUPERSEDED', 'EXPIRED'))`
 
 ### MEMBERS extension
 
 `MEMBERS` adds:
 - `password_changed_at DATETIME(3) NOT NULL`
-- Index `(member_uuid, password_changed_at)`
+- Index `(password_changed_at)`
 
 ### Logical relation
 
-- `MEMBERS.member_uuid 1 --- n PASSWORD_RESET_TOKENS.member_uuid`
+- `MEMBERS.id 1 --- n PASSWORD_RESET_TOKENS.member_id`
 - At most one row can be active (`active_slot=1`) per member.
+- Terminal rows retain explicit lifecycle cause and purge timing via `terminal_reason` + `terminalized_at`.

@@ -1974,5 +1974,8 @@ flowchart LR
 - Reset token persistence:
   - Table: `channel_db.password_reset_tokens`
   - Only HMAC token hash persisted (no raw token)
-  - One-active-token invariant: unique `(member_uuid, active_slot)` and domain guard `active_slot IS NULL OR active_slot = 1`
+  - One-active-token invariant: unique `(member_id, active_slot)` and domain guard `active_slot IS NULL OR active_slot = 1`
+  - Terminal rows persist `terminal_reason` (`CONSUMED`, `SUPERSEDED`, `EXPIRED`) and `terminalized_at`
+  - `CONSUMED` rows set both `consumed_at` and `terminalized_at`; `SUPERSEDED` / `EXPIRED` rows keep `consumed_at = NULL`
+  - Single-instance cleanup scheduler runs every `15 minutes` with bounded loop policy (`batchSize=500`, `maxBatchesPerRun=8`, `maxRunSeconds=20`) and purges terminal rows `30 days` after `terminalized_at`
 - Successful reset MUST update `members.password_changed_at` in same DB transaction as password hash update and token consume.
