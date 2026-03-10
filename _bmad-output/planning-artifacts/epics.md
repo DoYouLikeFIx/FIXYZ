@@ -140,6 +140,8 @@ Completes the channel authentication/session foundation, adds password recovery 
 - Story 1.5: BE Auth Guardrails
 - Story 1.6: FE/MOB Auth Error Standardization
 - Story 1.7: BE Password Forgot/Reset API
+- Story 1.8: FE Password Recovery UX
+- Story 1.9: MOB Password Recovery UX
 
 ### Epic 2: Account Domain & Inquiry APIs
 
@@ -791,20 +793,81 @@ So that I can regain access without leaking whether my account exists.
 **Acceptance Criteria:**
 
 - **Given** `POST /api/v1/auth/password/forgot`  
-  **When** any normalized email is submitted  
-  **Then** API always returns the fixed `202 Accepted` recovery envelope and only eligible accounts receive an asynchronously issued reset email.
+  **When** any normalized email is submitted and the request is not rejected by CSRF or rate limiting  
+  **Then** API returns the fixed `202 Accepted` recovery envelope with no eligibility disclosure and only existing member accounts are allowed to receive an asynchronously issued reset email under the canonical recovery policy.
 - **Given** `POST /api/v1/auth/password/forgot/challenge`  
-  **When** challenge bootstrap is requested  
-  **Then** API returns the fixed `200 OK` challenge contract with signed challenge token, `ttl=300s`, and replay-safe nonce handling.
+  **When** challenge bootstrap is requested and the request is not rejected by CSRF or rate limiting  
+  **Then** API returns the fixed `200 OK` challenge contract regardless of account existence/status with signed challenge token, `ttl=300s`, and replay-safe nonce handling.
 - **Given** `POST /api/v1/auth/password/reset` with a valid reset token and a password different from the current password  
   **When** request succeeds  
   **Then** password hash update, `password_changed_at` update, and reset-token consume happen atomically and response is `204 No Content`.
 - **Given** invalid, expired, consumed, same-password, or rate-limited recovery requests  
   **When** API rejects the operation  
-  **Then** contracted error codes `AUTH-012` through `AUTH-015` and `Retry-After` semantics are returned without revealing account eligibility.
+  **Then** `AUTH-012` maps to invalid or expired reset token, `AUTH-013` to consumed reset token, `AUTH-014` to forgot/challenge/reset rate-limit rejection with `Retry-After`, and `AUTH-015` to same-password reset attempts.
 - **Given** a successful password reset for a member with active sessions  
   **When** reset transaction commits  
-  **Then** active sessions are invalidated and stale follow-up requests are rejected with `AUTH-016`.
+  **Then** active sessions are invalidated and the first subsequent authenticated `GET /api/v1/auth/session` request made with the pre-reset session is rejected with `401 AUTH-016`.
+- **Given** missing or invalid CSRF tokens on `POST /api/v1/auth/password/forgot`, `/forgot/challenge`, or `/reset`  
+  **When** request is submitted  
+  **Then** Spring Security rejects it with raw `403 Forbidden` before the application error envelope is applied.
+
+### Story 1.8: [FE] Web Password Recovery UX
+
+As a **locked-out or forgetful web user**,  
+I want a browser-based password recovery request/reset flow,  
+So that I can regain access from the login experience without revealing whether my account exists.
+
+**Depends On:** Story 1.3, Story 1.6, Story 1.7
+
+**Acceptance Criteria:**
+
+- **Given** the web login screen or a dedicated public recovery entry  
+  **When** the user opens password recovery  
+  **Then** the browser provides a dedicated forgot-password submit experience instead of only inline guidance.
+- **Given** `POST /api/v1/auth/password/forgot`  
+  **When** the user submits any normalized email and the request is not rejected by CSRF or rate limiting  
+  **Then** the UI shows the same accepted guidance for known and unknown accounts and does not disclose eligibility.
+- **Given** the recovery contract advertises `challengeMayBeRequired=true` or the flow requires challenge bootstrap  
+  **When** the browser calls `POST /api/v1/auth/password/forgot/challenge`  
+  **Then** the challenge token, type, and TTL are handled in UI state and the follow-up forgot submit preserves the original email payload semantics.
+- **Given** a CSRF failure on forgot, challenge, or reset submit  
+  **When** the browser receives raw `403 Forbidden`  
+  **Then** it re-fetches CSRF once, retries once with identical payload, and if the second attempt still fails shows terminal error UX.
+- **Given** the browser receives a valid recovery token through the supported web handoff  
+  **When** the user opens the reset-password experience and submits a new password  
+  **Then** the browser calls `POST /api/v1/auth/password/reset`, handles `204 No Content`, and returns the user to login with deterministic success guidance.
+- **Given** invalid, expired, consumed, same-password, rate-limited, or stale-session outcomes  
+  **When** the browser receives `AUTH-012` through `AUTH-016` or an unknown recovery error  
+  **Then** user-facing guidance is mapped deterministically, `Retry-After` guidance is shown where applicable, and unknown cases preserve visible support correlation context.
+
+### Story 1.9: [MOB] Mobile Password Recovery UX
+
+As a **locked-out or forgetful mobile user**,  
+I want a native password recovery request/reset flow,  
+So that I can regain access on mobile without relying on inconsistent web-only behavior.
+
+**Depends On:** Story 1.4, Story 1.6, Story 1.7
+
+**Acceptance Criteria:**
+
+- **Given** the mobile login screen or a dedicated native recovery entry  
+  **When** the user opens password recovery  
+  **Then** the app provides a native forgot-password submit experience instead of only inline guidance.
+- **Given** `POST /api/v1/auth/password/forgot`  
+  **When** the user submits any normalized email and the request is not rejected by CSRF or rate limiting  
+  **Then** the app shows the same accepted guidance for known and unknown accounts and does not disclose eligibility.
+- **Given** the recovery contract advertises `challengeMayBeRequired=true` or the flow requires challenge bootstrap  
+  **When** the app calls `POST /api/v1/auth/password/forgot/challenge`  
+  **Then** the challenge token, type, and TTL are handled in transient app state and the follow-up forgot submit preserves the original email payload semantics.
+- **Given** a CSRF failure on forgot, challenge, or reset submit  
+  **When** the app receives raw `403 Forbidden`  
+  **Then** it refreshes CSRF once, retries once with identical payload, and if the second attempt still fails shows terminal error UX.
+- **Given** the app receives a valid recovery token through the supported mobile handoff  
+  **When** the user opens the reset-password screen and submits a new password  
+  **Then** the app calls `POST /api/v1/auth/password/reset`, handles `204 No Content`, and routes the user back to login with deterministic success guidance.
+- **Given** invalid, expired, consumed, same-password, rate-limited, or stale-session outcomes  
+  **When** the app receives `AUTH-012` through `AUTH-016` or an unknown recovery error  
+  **Then** field/global guidance is mapped deterministically, `Retry-After` guidance is shown where applicable, and stale-session handling returns the user to the login route without back-stack corruption.
 
 ---
 

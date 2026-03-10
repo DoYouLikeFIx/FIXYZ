@@ -129,7 +129,7 @@ As an **authenticated user with a pending order session**,
 I want to enter my Google Authenticator code to advance the session to AUTHED state,  
 So that my order completes step-up authentication before execution.
 
-**Depends On:** Story 2.1, Story 1.8
+**Depends On:** Story 2.1, Supplemental Reference B (TOTP Enrollment in Epic 1 historical artifact)
 
 ### Acceptance Criteria
 
@@ -177,8 +177,8 @@ for (long w = windowIndex - 1; w <= windowIndex + 1; w++) {
 **Then** `OtpService` interface:
 ```java
 public interface OtpService {
-    TotpEnrollResult generateSecret(Long memberId);         // Story 1.8 Enrollment
-    boolean confirmEnrollment(Long memberId, String code);  // Story 1.8 Enrollment Verification
+    TotpEnrollResult generateSecret(Long memberId);         // Supplemental Reference B: TOTP enrollment
+    boolean confirmEnrollment(Long memberId, String code);  // Supplemental Reference B: TOTP enrollment verification
     OtpVerifyResult verify(String sessionId, String code, Long memberId); // Story 2.2
 }
 ```

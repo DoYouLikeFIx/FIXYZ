@@ -1371,7 +1371,7 @@ jobs:
 
 ---
 
-> **Traceability summary:** All 7 acceptance scenarios trace to FRs. All 4 User Journeys fully covered. All 5 React screens designable from FRs alone, and the password recovery API contract is now included in the MVP auth surface. No FR contains implementation details (HOW). Growth-scope capabilities (notification read/filter, admin UI, Keycloak) intentionally excluded.
+> **Traceability summary:** All 7 acceptance scenarios trace to FRs. All 4 User Journeys fully covered. The 5 baseline React screens remain designable from FRs alone, and the password recovery capability contract is included in the MVP auth surface. Dedicated FE/MOB password recovery UX follow-on stories in Epic 1 consume FR-57~61 without introducing additional FRs. No FR contains implementation details (HOW). Growth-scope capabilities (notification read/filter, admin UI, Keycloak) intentionally excluded.
 
 ---
 

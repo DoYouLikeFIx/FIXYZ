@@ -9,11 +9,11 @@ Users can log in and maintain their session via Spring Session Redis-backed sess
 **FRs covered:** FR-01, FR-02, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-52, FR-57, FR-58, FR-59, FR-60, FR-61  
 **Architecture requirements:** SessionConfig(@EnableRedisHttpSession), SpringSessionBackedSessionRegistry, CorrelationIdFilter, AuthService, OtpService (base), SecurityConfig, CorsConfig, Member Entity, Account Entity, ChannelIntegrationTestBase, CoreBankIntegrationTestBase  
 **Frontend:** LoginPage.tsx, RegisterPage.tsx, DashboardPage.tsx, App.tsx(Router), PrivateRoute, NavigationBar, useAuthStore.ts, useAccount.ts, lib/axios.ts(SSE + 401 handler)
-**Canonical planning source:** `_bmad-output/planning-artifacts/epics.md` (Epic 1 Story `1.1`~`1.7`)  
+**Canonical planning source:** `_bmad-output/planning-artifacts/epics.md` (Epic 1 Story `1.1`~`1.9`)  
 **Canonical tracking source:** `_bmad-output/implementation-artifacts/sprint-status.yaml`  
 **Usage rule:** This document is supplemental technical context; use canonical Story files and sprint-status keys as the source of truth for implementation tracking.  
-**Numbering notice:** Canonical Epic 1 scope now runs through Story `1.7`. Older non-canonical references that previously occupied `1.7`~`1.9` are relabeled below as supplemental references to avoid ID collisions.  
-**Alignment hint:** Canonical Story 1.1/1.2/1.3/1.4/1.5/1.6/1.7 should consume relevant technical details from this document without replacing canonical ownership.  
+**Numbering notice:** Canonical Epic 1 scope now runs through Story `1.9`. Older non-canonical references that previously occupied `1.7`~`1.9` are relabeled below as supplemental references to avoid ID collisions.  
+**Alignment hint:** Canonical Story 1.1/1.2/1.3/1.4/1.5/1.6/1.7/1.8/1.9 should consume relevant technical details from this document without replacing canonical ownership.  
 **Verification baseline:** Party-mode QA reinforcement is reflected in canonical Story files; validate against canonical Story artifacts because the previous local helper script is not part of this repository.
 
 > **Common Error Format (GlobalExceptionHandler):** All error responses follow the `{ code: string, message: string, timestamp: ISO8601, path: string }` structure. `@ControllerAdvice` `GlobalExceptionHandler` handles this consistently.

@@ -588,7 +588,9 @@ redis:
 
 ---
 
-## 13. TOTP Enrollment Flow (Story 1.8)
+## 13. TOTP Enrollment Flow (Supplemental Reference B, historical non-canonical)
+
+> **Numbering note:** Canonical Epic 1 now reserves Story `1.8` and Story `1.9` for FE/MOB password recovery UX in `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/epics.md`. This TOTP enrollment section remains a supporting reference for step-up auth and must not be treated as the canonical owner of Epic 1 story numbering.
 
 > **Purpose:** TOTP is a prerequisite for order execution, not for basic login.
 
@@ -831,12 +833,12 @@ OrderSessionService.initiate() -> FdsService.analyze(ORDER_INITIATED)
 1. Normalize email: `NFKC(trim(email)).toLowerCase(Locale.ROOT)`
 2. Apply rate limits (`per-IP`, `per-email`, `mail-cooldown`) and challenge gate decision
 3. If challenge-gated, require `challengeToken + challengeAnswer` validation
-4. Always return fixed `202` response envelope (no eligibility disclosure)
+4. For CSRF-valid, non-rate-limited requests, always return fixed `202` response envelope (no eligibility disclosure)
 5. If account is eligible and policy passes, issue reset token asynchronously and dispatch email
 
 ### Flow B: Challenge Bootstrap (`POST /api/v1/auth/password/forgot/challenge`)
 
-1. Return fixed `200` contract regardless of account existence/status
+1. For CSRF-valid, non-rate-limited requests, return fixed `200` contract regardless of account existence/status
 2. Issue signed challenge token (`ttl=300s`) with email-hash binding
 3. Persist nonce in Redis using atomic create (`SET NX EX 300`)
 4. Enforce challenge endpoint rate limits (`per-IP`, `per-email`, `endpoint-global`)
@@ -850,10 +852,13 @@ OrderSessionService.initiate() -> FdsService.analyze(ORDER_INITIATED)
    - update `members.password_changed_at`
    - mark reset token consumed
 4. Post-commit: invalidate active sessions; if delayed, auth filter blocks stale sessions via `AUTH-016`
+5. Token handoff into FE/MOB is owned by each channel's router or app shell; concrete web route names and mobile deep-link formats are intentionally non-canonical here
 
 ### Security Notes
 
 - CSRF is mandatory for forgot/challenge/reset.
+- CSRF failure returns raw `403 Forbidden` before the application error envelope.
+- Rate-limit rejection returns `AUTH-014` with `429` and `Retry-After`.
 - CSRF retry policy for all password recovery submits: one re-fetch + one retry only.
 - Retry must preserve payload/idempotency fields exactly.
 - Challenge replay is blocked by Redis atomic nonce consume.

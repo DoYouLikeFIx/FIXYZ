@@ -1,6 +1,6 @@
 # Story 1.7: BE Password Forgot Reset API
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -12,57 +12,75 @@ so that I can regain access without leaking whether my account exists.
 
 ## Acceptance Criteria
 
-1. Given `POST /api/v1/auth/password/forgot`, when any normalized email is submitted, then the API always returns the fixed `202 Accepted` recovery envelope and only eligible accounts receive an asynchronously issued reset email.
-2. Given `POST /api/v1/auth/password/forgot/challenge`, when challenge bootstrap is requested, then the API returns the fixed `200 OK` challenge contract with signed challenge token, `ttl=300s`, and replay-safe nonce handling.
+1. Given `POST /api/v1/auth/password/forgot`, when any normalized email is submitted and the request is not rejected by CSRF or rate limiting, then the API returns the fixed `202 Accepted` recovery envelope with no eligibility disclosure, and only existing member accounts are allowed to receive an asynchronously issued reset email under the canonical recovery policy.
+2. Given `POST /api/v1/auth/password/forgot/challenge`, when challenge bootstrap is requested and the request is not rejected by CSRF or rate limiting, then the API returns the fixed `200 OK` challenge contract with signed challenge token, `ttl=300s`, and replay-safe nonce handling.
 3. Given `POST /api/v1/auth/password/reset` with a valid reset token and a password different from the current password, when the request succeeds, then password hash update, `password_changed_at` update, and reset-token consume happen atomically and the response is `204 No Content`.
-4. Given invalid, expired, consumed, same-password, or rate-limited recovery requests, when the API rejects the operation, then contracted error codes `AUTH-012` through `AUTH-015` and `Retry-After` semantics are returned without revealing account eligibility.
-5. Given a successful password reset for a member with active sessions, when the reset transaction commits, then active sessions are invalidated and stale follow-up requests are rejected with `AUTH-016`.
+4. Given invalid, expired, consumed, same-password, or rate-limited recovery requests, when the API rejects the operation, then the canonical mapping is enforced: `AUTH-012` for invalid or expired reset token, `AUTH-013` for consumed reset token, `AUTH-014` for forgot/challenge/reset rate-limit rejection with `Retry-After`, and `AUTH-015` for same-password reset attempts.
+5. Given a successful password reset for a member with active sessions, when the reset transaction commits, then active sessions are invalidated and the first subsequent authenticated `GET /api/v1/auth/session` request made with the pre-reset session is rejected with `401 AUTH-016`.
+6. Given missing or invalid CSRF tokens on `POST /api/v1/auth/password/forgot`, `/forgot/challenge`, or `/reset`, when the request is submitted, then Spring Security rejects it with raw `403 Forbidden` before the application error envelope is applied.
 
 ## Tasks / Subtasks
 
-- [ ] Add password recovery endpoints and DTOs under `/api/v1/auth/password/**` (AC: 1, 2, 3, 4)
-  - [ ] Introduce forgot, challenge bootstrap, and reset request/response contracts
-  - [ ] Keep fixed status/body semantics for anti-enumeration paths
-- [ ] Implement password recovery application service with anti-enumeration timing and rate controls (AC: 1, 2, 4)
-  - [ ] Normalize email as `NFKC(trim(email)).toLowerCase(Locale.ROOT)`
-  - [ ] Apply per-IP, per-email, cooldown, and endpoint-global policies from the channel API addendum
-  - [ ] Gate challenge issuance/verification with signed token plus Redis nonce replay protection
-- [ ] Introduce reset-token persistence and password-rotation transaction boundary (AC: 3, 4)
-  - [ ] Add Flyway migration for `password_reset_tokens` and `members.password_changed_at`
-  - [ ] Persist only token hash plus pepper version, never the raw token
-  - [ ] Enforce one-active-token-per-member semantics and reissue invalidation
-- [ ] Reuse and extend existing session invalidation behavior for reset completion (AC: 5)
-  - [ ] Invalidate all active sessions after successful password reset
-  - [ ] Add deterministic stale-session denial path for `AUTH-016`
-- [ ] Add integration and focused unit coverage for recovery lifecycle, timing guardrails, and session invalidation (AC: 1, 2, 3, 4, 5)
+- [x] Add password recovery endpoints and DTOs under `/api/v1/auth/password/**` (AC: 1, 2, 3, 4, 6)
+  - [x] Introduce forgot, challenge bootstrap, and reset request/response contracts
+  - [x] Keep fixed status/body semantics for anti-enumeration paths
+- [x] Implement password recovery application service with anti-enumeration timing and rate controls (AC: 1, 2, 4)
+  - [x] Normalize email as `NFKC(trim(email)).toLowerCase(Locale.ROOT)`
+  - [x] Apply per-IP, per-email, cooldown, and endpoint-global policies from the channel API addendum
+  - [x] Gate challenge issuance/verification with signed token plus Redis nonce replay protection
+- [x] Introduce reset-token persistence and password-rotation transaction boundary (AC: 3, 4)
+  - [x] Add Flyway migration for `password_reset_tokens` and `members.password_changed_at`
+  - [x] Persist only token hash plus pepper version, never the raw token
+  - [x] Enforce one-active-token-per-member semantics and reissue invalidation
+- [x] Reuse and extend existing session invalidation behavior for reset completion (AC: 5)
+  - [x] Invalidate all active sessions after successful password reset
+  - [x] Add deterministic stale-session denial path for `AUTH-016`
+- [x] Add integration and focused unit coverage for recovery lifecycle, timing guardrails, and session invalidation (AC: 1, 2, 3, 4, 5, 6)
 
 ## Dev Notes
 
 ### Developer Context Section
 
 - Canonical tracking source for this story is `_bmad-output/implementation-artifacts/sprint-status.yaml` key `1-7-be-password-forgot-reset-api`.
-- Canonical planning artifact `_bmad-output/planning-artifacts/epics.md` now contains Story 1.7 and serves as the parent planning source for this file.
-- Supplemental artifact `_bmad-output/implementation-artifacts/epic-1-user-authentication-and-account-access.md` was realigned so the old frontend-auth material is labeled as a supplemental reference. Use this file as the source of truth for canonical Story 1.7 implementation details.
+- Canonical planning precedence for this story is: `_bmad-output/planning-artifacts/channels/api-spec.md` -> `_bmad-output/planning-artifacts/epics.md` -> `_bmad-output/planning-artifacts/channels/login_flow.md` -> `_bmad-output/planning-artifacts/prd.md` / `_bmad-output/planning-artifacts/architecture.md`.
+- Supplemental artifact `_bmad-output/implementation-artifacts/epic-1-user-authentication-and-account-access.md` remains historical context only and must not override the canonical planning stack for Story 1.7.
 - This story extends the Epic 1 auth lane after Story 1.5 and Story 1.6. It must reuse existing auth/session patterns instead of inventing a second recovery or session model.
 - Current code already invalidates all sessions on authenticated password change in `MemberService.updateMyPassword(...)`; reuse that session invalidation approach for reset completion rather than creating a new session-revocation mechanism.
 
 ### Technical Requirements
 
+- Canonical contract decisions from the planning stack:
+  - Recovery endpoints use JSON request bodies (`@RequestBody`); existing non-recovery auth endpoints may remain form-bound.
+  - Token ownership uses `members.id` as the only persisted recovery foreign key.
+  - Recovery CSRF uses the advertised header name from `GET /api/v1/auth/csrf`; current channel baseline is `X-CSRF-TOKEN`.
+  - `POST /api/v1/auth/password/reset` success is bare `204 No Content`, while `forgot` and `challenge` use the standard success envelope.
+  - CSRF failures are enforced by Spring Security before controller advice and therefore return raw `403 Forbidden`, not the application error envelope.
 - Endpoint contract from channel addendum:
   - `POST /api/v1/auth/password/forgot`
   - `POST /api/v1/auth/password/forgot/challenge`
   - `POST /api/v1/auth/password/reset`
 - Fixed recovery semantics:
-  - Forgot always returns `202 Accepted` with recovery metadata and no eligibility disclosure.
-  - Challenge bootstrap always returns `200 OK` with `challengeToken`, `challengeType`, and `challengeTtlSeconds=300`.
+  - Forgot returns fixed `202 Accepted` with recovery metadata and no eligibility disclosure for all non-rate-limited, non-CSRF-rejected requests.
+  - Challenge bootstrap returns fixed `200 OK` with `challengeToken`, `challengeType`, and `challengeTtlSeconds=300` for all non-rate-limited, non-CSRF-rejected requests.
   - Reset success returns `204 No Content`.
+- Canonical recovery policy language:
+  - "eligible account" means an existing member account.
+  - At the Story 1.7 contract layer, no additional business-state exclusions are introduced beyond existence plus the canonical cooldown, challenge, and rate-limit gates already documented in the planning artifacts.
+- Canonical error mapping from `_bmad-output/planning-artifacts/channels/api-spec.md`:
+  - `AUTH-012` -> invalid or expired reset token (`401`)
+  - `AUTH-013` -> consumed reset token (`409`)
+  - `AUTH-014` -> forgot/challenge/reset rate limit exceeded with `Retry-After` (`429`)
+  - `AUTH-015` -> `newPassword` equals current password (`422`)
+  - `AUTH-016` -> stale session after password change (`401`)
 - Rate limits from `_bmad-output/planning-artifacts/channels/api-spec.md`:
   - `forgot`: `per-IP 5/min`, `per-email 3/15min`, `mail-cooldown-key(emailHash) 1/5min`
   - `forgot/challenge`: `per-IP 5/min`, `per-email 3/10min`, `endpoint-global 60/min`
   - `reset`: `per-IP 10/5min`, `per-tokenHash 5/15min`, `endpoint-global 60/min`
 - Timing equalization:
-  - Forgot path anti-enumeration envelope: floor `400ms`, jitter `0~50ms`, p95 delta between existent/non-existent/challenge paths <= `80ms`
+  - Forgot path anti-enumeration envelope: floor `400ms`, jitter `0~50ms`
   - Reset token validation: floor `120ms`, jitter `0~20ms` across valid/invalid/expired/consumed paths
+  - The planning addendum target of p95 delta `<= 80ms` between existent/non-existent/challenge-gated forgot paths remains in force.
+  - Review evidence for that target must document the benchmark method using at least `30` warmed samples per path in the same integration environment and must record the slowest-versus-fastest p95 delta in `_bmad-output/implementation-artifacts/tests/test-summary.md` or a story-specific timing appendix under the same folder.
 - Token persistence contract:
   - Persist HMAC token hash only, never the raw token
   - Store pepper version to support active + previous pepper validation
@@ -86,13 +104,13 @@ so that I can regain access without leaking whether my account exists.
   - Flyway migration numbering and `db/migration` layout
 - Do not weaken global security baselines just because these endpoints are public:
   - keep CSRF enforcement
-  - keep standardized error envelope
+  - keep the standardized application error envelope for business exceptions that reach controller advice
   - keep correlation-id propagation and user-facing `traceId`
-- Resolve the documented implementation drifts explicitly before coding:
-  - Request binding drift: current auth endpoints use `@ModelAttribute`, while password recovery addenda are documented as JSON bodies
-  - Identity drift: recovery table specs use `member_uuid`, while current entity/migration baseline exposes `members.id` and `member_no`
+- Canonicalized contract drift decisions for this story:
+  - Recovery endpoints use JSON bodies; existing auth form-binding remains unchanged outside the recovery surface.
+  - Recovery persistence uses `members.id`; no dual-key recovery ownership is permitted.
 - Guardrail:
-  - Do not partially "fix" one of the drifts for this story alone. Choose a canonical implementation path and update controller, tests, API docs, and client expectations together.
+  - If this story changes the canonical recovery contract, controller behavior, tests, API docs, and FE/MOB expectations must be synchronized together; no mixed contract per recovery endpoint.
 
 ### Library / Framework Requirements
 
@@ -126,7 +144,7 @@ so that I can regain access without leaking whether my account exists.
   - `BE/channel-domain/src/main/java/com/fix/channel/entity/**`
   - `BE/core-common/src/main/java/com/fix/common/error/ErrorCode.java`
   - `BE/channel-service/src/main/resources/application*.yml`
-  - `BE/channel-service/src/main/resources/db/migration/V6__*.sql` (or the next available version if a newer migration is added first)
+  - `BE/channel-service/src/main/resources/db/migration/V6__password_recovery_tokens_and_password_changed_at.sql`
   - `BE/channel-service/src/test/java/com/fix/channel/integration/**`
 - Recommended additions:
   - `PasswordResetToken` entity in `BE/channel-domain`
@@ -141,17 +159,21 @@ so that I can regain access without leaking whether my account exists.
 ### Testing Requirements
 
 - Required backend checks:
-  - same `forgot` response body and status for existent vs non-existent accounts
+  - same `forgot` response body and status for existent vs non-existent accounts when the requests are not rejected by CSRF or rate limiting
+  - same `forgot` response body and status for existent, non-existent, and challenge-gated accounts when the requests are not rejected by CSRF or rate limiting
   - challenge bootstrap returns fixed contract and rejects replayed/expired challenge nonce
   - valid reset rotates password, consumes token, updates `password_changed_at`, and invalidates sessions
-  - invalid, expired, and consumed token paths map to `AUTH-012` or `AUTH-013` deterministically
+  - invalid and expired reset token paths map to `AUTH-012`; consumed reset token path maps to `AUTH-013`
   - same-password reset attempt returns `AUTH-015`
   - rate-limited forgot/challenge/reset paths return `429` with `Retry-After`
-  - missing/invalid CSRF token still fails for all non-GET recovery endpoints
+  - missing/invalid CSRF token still fails for all non-GET recovery endpoints with the raw Spring Security `403` contract
+  - `GET /api/v1/auth/session` made with the pre-reset session fails with `401 AUTH-016`
 - Test infrastructure expectations:
   - prefer `ChannelContainersIntegrationTestBase` for MySQL + Redis-backed integration coverage
   - add narrow unit tests for timing equalization helpers and token-hash validation branches
   - if email dispatch is asynchronous, isolate transport with stub/fake sender rather than real SMTP
+- Client/contract evidence expectations:
+  - attach FE/MOB evidence for the canonical recovery submit policy under `_bmad-output/implementation-artifacts/tests/`, including the one-refresh/one-retry CSRF behavior when that path is exercised
 - Regression checks:
   - existing login/logout/session flows must continue to pass
   - authenticated password change behavior in `MemberService` must not regress
@@ -163,13 +185,13 @@ so that I can regain access without leaking whether my account exists.
   - Reject implementation start if any source uses the legacy frontend-auth supplemental reference in `epic-1-user-authentication-and-account-access.md` as the requirements source for this file.
   - `story_key`, filename, and sprint-status key must remain `1-7-be-password-forgot-reset-api`.
 - Contract drift gate:
-  - Decide once whether recovery endpoints use JSON (`@RequestBody`) or current auth-style binding (`@ModelAttribute`).
+  - Recovery endpoints use JSON (`@RequestBody`); current auth-style form binding remains outside this recovery surface.
   - Update controller tests, API docs, and FE/MOB expectations together; no mixed contract per recovery endpoint.
 - Identity key gate:
-  - Before writing the migration, resolve whether token ownership uses `members.id`, `member_no`, or a newly introduced `member_uuid`.
-  - Migration, entity, repository, and SQL snippets must all use the same identity key with no dual-key ambiguity.
+  - Token ownership uses `members.id`.
+  - Migration, entity, repository, and SQL snippets must all use `members.id` with no dual-key ambiguity.
 - Anti-enumeration gate:
-  - Compare existent/non-existent/challenge-gated forgot flows for status/body equivalence and bounded timing delta.
+  - Compare existent/non-existent/challenge-gated forgot flows for status/body equivalence when the requests are not rejected by CSRF or rate limiting.
   - Ensure logging/audit output also avoids leaking whether the submitted email exists.
 - Token lifecycle gate:
   - Reissue invalidates previous active token.
@@ -177,14 +199,14 @@ so that I can regain access without leaking whether my account exists.
   - `valid`, `invalid`, `expired`, and `consumed` reset paths respect equalized timing.
 - Session invalidation gate:
   - Successful reset invalidates all existing sessions for the member.
-  - First stale follow-up call after reset must fail with the contracted `AUTH-016` path, not a generic auth error.
+  - First stale follow-up call to `GET /api/v1/auth/session` after reset must fail with the contracted `AUTH-016` path, not a generic auth error.
 - Quality risk severity gate:
   - Any P0/P1 defect in anti-enumeration, token lifecycle, or session invalidation blocks status transition to `review`.
   - Any accepted P2 defect must include issue ID, owner, and due date in QA evidence.
 - Evidence gate for review handoff:
-  - Attach integration evidence for forgot/challenge/reset happy path and negative path matrix.
-  - Attach one DB evidence sample proving hash-only persistence.
-  - Attach one session invalidation trace showing pre-reset session becomes stale after reset.
+  - Review handoff evidence must live under `_bmad-output/implementation-artifacts/tests/`; source tests alone are implementation references, not sufficient review artifacts.
+  - Attach integration evidence for forgot/challenge/reset happy path and negative path matrix in `_bmad-output/implementation-artifacts/tests/test-summary.md` or a story-specific companion file under the same folder.
+  - Attach one DB evidence sample proving hash-only persistence and one session invalidation trace showing `GET /api/v1/auth/session` becomes stale after reset in the same evidence folder.
 
 ### Previous Story Intelligence
 
@@ -222,14 +244,14 @@ so that I can regain access without leaking whether my account exists.
 
 ### Story Completion Status
 
-- Status set to `ready-for-dev`.
-- Completion note: Story artifact backfilled to match existing sprint-status tracking with comprehensive password recovery guardrails.
+- Status set to `review`.
+- Completion note: Story artifact corrected to match the canonical password-recovery contract in `channels/api-spec.md`, `channels/login_flow.md`, `prd.md`, and `epics.md`.
 
 ### References
 
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
 - `_bmad-output/implementation-artifacts/1-6-fe-mob-auth-error-standardization.md`
-- `_bmad-output/implementation-artifacts/epic-1-user-authentication-and-account-access.md`
+- `_bmad-output/implementation-artifacts/tests/test-summary.md`
 - `_bmad-output/planning-artifacts/channels/api-spec.md`
 - `_bmad-output/planning-artifacts/channels/login_flow.md`
 - `_bmad-output/planning-artifacts/channels/primary_query.md`
@@ -247,8 +269,6 @@ so that I can regain access without leaking whether my account exists.
 - `BE/channel-service/src/main/java/com/fix/channel/config/ChannelSessionConfig.java`
 - `BE/channel-service/src/test/java/com/fix/channel/integration/ChannelAuthFlowTest.java`
 - `BE/channel-service/src/test/java/com/fix/channel/integration/ChannelAuthGuardrailsIntegrationTest.java`
-- https://repo1.maven.org/maven2/org/springframework/boot/spring-boot/maven-metadata.xml
-- https://repo1.maven.org/maven2/org/springframework/boot/spring-boot-starter-mail/maven-metadata.xml
 
 ## Dev Agent Record
 
@@ -256,15 +276,6 @@ so that I can regain access without leaking whether my account exists.
 
 GPT-5 Codex (Codex desktop)
 
-### Debug Log References
+### Evidence Artifacts
 
-- Generated via `bmad-bmm-create-story` workflow interpretation with password recovery addendum synthesis.
-
-### Completion Notes List
-
-- Backfilled missing Story 1.7 artifact from sprint-status and channel password recovery addenda.
-- Added explicit guardrails for numbering conflict, request-contract drift, identity-key drift, and session invalidation reuse.
-
-### File List
-
-- C:/Users/SSAFY/FIXYZ/_bmad-output/implementation-artifacts/1-7-be-password-forgot-reset-api.md
+- `_bmad-output/implementation-artifacts/tests/test-summary.md`
