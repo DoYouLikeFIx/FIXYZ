@@ -7,18 +7,18 @@ Repository Layer 구현의 기준이 된다.
 
 # 1) `members`
 
-## 1.1 로그인: username으로 회원 조회
+## 1.1 로그인: email로 회원 조회
 **용도**: 로그인 요청 — 자격증명 검증, 상태 확인
 
 ```sql
-SELECT id, member_uuid, username, email, password_hash,
+SELECT id, member_uuid, email, password_hash,
        role, status, login_fail_count, last_fail_at, locked_at,
        totp_enabled, totp_enrolled_at, deleted_at
 FROM members
-WHERE username = ?
+WHERE email = ?
   AND deleted_at IS NULL;
 ```
-- 인덱스: `UK(username)`
+- 인덱스: `UK(email)`
 - 주의: `deleted_at IS NULL` 조건 필수, `status = 'LOCKED'`이면 앱 레이어에서 차단
 
 ---
@@ -27,7 +27,7 @@ WHERE username = ?
 **용도**: 내 프로필 조회, 관리자 회원 조회
 
 ```sql
-SELECT id, member_uuid, username, email, name, role, status,
+SELECT id, member_uuid, email, name, role, status,
        totp_enabled, totp_enrolled_at, created_at, updated_at
 FROM members
 WHERE member_uuid = ?

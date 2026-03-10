@@ -528,10 +528,10 @@ Long todaySold = query
 | `AUTH-005` | Target member not found for admin operations |
 | `AUTH-006` | Insufficient privilege |
 | `AUTH-007` | Password policy violation |
-| `AUTH-008` | Username already exists |
 | `AUTH-009` | TOTP enrollment required |
 | `AUTH-010` | Invalid TOTP confirm code |
 | `AUTH-011` | TOTP replay detected |
+| `AUTH-017` | Email already exists |
 
 **CHANNEL - Channel Service:**
 
@@ -928,7 +928,7 @@ services:
 
 | Table | Storage | Notes |
 | ----- | ------- | ----- |
-| `users` | MySQL | Email/username auth record, password hash, role, login-attempt counters, TOTP enrollment flags |
+| `users` | MySQL | Email auth record, password hash, role, login-attempt counters, TOTP enrollment flags |
 | `audit_logs` | MySQL | Actor, action, target, masked account, IP, created time |
 | `security_events` | MySQL | Security-relevant events such as lockout and forced logout |
 | `notifications` | MySQL | Notification history metadata |
@@ -961,15 +961,15 @@ services:
 | Endpoint | Limit | Error Response |
 | -------- | ----- | -------------- |
 | `POST /api/v1/auth/login` | 5 req/min per IP | 429 + `Retry-After` |
-| `POST /api/v1/auth/password/forgot` | 5 req/min per IP + 3/15 min per username + 1/5 min mail cooldown | 429 + `Retry-After` |
-| `POST /api/v1/auth/password/forgot/challenge` | 5 req/min per IP + 3/10 min per username + 60/min global | 429 + `Retry-After` |
+| `POST /api/v1/auth/password/forgot` | 5 req/min per IP + 3/15 min per email + 1/5 min mail cooldown | 429 + `Retry-After` |
+| `POST /api/v1/auth/password/forgot/challenge` | 5 req/min per IP + 3/10 min per email + 60/min global | 429 + `Retry-After` |
 | `POST /api/v1/auth/password/reset` | 10 req/5 min per IP + 5/15 min per token hash + 60/min global | 429 + `Retry-After` |
 | `POST /api/v1/orders/sessions/{sessionId}/otp/verify` | 3 attempts per session | 422 `CHANNEL-002`, 403 `CHANNEL-003`, 429 `RATE-001` only for debounce/rate-limit paths |
 | `POST /api/v1/orders/sessions` | 10 req/min per user | 429 + remaining quota in response |
 
 **Baseline non-rate-limited in MVP:** `/internal/v1/`, `/fep-internal/`, and most public `GET` endpoints, except explicitly documented session-scoped or admin read APIs.
 
-**Additional note:** password-recovery endpoints also enforce tighter per-username, per-token, cooldown, and endpoint-global protections. The table above is the main public-facing summary.
+**Additional note:** password-recovery endpoints also enforce tighter per-email, per-token, cooldown, and endpoint-global protections. The table above is the main public-facing summary.
 
 **OTP clarification:** `POST /api/v1/orders/sessions/{sessionId}/otp/verify` returns HTTP 422 `CHANNEL-002` for mismatch, HTTP 403 `CHANNEL-003` for attempt exhaustion, and HTTP 429 `RATE-001` only for debounce or explicit rate-limit paths.
 
@@ -1539,4 +1539,3 @@ jobs:
 | FR-33~37, FR-50 (Security & Audit)         | NFR-S2, NFR-L1                                       | Audit log correctness requires PII masking + JSON log structure            |
 | FR-41~42 (Portfolio & Observability)       | NFR-O1 (GitHub Pages API docs 200), NFR-L1 (JSON logs) | Observability claims require both API docs and structured log verification |
 | FR-51, FR-53 (Admin operations)            | NFR-S6 (Dependabot), NFR-M2 (Architecture Decisions) | Admin endpoints require supply chain security + documented rationale       |
-
