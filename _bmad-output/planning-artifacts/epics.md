@@ -130,7 +130,7 @@ Provides the common development foundation (module structure, execution infrastr
 
 ### Epic 1: Channel Auth & Session Platform
 
-Completes the channel authentication/session foundation, adds password recovery capability, and establishes the FE/MOB authentication UX.
+Completes the channel authentication/session foundation, adds password recovery capability plus bounded recovery-token cleanup/retention, and establishes the FE/MOB authentication UX.
 
 **Story Hints:**
 - Story 1.1: BE Registration & Login Session
@@ -142,6 +142,7 @@ Completes the channel authentication/session foundation, adds password recovery 
 - Story 1.7: BE Password Forgot/Reset API
 - Story 1.8: FE Password Recovery UX
 - Story 1.9: MOB Password Recovery UX
+- Story 1.10: BE Password Reset Token Cleanup, Terminalization & Retention
 
 ### Epic 2: Account Domain & Inquiry APIs
 
@@ -868,6 +869,50 @@ So that I can regain access on mobile without relying on inconsistent web-only b
 - **Given** invalid, expired, consumed, same-password, rate-limited, or stale-session outcomes  
   **When** the app receives `AUTH-012` through `AUTH-016` or an unknown recovery error  
   **Then** field/global guidance is mapped deterministically, `Retry-After` guidance is shown where applicable, and stale-session handling returns the user to the login route without back-stack corruption.
+
+### Story 1.10: [BE][CH] Password Reset Token Cleanup, Terminalization & Retention
+
+As a **platform operator**,
+I want password recovery tokens to be terminalized and purged under a bounded retention policy,
+So that password recovery storage remains operationally safe while preserving short-term forensic visibility.
+
+**Depends On:** Story 1.7
+
+**Acceptance Criteria:**
+
+- **Given** the password recovery cleanup policy  
+  **When** the scheduler is active  
+  **Then** it runs every `15 minutes` against `channel_db.password_reset_tokens` in the single-instance channel-service runtime.
+- **Given** password reset token rows that are expired but still active (`active_slot = 1` and `expires_at < now`)  
+  **When** the cleanup job runs  
+  **Then** those rows are transitioned to terminal state with `active_slot = NULL`, `terminal_reason = 'EXPIRED'`, `terminalized_at` set to the terminalization time, `consumed_at` remaining `NULL`, and they no longer participate in active-token semantics.
+- **Given** a successful password reset that consumes a token  
+  **When** the token is terminalized by the reset flow  
+  **Then** the row is stored with `active_slot = NULL`, `terminal_reason = 'CONSUMED'`, `consumed_at` set, and `terminalized_at` set in the same lifecycle transition.
+- **Given** a password recovery reissue that invalidates a prior active token  
+  **When** the prior token is terminalized by the reissue flow  
+  **Then** the row is stored with `active_slot = NULL`, `terminal_reason = 'SUPERSEDED'`, `consumed_at` remaining `NULL`, and `terminalized_at` set in the same lifecycle transition.
+- **Given** password reset token rows that are already terminal  
+  **When** their terminal retention age based on `terminalized_at` exceeds `30 days`  
+  **Then** the cleanup job purges them in bounded batches ordered by the oldest `expires_at` first.
+- **Given** a cleanup cycle with more eligible rows than one batch can process  
+  **When** the job executes  
+  **Then** each batch processes at most `500` rows, the job runs at most `8` batches per cycle, and the cycle stops once `20 seconds` of work time has elapsed.
+- **Given** password recovery cleanup configuration  
+  **When** the application starts  
+  **Then** cleanup cadence, retention days, batch size, max batches per run, max run seconds, and backlog alert threshold are externally configurable and default to the canonical values of `15 minutes`, `30 days`, `500`, `8`, `20 seconds`, and `10000 rows`.
+- **Given** a cleanup backlog at or above the operational threshold  
+  **When** the scheduler evaluates eligible rows  
+  **Then** it emits structured log and/or metric evidence with backlog count visibility at `10000` rows or more without exposing raw reset tokens or unhashed secrets.
+- **Given** repeated cleanup execution over the same eligible dataset in the single-instance runtime  
+  **When** the cleanup logic is invoked again after a prior successful cycle  
+  **Then** terminalization and purge behavior remain idempotent and valid non-expired active-token semantics are not corrupted.
+- **Given** valid, non-expired active password reset tokens  
+  **When** the cleanup job runs  
+  **Then** those tokens remain untouched and the forgot/challenge/reset contract from Story 1.7 behaves unchanged.
+- **Given** repository, integration, and scheduler tests  
+  **When** the feature is verified  
+  **Then** tests prove expired-active terminalization, `CONSUMED` / `SUPERSEDED` / `EXPIRED` terminal-reason assignment, `terminalized_at`-based retention, bounded purge execution, structured backlog evidence emission, idempotent reruns, and non-regression of Story 1.7 recovery behavior.
 
 ---
 
