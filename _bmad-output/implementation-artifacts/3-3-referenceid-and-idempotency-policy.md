@@ -1,6 +1,6 @@
 # Story 3.3: [FEP] ReferenceId & Idempotency Policy
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -19,14 +19,14 @@ So that duplicate transmission never causes double execution.
 
 ## Tasks / Subtasks
 
-- [ ] Implement acceptance-criteria scope 1 (AC: 1)
-  - [ ] Add test coverage for AC 1
-- [ ] Implement acceptance-criteria scope 2 (AC: 2)
-  - [ ] Add test coverage for AC 2
-- [ ] Implement acceptance-criteria scope 3 (AC: 3)
-  - [ ] Add test coverage for AC 3
-- [ ] Implement acceptance-criteria scope 4 (AC: 4)
-  - [ ] Add test coverage for AC 4
+- [x] Implement acceptance-criteria scope 1 (AC: 1)
+  - [x] Add test coverage for AC 1
+- [x] Implement acceptance-criteria scope 2 (AC: 2)
+  - [x] Add test coverage for AC 2
+- [x] Implement acceptance-criteria scope 3 (AC: 3)
+  - [x] Add test coverage for AC 3
+- [x] Implement acceptance-criteria scope 4 (AC: 4)
+  - [x] Add test coverage for AC 4
 
 ## Dev Notes
 
@@ -74,11 +74,49 @@ GPT-5 Codex (Codex desktop)
 ### Debug Log References
 
 - Generated from canonical planning artifact for Epic 3.
+- 2026-03-10: `./gradlew.bat :fep-gateway:test --tests com.fix.fepgateway.contract.FepGatewayOpenApiCompatibilityTest --tests com.fix.fepgateway.integration.FepGatewayMigrationTest --tests com.fix.fepgateway.controller.FepGatewayOrderContractTest`
+- 2026-03-10: `./gradlew.bat :fep-gateway:generateOpenApiDocs`
+- 2026-03-10: `./gradlew.bat :fep-gateway:test :fep-gateway:verifyCommittedOpenApi`
+- 2026-03-10: `./gradlew.bat :fep-gateway:test :fep-gateway:verifyCommittedOpenApi :corebank-service:test`
+- 2026-03-10: `./gradlew.bat :corebank-service:test`
+- 2026-03-10: `./gradlew.bat :fep-gateway:test --tests com.fix.fepgateway.contract.FepGatewayOpenApiCompatibilityTest --tests com.fix.fepgateway.integration.FepGatewayMigrationTest --tests com.fix.fepgateway.controller.FepGatewayOrderContractTest :corebank-service:test --tests com.fix.corebank.client.FepClientContractTest --tests com.fix.corebank.service.CorebankOrderServiceTest`
 
 ### Completion Notes List
 
 - Story scaffold generated with canonical numbering guardrail.
+- Added persisted `referenceId` ownership/retention enforcement with denied replay audit events in `fep-gateway`.
+- Added contract, migration, and OpenAPI coverage for same-owner replay, cross-owner rejection, expired key reuse, and request length bounds.
+- Updated the canonical FEP API spec addendum and committed OpenAPI snapshot for Story 3.3 semantics.
+- Re-aligned CoreBank submit response validation with the current architecture invariant that local `clOrdId` remains the canonical order identity.
+- Unified correlation-id normalization in shared web support so response headers, MDC, and denied-replay audit rows preserve the same traced value.
+- Added a CoreBank service-level test that pins the current outbound invariant `referenceId == clOrdId`, making the current end-to-end replay boundary explicit.
+- Strengthened migration and audit assertions to verify schema contracts and denied-replay payload integrity, not just object existence.
 
 ### File List
 
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/3-3-referenceid-and-idempotency-policy.md
+- _bmad-output/implementation-artifacts/3-3-referenceid-and-idempotency-policy.md
+- _bmad-output/implementation-artifacts/sprint-status.yaml
+- _bmad-output/planning-artifacts/architecture.md
+- _bmad-output/planning-artifacts/fep-gateway/api-spec.md
+- BE/contracts/openapi/fep-gateway.json
+- BE/core-common/src/main/java/com/fix/common/web/CorrelationIdSupport.java
+- BE/corebank-service/src/main/java/com/fix/corebank/client/FepOrderResult.java
+- BE/corebank-service/src/test/java/com/fix/corebank/client/FepClientContractTest.java
+- BE/corebank-service/src/test/java/com/fix/corebank/service/CorebankOrderServiceTest.java
+- BE/fep-gateway/src/main/java/com/fix/fepgateway/controlplane/controller/FepGatewayOrderController.java
+- BE/fep-gateway/src/main/java/com/fix/fepgateway/controlplane/service/FepGatewayControlService.java
+- BE/fep-gateway/src/main/java/com/fix/fepgateway/dto/request/FepOrderSubmitRequest.java
+- BE/fep-gateway/src/main/java/com/fix/fepgateway/entity/GatewayOrder.java
+- BE/fep-gateway/src/main/java/com/fix/fepgateway/entity/GatewaySecurityEvent.java
+- BE/fep-gateway/src/main/java/com/fix/fepgateway/repository/GatewayOrderRepository.java
+- BE/fep-gateway/src/main/java/com/fix/fepgateway/repository/GatewaySecurityEventRepository.java
+- BE/fep-gateway/src/main/java/com/fix/fepgateway/service/GatewaySecurityEventService.java
+- BE/fep-gateway/src/main/resources/db/migration/V7__add_reference_id_idempotency_policy.sql
+- BE/fep-gateway/src/test/java/com/fix/fepgateway/contract/FepGatewayOpenApiCompatibilityTest.java
+- BE/fep-gateway/src/test/java/com/fix/fepgateway/controller/FepGatewayClOrdIdContractTest.java
+- BE/fep-gateway/src/test/java/com/fix/fepgateway/controller/FepGatewayOrderContractTest.java
+- BE/fep-gateway/src/test/java/com/fix/fepgateway/integration/FepGatewayMigrationTest.java
+
+### Change Log
+
+- 2026-03-10: Implemented Story 3.3 submit idempotency policy, replay-denied audit persistence, and OpenAPI/documentation guardrails.

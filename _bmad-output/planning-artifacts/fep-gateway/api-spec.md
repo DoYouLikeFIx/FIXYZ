@@ -1377,3 +1377,16 @@ POST /fep/v1/orders/{clOrdId}/replay
 | — | `VALIDATION-003` | 422 | ❌ | `STALE_QUOTE` (MARKET quote snapshot staleness/누락) |
 | — | `VALIDATION-004` | 422 | ❌ | 수동재처리 dual-control/evidence/reason 규칙 위반 |
 | `9999` | `SYS-001` | 500 | ❌ | 알 수 없는 오류 |
+
+### 11.1 Story 3.3 Submit Idempotency Addendum
+
+- `accountId` max length is `64` and `referenceId` max length is `128`.
+- `referenceId` is the persisted external request identity for `POST /fep/v1/orders`.
+- This addendum supersedes any earlier wording in this document that described `referenceId` as trace-only, audit-only, or an internal reference-only field.
+- Read the §3.1 request field table and the FIX Tag 58 mapping with this policy applied: `referenceId` is part of the submit idempotency contract, not a best-effort tracing hint.
+- Default retention window is `10 minutes` from the first accepted submit unless `fep.idempotency.reference-retention` is overridden.
+- Same `accountId` plus same `referenceId` returns the original processing context and may therefore return the original `clOrdId` and `fepOrderId`.
+- Different `accountId` plus same `referenceId` is rejected as `401 AUTH_001`.
+- Same `clOrdId` plus different `referenceId` is rejected as `422 VALIDATION-001`.
+- Reuse of an expired `referenceId` is rejected as `422 VALIDATION-001`.
+- Every denied replay attempt is recorded in `gateway_security_events`.

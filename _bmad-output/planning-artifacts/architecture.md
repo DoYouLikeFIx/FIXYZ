@@ -1936,6 +1936,12 @@ spring:
 // ❌ 금지: 모든 POST에 적용 (Over-engineering)
 ```
 
+Current MVP boundary note for Story 3.3:
+- CoreBank canonical client-visible idempotency remains `clOrdId`, backed by `core_db.orders.cl_ord_id`.
+- CoreBank submit to FEP Gateway MUST bind `referenceId == clOrdId` for the current release.
+- FEP Gateway may persist `referenceId` for same-owner replay, ownership, and retention enforcement, but this does not create a second client-visible canonical order identity in CoreBank.
+- If future requirements split external request identity from `clOrdId`, the architecture must first add a separately persisted gateway/reference identity before relaxing submit-response `clOrdId` validation in CoreBank.
+
 ### RULE-072: OrderSession 만료 처리
 
 ```java
