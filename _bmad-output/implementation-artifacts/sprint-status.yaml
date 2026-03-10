@@ -76,7 +76,7 @@ development_status:
   3-1-fep-dto-client-contract: done
   3-2-external-error-taxonomy: done
   3-3-referenceid-and-idempotency-policy: done
-  3-4-fep-status-query-api: ready-for-dev
+  3-4-fep-status-query-api: review
   3-5-contract-test-suite: ready-for-dev
   3-6-visible-external-error-ux: ready-for-dev
   epic-3-retrospective: optional
