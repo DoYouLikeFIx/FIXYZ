@@ -42,10 +42,11 @@ so that I can regain access without leaking whether my account exists.
 ### Developer Context Section
 
 - Canonical tracking source for this story is `_bmad-output/implementation-artifacts/sprint-status.yaml` key `1-7-be-password-forgot-reset-api`.
-- Canonical planning precedence for this story is: `_bmad-output/planning-artifacts/channels/api-spec.md` -> `_bmad-output/planning-artifacts/epics.md` -> `_bmad-output/planning-artifacts/channels/login_flow.md` -> `_bmad-output/planning-artifacts/prd.md` / `_bmad-output/planning-artifacts/architecture.md`.
+- Canonical planning precedence for this story is: `_bmad-output/planning-artifacts/prd.md` / `_bmad-output/planning-artifacts/architecture.md` -> `_bmad-output/planning-artifacts/channels/db_schema.md` / `_bmad-output/planning-artifacts/channels/table_spec.md` / `_bmad-output/planning-artifacts/channels/erd.md` -> `_bmad-output/planning-artifacts/channels/login_flow.md` -> `_bmad-output/planning-artifacts/channels/api-spec.md` -> `_bmad-output/planning-artifacts/epics.md`.
 - Supplemental artifact `_bmad-output/implementation-artifacts/epic-1-user-authentication-and-account-access.md` remains historical context only and must not override the canonical planning stack for Story 1.7.
 - This story extends the Epic 1 auth lane after Story 1.5 and Story 1.6. It must reuse existing auth/session patterns instead of inventing a second recovery or session model.
 - Current code already invalidates all sessions on authenticated password change in `MemberService.updateMyPassword(...)`; reuse that session invalidation approach for reset completion rather than creating a new session-revocation mechanism.
+- If this story file conflicts with a higher planning artifact in that stack, the higher artifact wins and the story file must be corrected; this story is an execution guide, not a local override mechanism.
 
 ### Technical Requirements
 
@@ -86,6 +87,7 @@ so that I can regain access without leaking whether my account exists.
   - Store pepper version to support active + previous pepper validation
   - Successful reissue invalidates prior active token
   - Successful reset updates `members.password_changed_at` in the same transaction as password hash update and token consume
+  - Longer-lived token terminalization, `terminal_reason` / `terminalized_at`, and 30-day cleanup retention are follow-on Story 1.10 scope and are not required to close Story 1.7 acceptance by themselves
 - Session/security contract:
   - Non-GET recovery endpoints remain CSRF-protected
   - Successful reset invalidates active sessions; delayed stale-session denial must use `AUTH-016`
@@ -245,7 +247,7 @@ so that I can regain access without leaking whether my account exists.
 ### Story Completion Status
 
 - Status set to `review`.
-- Completion note: Story artifact corrected to match the canonical password-recovery contract in `channels/api-spec.md`, `channels/login_flow.md`, `prd.md`, and `epics.md`.
+- Completion note: Story artifact corrected to match the canonical password-recovery contract and planning hierarchy across `prd.md`, `architecture.md`, `channels/db_schema.md`, `channels/table_spec.md`, `channels/erd.md`, `channels/login_flow.md`, `channels/api-spec.md`, and `epics.md`.
 
 ### References
 
@@ -257,6 +259,7 @@ so that I can regain access without leaking whether my account exists.
 - `_bmad-output/planning-artifacts/channels/primary_query.md`
 - `_bmad-output/planning-artifacts/channels/status_machine.md`
 - `_bmad-output/planning-artifacts/channels/db_schema.md`
+- `_bmad-output/planning-artifacts/channels/table_spec.md`
 - `_bmad-output/planning-artifacts/channels/erd.md`
 - `_bmad-output/planning-artifacts/channels/table_spec.md`
 - `_bmad-output/planning-artifacts/architecture.md`

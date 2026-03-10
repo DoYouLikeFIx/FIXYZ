@@ -43,7 +43,7 @@ so that account access rules stay consistent across clients.
 ### Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 1 (`1.1`~`1.6`).
-- Supplemental artifact `_bmad-output/implementation-artifacts/epic-1-user-authentication-and-account-access.md` has a different numbering/scope (`1.1`~`1.9`); use it only for technical constraints, not story ID mapping.
+- Supplemental artifact `_bmad-output/implementation-artifacts/epic-1-user-authentication-and-account-access.md` has a different numbering/scope (`1.1`~`1.10`); use it only for technical constraints, not story ID mapping.
 
 - Depends on Story 1.1, 1.2, and 0.4 mobile scaffold.
 - Objective is parity with web auth semantics, not identical UI implementation.

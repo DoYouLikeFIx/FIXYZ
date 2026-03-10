@@ -36,7 +36,7 @@ so that brute-force attempts are mitigated.
 ### Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 1 (`1.1`~`1.6`).
-- Supplemental artifact `_bmad-output/implementation-artifacts/epic-1-user-authentication-and-account-access.md` has a different numbering/scope (`1.1`~`1.9`); use it only for technical constraints, not story ID mapping.
+- Supplemental artifact `_bmad-output/implementation-artifacts/epic-1-user-authentication-and-account-access.md` has a different numbering/scope (`1.1`~`1.10`); use it only for technical constraints, not story ID mapping.
 
 - Depends on Story 1.1 auth baseline.
 - This story is the main security hardening layer for login abuse prevention.

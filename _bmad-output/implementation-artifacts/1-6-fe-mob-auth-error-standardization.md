@@ -34,7 +34,7 @@ so that users receive consistent guidance regardless of client.
 ### Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 1 (`1.1`~`1.6`).
-- Supplemental artifact `_bmad-output/implementation-artifacts/epic-1-user-authentication-and-account-access.md` has a different numbering/scope (`1.1`~`1.9`); use it only for technical constraints, not story ID mapping.
+- Supplemental artifact `_bmad-output/implementation-artifacts/epic-1-user-authentication-and-account-access.md` has a different numbering/scope (`1.1`~`1.10`); use it only for technical constraints, not story ID mapping.
 
 - Depends on Stories 1.3, 1.4, and 1.5.
 - This story is a cross-client consistency pass, not a new auth feature.

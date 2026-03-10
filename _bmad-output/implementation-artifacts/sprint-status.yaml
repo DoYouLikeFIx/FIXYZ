@@ -61,6 +61,7 @@ development_status:
   1-7-be-password-forgot-reset-api: review
   1-8-fe-web-password-recovery-ux: ready-for-dev
   1-9-mob-mobile-password-recovery-ux: ready-for-dev
+  1-10-be-password-reset-token-cleanup-terminalization-retention: ready-for-dev
   epic-1-retrospective: optional
 
   epic-2: backlog
@@ -77,7 +78,7 @@ development_status:
   3-2-external-error-taxonomy: done
   3-3-referenceid-and-idempotency-policy: done
   3-4-fep-status-query-api: review
-  3-5-contract-test-suite: ready-for-dev
+  3-5-contract-test-suite: done
   3-6-visible-external-error-ux: ready-for-dev
   epic-3-retrospective: optional
 
