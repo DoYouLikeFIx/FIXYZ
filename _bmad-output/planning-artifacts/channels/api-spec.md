@@ -1885,7 +1885,7 @@ flowchart LR
 }
 ```
 
-- Response `202 Accepted` (fixed across all outcomes)
+- Response `202 Accepted` (fixed for CSRF-valid, non-rate-limited requests)
 ```json
 {
   "success": true,
@@ -1902,6 +1902,8 @@ flowchart LR
 }
 ```
 
+> Contract note: if recovery rate limits trip, return `AUTH-014` with `429` and `Retry-After`. If CSRF validation fails, Spring Security returns raw `403 Forbidden` before the application envelope.
+
 2. `POST /api/v1/auth/password/forgot/challenge`
 
 - Request
@@ -1911,7 +1913,7 @@ flowchart LR
 }
 ```
 
-- Response `200 OK` (anti-enumeration parity required)
+- Response `200 OK` (anti-enumeration parity required for CSRF-valid, non-rate-limited requests)
 ```json
 {
   "success": true,
@@ -1925,6 +1927,8 @@ flowchart LR
 }
 ```
 
+> Contract note: if recovery rate limits trip, return `AUTH-014` with `429` and `Retry-After`. If CSRF validation fails, Spring Security returns raw `403 Forbidden` before the application envelope.
+
 3. `POST /api/v1/auth/password/reset`
 
 - Request
@@ -1936,6 +1940,8 @@ flowchart LR
 ```
 
 - Success: `204 No Content`
+
+> Contract note: delivery of the raw reset token into FE/MOB is an out-of-band, channel-owned UX concern. The backend contract only requires that the client obtains a valid token through its supported handoff and submits that token via `POST /api/v1/auth/password/reset`. Concrete web route names, query shapes, or mobile deep-link formats are not part of this API contract.
 
 ### 7.2 Error Code Mapping
 
