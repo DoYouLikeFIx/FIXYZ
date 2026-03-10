@@ -54,8 +54,8 @@ So that upstream systems handle failures consistently.
 
 ### Story Completion Status
 
-- Status set to `ready-for-dev`.
-- Completion note: Epic 3 story context prepared from canonical planning artifact.
+- Status set to `done`.
+- Completion note: External error taxonomy is implemented, production propagation paths are covered, and contracts are synchronized.
 
 ### References
 
@@ -84,14 +84,24 @@ GPT-5 Codex (Codex desktop)
 
 - Added deterministic FEP external error taxonomy mapping for gateway/system/rejection codes with fallback unknown-external handling.
 - Extended shared error envelopes and exception types to surface `userMessageKey` and `operatorCode` without changing existing non-FEP error behavior.
-- Added regression coverage for the taxonomy matrix, adapter-level gateway error translation, upstream propagation through the corebank internal API, and channel-boundary metadata exposure via contract testing.
-- Refreshed the committed corebank OpenAPI snapshot and added a compatibility test so `userMessageKey` and `operatorCode` stay documented.
-- Added a backend end-to-end style integration test that drives the real corebank HTTP endpoint through `FepClient` against WireMock so mapped and fallback external errors are verified beyond stubbed client tests.
+- Added regression coverage for the full documented FEP RC matrix at the adapter layer, including submit and requery failure paths.
+- Added a real channel-to-corebank order execution path so mapped external metadata is proven on the production channel boundary instead of a synthetic test controller.
+- Refreshed the committed channel/corebank OpenAPI snapshots and added build-time verification so generated and committed contracts cannot drift silently.
+- Added backend end-to-end style integration coverage for both submit and requery error translation through the real corebank HTTP boundary against WireMock.
 
 ### File List
 
-- BE/channel-service/src/main/java/com/fix/channel/config/GlobalExceptionHandler.java
+- BE/channel-service/src/main/java/com/fix/channel/client/CorebankClient.java
+- BE/channel-service/src/main/java/com/fix/channel/controller/OrderController.java
+- BE/channel-service/src/main/java/com/fix/channel/dto/request/OrderCreateRequest.java
+- BE/channel-service/src/main/java/com/fix/channel/dto/response/OrderResponse.java
+- BE/channel-service/src/main/java/com/fix/channel/exception/GlobalExceptionHandler.java
+- BE/channel-service/src/main/java/com/fix/channel/service/OrderExecutionService.java
+- BE/channel-service/src/main/java/com/fix/channel/vo/OrderExecuteCommand.java
+- BE/channel-service/src/main/java/com/fix/channel/vo/OrderExecuteResult.java
+- BE/channel-service/src/test/java/com/fix/channel/contract/ChannelOpenApiCompatibilityTest.java
 - BE/channel-service/src/test/java/com/fix/channel/controller/ChannelErrorContractTest.java
+- BE/contracts/openapi/channel-service.json
 - BE/contracts/openapi/corebank-service.json
 - BE/core-common/build.gradle
 - BE/core-common/src/main/java/com/fix/common/error/ApiErrorResponse.java
@@ -101,17 +111,18 @@ GPT-5 Codex (Codex desktop)
 - BE/core-common/src/main/java/com/fix/common/error/FixException.java
 - BE/core-common/src/main/java/com/fix/common/error/SystemException.java
 - BE/core-common/src/test/java/com/fix/common/error/CoreCommonContractTest.java
+- BE/corebank-service/build.gradle
 - BE/corebank-service/src/main/java/com/fix/corebank/client/FepClient.java
 - BE/corebank-service/src/main/java/com/fix/corebank/client/FepExternalErrorTaxonomy.java
-- BE/corebank-service/src/main/java/com/fix/corebank/config/GlobalExceptionHandler.java
+- BE/corebank-service/src/main/java/com/fix/corebank/exception/GlobalExceptionHandler.java
 - BE/corebank-service/src/test/java/com/fix/corebank/client/FepClientContractTest.java
 - BE/corebank-service/src/test/java/com/fix/corebank/client/FepExternalErrorTaxonomyTest.java
 - BE/corebank-service/src/test/java/com/fix/corebank/contract/CorebankOpenApiCompatibilityTest.java
 - BE/corebank-service/src/test/java/com/fix/corebank/controller/CorebankInternalApiSkeletonTest.java
 - BE/corebank-service/src/test/java/com/fix/corebank/integration/CorebankExternalErrorFlowIntegrationTest.java
 - BE/corebank-service/src/test/java/com/fix/corebank/support/TestStubFepClient.java
-- BE/fep-gateway/src/main/java/com/fix/fepgateway/config/GlobalExceptionHandler.java
-- BE/fep-simulator/src/main/java/com/fix/fepsimulator/config/GlobalExceptionHandler.java
+- BE/fep-gateway/src/main/java/com/fix/fepgateway/exception/GlobalExceptionHandler.java
+- BE/fep-simulator/src/main/java/com/fix/fepsimulator/exception/GlobalExceptionHandler.java
 - _bmad-output/implementation-artifacts/3-2-external-error-taxonomy.md
 - _bmad-output/implementation-artifacts/sprint-status.yaml
 
@@ -120,3 +131,4 @@ GPT-5 Codex (Codex desktop)
 - 2026-03-09: Implemented external error taxonomy mapping, added envelope metadata propagation, and covered the mapping matrix plus propagation flows with automated tests.
 - 2026-03-09: Closed QA findings by adding channel-boundary metadata coverage and syncing the committed corebank OpenAPI contract with the generated document.
 - 2026-03-09: Added backend end-to-end coverage for mapped and fallback external FEP errors through the real corebank HTTP boundary.
+- 2026-03-10: Aligned the adapter with the canonical `rc` error shape, added real channel-to-corebank order propagation coverage, and enforced exact OpenAPI snapshot verification in the build.
