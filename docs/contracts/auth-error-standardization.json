@@ -6,7 +6,7 @@
       "codes": ["AUTH-001", "AUTH_001"],
       "semantic": "invalid-credentials",
       "recoveryAction": "retry-credentials",
-      "message": "아이디 또는 비밀번호가 올바르지 않습니다."
+      "message": "이메일 또는 비밀번호가 올바르지 않습니다."
     },
     {
       "codes": ["AUTH-002", "AUTH_002"],
@@ -33,10 +33,10 @@
       "message": "비밀번호는 8자 이상이며 대문자, 숫자, 특수문자를 포함해야 합니다."
     },
     {
-      "codes": ["AUTH-008", "AUTH_008"],
-      "semantic": "duplicate-username",
-      "recoveryAction": "change-username",
-      "message": "이미 사용 중인 아이디입니다. 다른 아이디를 선택해 주세요."
+      "codes": ["AUTH-017", "AUTH_017"],
+      "semantic": "duplicate-email",
+      "recoveryAction": "change-email",
+      "message": "이미 가입된 이메일입니다. 다른 이메일을 입력해 주세요."
     },
     {
       "codes": ["RATE-001", "RATE_001"],
