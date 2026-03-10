@@ -828,8 +828,8 @@ OrderSessionService.initiate() -> FdsService.analyze(ORDER_INITIATED)
 
 ### Flow A: Forgot Request (`POST /api/v1/auth/password/forgot`)
 
-1. Normalize username: `NFKC(trim(username)).toLowerCase(Locale.ROOT)`
-2. Apply rate limits (`per-IP`, `per-username`, `mail-cooldown`) and challenge gate decision
+1. Normalize email: `NFKC(trim(email)).toLowerCase(Locale.ROOT)`
+2. Apply rate limits (`per-IP`, `per-email`, `mail-cooldown`) and challenge gate decision
 3. If challenge-gated, require `challengeToken + challengeAnswer` validation
 4. Always return fixed `202` response envelope (no eligibility disclosure)
 5. If account is eligible and policy passes, issue reset token asynchronously and dispatch email
@@ -837,9 +837,9 @@ OrderSessionService.initiate() -> FdsService.analyze(ORDER_INITIATED)
 ### Flow B: Challenge Bootstrap (`POST /api/v1/auth/password/forgot/challenge`)
 
 1. Return fixed `200` contract regardless of account existence/status
-2. Issue signed challenge token (`ttl=300s`) with username-hash binding
+2. Issue signed challenge token (`ttl=300s`) with email-hash binding
 3. Persist nonce in Redis using atomic create (`SET NX EX 300`)
-4. Enforce challenge endpoint rate limits (`per-IP`, `per-username`, `endpoint-global`)
+4. Enforce challenge endpoint rate limits (`per-IP`, `per-email`, `endpoint-global`)
 
 ### Flow C: Reset (`POST /api/v1/auth/password/reset`)
 
@@ -857,4 +857,3 @@ OrderSessionService.initiate() -> FdsService.analyze(ORDER_INITIATED)
 - CSRF retry policy for all password recovery submits: one re-fetch + one retry only.
 - Retry must preserve payload/idempotency fields exactly.
 - Challenge replay is blocked by Redis atomic nonce consume.
-

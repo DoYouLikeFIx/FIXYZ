@@ -78,7 +78,6 @@ DB 레벨 목표:
 | --- | --- | --- | --- | --- |
 | id | BIGINT UNSIGNED | N | PK(AUTO) | 내부 PK |
 | member_uuid | CHAR(36) | N | UK | 외부 노출 UUID |
-| username | VARCHAR(50) | N | UK | 로그인 아이디 |
 | email | VARCHAR(100) | N | UK | 이메일 |
 | password_hash | VARCHAR(255) | N | | Bcrypt/Argon2 해시 |
 | name | VARCHAR(100) | N | | 실명 |
@@ -93,7 +92,7 @@ DB 레벨 목표:
 | updated_at | DATETIME(6) | N | | 수정 |
 | deleted_at | DATETIME(6) | Y | | 소프트 삭제 |
 
-- **인덱스**: `UK(member_uuid)`, `UK(username)`, `UK(email)`, `IDX(status)`, `IDX(deleted_at)`, `IDX(status, deleted_at)`
+- **인덱스**: `UK(member_uuid)`, `UK(email)`, `IDX(status)`, `IDX(deleted_at)`, `IDX(status, deleted_at)`
 
 ---
 

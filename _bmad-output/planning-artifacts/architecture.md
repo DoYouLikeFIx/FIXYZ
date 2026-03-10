@@ -655,10 +655,10 @@ Examples:
 
 `R__seed_data.sql` — Flyway Repeatable migration, active on `dev` and `test` profiles only. (P-D2: Versioned `V2__seed_test_data.sql`과 혼동 주의 — 파일트리 기준 `R__` 사용)
 
-| userId | username | email           | password     | role         |
-| ------ | -------- | --------------- | ------------ | ------------ |
-| 1      | `user`   | `user@fix.com`  | `Test1234!`  | `ROLE_USER`  |
-| 2      | `admin`  | `admin@fix.com` | `Admin1234!` | `ROLE_ADMIN` |
+| userId | email           | password     | role         |
+| ------ | --------------- | ------------ | ------------ |
+| 1      | `user@fix.com`  | `Test1234!`  | `ROLE_USER`  |
+| 2      | `admin@fix.com` | `Admin1234!` | `ROLE_ADMIN` |
 status   | mode  |
 | --------- | ------ | --------------- | ---------- | -------- | ----- |
 | 1         | 1      | `110-1234-5678` | ₩1,000,000 | ACTIVE   | EAGER |
@@ -1328,7 +1328,7 @@ public final class BusinessConstants {
 | AUTH-005    | 404  | 대상 회원 없음(관리자 API) | channel-service  |
 | AUTH-006    | 403  | 권한 부족(`ROLE_ADMIN` 필요) | channel-service  |
 | AUTH-007    | 422  | 비밀번호 정책 위반 | channel-service  |
-| AUTH-008    | 409  | username 중복 | channel-service  |
+| AUTH-017    | 409  | email 중복 | channel-service  |
 | CHANNEL-001 | 410  | 세션 쿠키는 있으나 Redis TTL 만료 | channel-service  |
 | CHANNEL-002 | 422  | OTP 불일치                | channel-service  |
 | CHANNEL-003 | 403  | OTP 시도 초과(터미널 실패) | channel-service  |
@@ -2694,8 +2694,6 @@ volumes:
 public class Member extends BaseTimeEntity {
     @Id @GeneratedValue(strategy = IDENTITY)
     private Long id;
-    @Column(nullable = false, unique = true, length = 50)
-    private String username;
     @Column(nullable = false, unique = true, length = 100)
     private String email;
     @Column(nullable = false)

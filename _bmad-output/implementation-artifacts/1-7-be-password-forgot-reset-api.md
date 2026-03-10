@@ -12,7 +12,7 @@ so that I can regain access without leaking whether my account exists.
 
 ## Acceptance Criteria
 
-1. Given `POST /api/v1/auth/password/forgot`, when any normalized username is submitted, then the API always returns the fixed `202 Accepted` recovery envelope and only eligible accounts receive an asynchronously issued reset email.
+1. Given `POST /api/v1/auth/password/forgot`, when any normalized email is submitted, then the API always returns the fixed `202 Accepted` recovery envelope and only eligible accounts receive an asynchronously issued reset email.
 2. Given `POST /api/v1/auth/password/forgot/challenge`, when challenge bootstrap is requested, then the API returns the fixed `200 OK` challenge contract with signed challenge token, `ttl=300s`, and replay-safe nonce handling.
 3. Given `POST /api/v1/auth/password/reset` with a valid reset token and a password different from the current password, when the request succeeds, then password hash update, `password_changed_at` update, and reset-token consume happen atomically and the response is `204 No Content`.
 4. Given invalid, expired, consumed, same-password, or rate-limited recovery requests, when the API rejects the operation, then contracted error codes `AUTH-012` through `AUTH-015` and `Retry-After` semantics are returned without revealing account eligibility.
@@ -24,8 +24,8 @@ so that I can regain access without leaking whether my account exists.
   - [ ] Introduce forgot, challenge bootstrap, and reset request/response contracts
   - [ ] Keep fixed status/body semantics for anti-enumeration paths
 - [ ] Implement password recovery application service with anti-enumeration timing and rate controls (AC: 1, 2, 4)
-  - [ ] Normalize username as `NFKC(trim(username)).toLowerCase(Locale.ROOT)`
-  - [ ] Apply per-IP, per-username, cooldown, and endpoint-global policies from the channel API addendum
+  - [ ] Normalize email as `NFKC(trim(email)).toLowerCase(Locale.ROOT)`
+  - [ ] Apply per-IP, per-email, cooldown, and endpoint-global policies from the channel API addendum
   - [ ] Gate challenge issuance/verification with signed token plus Redis nonce replay protection
 - [ ] Introduce reset-token persistence and password-rotation transaction boundary (AC: 3, 4)
   - [ ] Add Flyway migration for `password_reset_tokens` and `members.password_changed_at`
@@ -57,8 +57,8 @@ so that I can regain access without leaking whether my account exists.
   - Challenge bootstrap always returns `200 OK` with `challengeToken`, `challengeType`, and `challengeTtlSeconds=300`.
   - Reset success returns `204 No Content`.
 - Rate limits from `_bmad-output/planning-artifacts/channels/api-spec.md`:
-  - `forgot`: `per-IP 5/min`, `per-username 3/15min`, `mail-cooldown-key(usernameHash) 1/5min`
-  - `forgot/challenge`: `per-IP 5/min`, `per-username 3/10min`, `endpoint-global 60/min`
+  - `forgot`: `per-IP 5/min`, `per-email 3/15min`, `mail-cooldown-key(emailHash) 1/5min`
+  - `forgot/challenge`: `per-IP 5/min`, `per-email 3/10min`, `endpoint-global 60/min`
   - `reset`: `per-IP 10/5min`, `per-tokenHash 5/15min`, `endpoint-global 60/min`
 - Timing equalization:
   - Forgot path anti-enumeration envelope: floor `400ms`, jitter `0~50ms`, p95 delta between existent/non-existent/challenge paths <= `80ms`
@@ -170,7 +170,7 @@ so that I can regain access without leaking whether my account exists.
   - Migration, entity, repository, and SQL snippets must all use the same identity key with no dual-key ambiguity.
 - Anti-enumeration gate:
   - Compare existent/non-existent/challenge-gated forgot flows for status/body equivalence and bounded timing delta.
-  - Ensure logging/audit output also avoids leaking account eligibility.
+  - Ensure logging/audit output also avoids leaking whether the submitted email exists.
 - Token lifecycle gate:
   - Reissue invalidates previous active token.
   - Raw token is never persisted.

@@ -791,7 +791,7 @@ So that I can regain access without leaking whether my account exists.
 **Acceptance Criteria:**
 
 - **Given** `POST /api/v1/auth/password/forgot`  
-  **When** any normalized username is submitted  
+  **When** any normalized email is submitted  
   **Then** API always returns the fixed `202 Accepted` recovery envelope and only eligible accounts receive an asynchronously issued reset email.
 - **Given** `POST /api/v1/auth/password/forgot/challenge`  
   **When** challenge bootstrap is requested  

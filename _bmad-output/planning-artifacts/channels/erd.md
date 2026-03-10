@@ -13,7 +13,6 @@ erDiagram
     MEMBERS {
         BIGINT id PK
         CHAR36 member_uuid UK
-        VARCHAR50 username UK
         VARCHAR100 email UK
         VARCHAR255 password_hash
         VARCHAR100 name
@@ -236,7 +235,7 @@ erDiagram
   - `ACTIVE -> LOCKED`: failed login threshold exceeded.
   - `LOCKED -> ACTIVE`: admin unlock action only.
 - Integrity/security rules
-  - `username`, `email` unique.
+  - `email` unique.
   - `password_hash` only (no plaintext), never exposed in response/log.
   - Soft deleted rows are filtered by `deleted_at IS NULL` in normal auth/user flows.
 
@@ -246,7 +245,6 @@ erDiagram
 | :--- | :--- | :--- | :--- | :--- |
 | `id` | BIGINT | PK | NO | Internal index/join key |
 | `member_uuid` | UUID | UK | NO | Public reference and API key |
-| `username` | VARCHAR(50) | UK | NO | User login ID |
 | `email` | VARCHAR(100) | UK | NO | User contact and recovery email |
 | `password_hash` | VARCHAR(255) | | NO | Bcrypt/Argon2 hash of password |
 | `name` | VARCHAR(100) | | NO | Member full name |

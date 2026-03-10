@@ -82,7 +82,6 @@ POST /api/v1/auth/register
 **요청 바디**
 ```json
 {
-  "username": "user01",
   "password": "Test1234!",
   "email": "user01@fix.com",
   "name": "홍길동"
@@ -91,7 +90,6 @@ POST /api/v1/auth/register
 
 | 필드 | 타입 | 필수 | 제약 |
 |---|---|---|---|
-| `username` | String | ✅ | 4~20자, 영문/숫자/밑줄 |
 | `password` | String | ✅ | 대문자 1개 이상, 숫자 1개 이상, 특수문자 1개 이상, 8자 이상 |
 | `email` | String | ✅ | 이메일 형식 |
 | `name` | String | ✅ | 2~20자 |
@@ -101,25 +99,23 @@ POST /api/v1/auth/register
 {
   "success": true,
   "data": {
-    "memberUuid": "m-uuid-xxxx",
-    "username": "user01",
+    "memberId": 1,
     "email": "user01@fix.com",
     "name": "홍길동",
-    "role": "ROLE_USER",
-    "totpEnrolled": false
+    "createdAt": "2026-03-01T10:00:00Z"
   },
   "error": null,
   "traceId": "trace-002"
 }
 ```
 
-> **`totpEnrolled: false` 등록 응답 포함 근거**: 신규 가입 직후 TOTP 미등록 상태임을 등록 API 단계에서 즉시 알릴 수 있어, 세션 조회(`GET /auth/session`) 추가 호출 없이 클라이언트가 바로 TOTP 등록 플로우(`POST /api/v1/members/me/totp/enroll`)로 사용자를 유도할 수 있다. 등록 시점에는 항상 `false`이며, `true`로 변경되려면 `POST /api/v1/members/me/totp/confirm` 호출이 필요하다. `email` 중복 등록 시 `AUTH-008`이 없는 이유는 `email` 고유 제약 대신 `username` UNIQUE 제약만 적용하기 때문이다. `email` 중복은 서비스 정책으로 허용한다.
+> 등록 응답은 생성 결과만 반환하고, 가입 직후 세션 진입은 후속 로그인(`POST /api/v1/auth/login`) 또는 `GET /api/v1/auth/session` 재조회로 확인한다. 이메일 중복 등록은 `AUTH-017`로 반환한다.
 
 **오류 코드**
 | 코드 | HTTP | 설명 |
 |---|---|---|
 | `AUTH-007` | 422 | 비밀번호 정책 위반 |
-| `AUTH-008` | 409 | 이미 사용 중인 username |
+| `AUTH-017` | 409 | 이미 가입된 email |
 | `VALIDATION-001` | 422 | 요청 필드 유효성 실패 |
 | `CORE-001` | 503 | corebank-service 계좌 자동 생성 실패 (Saga 정리 후 클라이언트에 재등록 안내) |
 | `SYS-001` | 500 | 내부 서버 오류 |
@@ -142,7 +138,7 @@ POST /api/v1/auth/login
 **요청 바디**
 ```json
 {
-  "username": "user01",
+  "email": "user01@fix.com",
   "password": "Test1234!"
 }
 ```
@@ -152,13 +148,10 @@ POST /api/v1/auth/login
 {
   "success": true,
   "data": {
-    "memberUuid": "m-uuid-xxxx",
-    "username": "user01",
+    "memberId": 1,
     "email": "user01@fix.com",
     "name": "홍길동",
-    "role": "ROLE_USER",
-    "totpEnrolled": true,
-    "accountId": "ACC-001"
+    "createdAt": "2026-03-01T10:00:00Z"
   },
   "error": null,
   "traceId": "trace-003"
@@ -180,7 +173,7 @@ POST /api/v1/auth/login
 | `AUTH-002` | 401 | 계정 잠금 (5회 실패) |
 | `AUTH-004` | 401 | 탈퇴한 계정 |
 | `RATE-001` | 429 | 로그인 시도 초과 |
-| `VALIDATION-001` | 422 | 요청 필드 유효성 실패 (`username`/`password` 누락 또는 빈 값) |
+| `VALIDATION-001` | 422 | 요청 필드 유효성 실패 (`email`/`password` 누락 또는 빈 값) |
 | `SYS-001` | 500 | 내부 서버 오류 (Redis 세션 생성 실패 등) |
 
 ---
@@ -234,7 +227,6 @@ GET /api/v1/auth/session
   "success": true,
   "data": {
     "memberUuid": "m-uuid-xxxx",
-    "username": "user01",
     "email": "user01@fix.com",
     "name": "홍길동",
     "role": "ROLE_USER",
@@ -1495,7 +1487,7 @@ GET /api/v1/admin/audit-logs?page=0&size=20&from=2026-03-01T00:00:00Z&to=2026-03
       {
         "auditId": "audit-uuid-xxx",
         "memberUuid": "m-uuid-xxx",
-        "username": "user01",
+        "email": "user01@fix.com",
         "eventType": "LOGIN_SUCCESS",
         "ipAddress": "192.168.1.1",
         "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)...",
@@ -1507,7 +1499,7 @@ GET /api/v1/admin/audit-logs?page=0&size=20&from=2026-03-01T00:00:00Z&to=2026-03
       {
         "auditId": "audit-uuid-yyy",
         "memberUuid": "m-uuid-xxx",
-        "username": "user01",
+        "email": "user01@fix.com",
         "eventType": "ORDER_OTP_FAIL",
         "ipAddress": "192.168.1.1",
         "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)...",
@@ -1519,7 +1511,7 @@ GET /api/v1/admin/audit-logs?page=0&size=20&from=2026-03-01T00:00:00Z&to=2026-03
       {
         "auditId": "audit-uuid-zzz",
         "memberUuid": "m-uuid-xxx",
-        "username": "user01",
+        "email": "user01@fix.com",
         "eventType": "MANUAL_REPLAY",
         "ipAddress": "10.0.0.1",
         "userAgent": "AdminPortal/1.0",
@@ -1826,7 +1818,6 @@ flowchart LR
 | `AUTH-005` | 404 | 대상 `memberUuid` 회원 없음 (강제 로그아웃 대상 회원이 DB에 존재하지 않음 — §4.3) |
 | `AUTH-006` | 403 | 권한 부족 (`ROLE_ADMIN` 필요). **CSRF 토큰 누락 시는 `AUTH-006`이 아닙**니다 — CSRF 실패는 Spring Security `CsrfFilter`가 `ApiResponse` 봉투 없이 raw `403 Forbidden`을 반환한다 (§1 공통 헤더 노트 참조). |
 | `AUTH-007` | 422 | 비밀번호 정책 위반 |
-| `AUTH-008` | 409 | username 중복 |
 | `ORD-001` | 422 | 매수 자금 부족 |
 | `ORD-002` | 422 | 일일 매도 한도 초과 |
 | `ORD-003` | 422 | 매도 주식 부족 |
@@ -1888,7 +1879,7 @@ flowchart LR
 - Request
 ```json
 {
-  "username": "user01",
+  "email": "user01@fix.com",
   "challengeToken": "<optional>",
   "challengeAnswer": "<optional>"
 }
@@ -1916,7 +1907,7 @@ flowchart LR
 - Request
 ```json
 {
-  "username": "user01"
+  "email": "user01@fix.com"
 }
 ```
 
@@ -1966,8 +1957,8 @@ flowchart LR
 
 ### 7.4 Rate Limits
 
-- `forgot`: `per-IP 5/min`, `per-username 3/15min`, `mail-cooldown-key(usernameHash) 1/5min`
-- `forgot/challenge`: `per-IP 5/min`, `per-username 3/10min`, `endpoint-global 60/min`
+- `forgot`: `per-IP 5/min`, `per-email 3/15min`, `mail-cooldown-key(emailHash) 1/5min`
+- `forgot/challenge`: `per-IP 5/min`, `per-email 3/10min`, `endpoint-global 60/min`
 - `reset`: `per-IP 10/5min`, `per-tokenHash 5/15min`, `endpoint-global 60/min`
 
 ### 7.5 Security and Timing Constraints

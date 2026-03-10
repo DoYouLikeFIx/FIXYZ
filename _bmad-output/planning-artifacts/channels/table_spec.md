@@ -18,7 +18,7 @@
 | --- | --- |
 | `id` (PK) | 내부 조인/조회 성능용 숫자 PK. `order_sessions`, `audit_logs` 등에서 FK로 사용. |
 | `member_uuid` (UK) | API/URL/로그에 노출되는 예측 불가능 식별자. 내부 PK 노출 방지. |
-| `username`, `email` (UK) | 로그인 키/이메일 찾기. 중복 계정 생성을 DB에서 원천 차단. |
+| `email` (UK) | 로그인/비밀번호 찾기 키. 중복 계정 생성을 DB에서 원천 차단. |
 | `password_hash` | Bcrypt/Argon2 해시만 저장 — 평문/복호화 가능 형태 절대 금지. |
 | `name` | 알림 제목·본문 개인화 등 업무 표시용. |
 | `role` | 인가 경계. `ROLE_USER`와 `ROLE_ADMIN` 분리 → Admin API 접근 제어 기준. |
@@ -32,7 +32,7 @@
 
 ### 1.3 인덱스 필요 이유
 
-- `UK(username)`, `UK(email)`: 로그인 조회 경로 + 중복 방지
+- `UK(email)`: email 로그인 조회 경로 + 중복 방지
 - `IDX(status)`: LOCKED 계정 운영 조회 (관리자 화면)
 - `IDX(status, deleted_at)`: "활성 비삭제 회원" 필터 복합 최적화
 - `IDX(deleted_at)`: 소프트 삭제된 회원 보존 정책 배치

@@ -257,7 +257,7 @@ So that I can regain access without leaking whether my account exists.
 ### Acceptance Criteria
 
 **Given** `POST /api/v1/auth/password/forgot`  
-**When** any normalized username is submitted  
+**When** any normalized email is submitted  
 **Then** the API always returns the fixed `202 Accepted` recovery envelope  
 **And** only eligible accounts receive an asynchronously issued reset email
 
@@ -309,7 +309,7 @@ So that unauthenticated users cannot access protected sections of the app.
 
 **Given** `<NavBar>` renders (authenticated user)  
 **When** displayed  
-**Then** contains username, account list link, order history link, logout button  
+**Then** contains email, account list link, order history link, logout button  
 **And** on logout click, `POST /api/v1/auth/logout` called then `useAuthStore` member reset to null
 
 ---
