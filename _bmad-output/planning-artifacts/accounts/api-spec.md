@@ -21,6 +21,19 @@ AI Agent가 즉각적으로 코드를 스캐폴딩(Scaffolding)하고 기능을 
 - `balance`, `pendingAmount`는 음수로 내려가지 않는다(`>= 0`).
 - API 예시/테스트 스냅샷/직렬화 출력은 소수 4자리로 통일한다.
 
+### Story 2.2 계약 동결 (2026-03-10)
+- Story 2.2 canonical scope는 **position quantity + available quantity + cash balance**다.
+- 채널 외부 API(사용자용): `GET /api/v1/accounts/{accountId}/positions?symbol={symbol}`
+- 계정계 내부 API(채널->계정): `GET /internal/v1/accounts/{accountId}/positions?symbol={symbol}&memberId={memberId}`
+- 소유권 강제: channel-service는 세션 `AUTH_MEMBER_ID`를 추출해 `memberId`로 전달하고, corebank-service는 `accounts.member_id == memberId`를 검증한다.
+- 소유권 불일치: `403 AUTH-005`(고정, 데이터 미노출).
+- 필드 canonical/alias:
+  - `availableQuantity` canonical, `availableQty`는 호환 alias(`== availableQuantity`, deprecated).
+  - `balance` canonical, `availableBalance`는 호환 alias(`== balance`).
+- downstream 오류 분류(고정):
+  - retriable: `CORE-901`(timeout), `CORE-902`(dependency unavailable)
+  - non-retriable: `AUTH-005`, `CORE_001`, `VALIDATION_001`
+
 ---
 
 ## 📱 Part 1. 채널계 호출 API (Inbound from Channel)
@@ -44,6 +57,7 @@ AI Agent가 즉각적으로 코드를 스캐폴딩(Scaffolding)하고 기능을 
 #### [API-CH-02] 보유 계좌 및 종합 잔액 조회
 * **Endpoint:** `GET /internal/v1/members/{memberId}/portfolio`
 * **Purpose:** 특정 회원이 소유한 계좌 목록 및 요약 상태 반환.
+* **Story 2.2 관계:** 본 API는 목록/요약 보조 조회이며, Story 2.2 수락 기준의 canonical read contract는 `[API-CH-04]`를 따른다.
 * **Response (200 OK):**
   ```json
   [
@@ -71,16 +85,24 @@ AI Agent가 즉각적으로 코드를 스캐폴딩(Scaffolding)하고 기능을 
   * `balance`는 **canonical 필드**이며 이미 주문 가능 금액(available cash) 의미다.
   * 외부(채널) API에서 `availableBalance`를 노출해야 하면 `availableBalance == balance` alias로만 제공한다.
   * `availableBalance = balance - pendingAmount` 재계산 규칙은 사용하지 않는다.
+* **Story 2.2 관계:** 주문 전단계 cash precheck 호환 API이며, Story 2.2 canonical read contract는 `[API-CH-04]`를 따른다.
 
 #### [API-CH-04] 매도 가용 포지션(주식) 조회 (단건)
-* **Endpoint:** `GET /internal/v1/accounts/{accountId}/positions?symbol={symbol}`
-* **Purpose:** 매도(SELL) 주문 시 해당 종목을 기보유하고 있는지(숏셀링 방지) 검증.
+* **Endpoint:** `GET /internal/v1/accounts/{accountId}/positions?symbol={symbol}&memberId={memberId}`
+* **Purpose:** Story 2.2 canonical inquiry. 단건 포지션 + 가용수량 + 현금잔고를 단일 응답으로 제공하며 소유권을 강제한다.
 * **Response (200 OK):**
   ```json
   {
+    "accountId": "1",
+    "memberId": "301",
     "symbol": "005930",
-    "quantity": 50,
-    "availableQty": 50,
+    "quantity": 50.0000,
+    "availableQuantity": 50.0000,
+    "availableQty": 50.0000,
+    "balance": 10000000.0000,
+    "availableBalance": 10000000.0000,
+    "currency": "KRW",
+    "asOf": "2026-03-04T09:10:00Z",
     "avgPrice": 75000.0000,
     "marketPrice": 70200.0000,
     "quoteAsOf": "2026-03-04T09:10:00Z",
@@ -89,11 +111,20 @@ AI Agent가 즉각적으로 코드를 스캐폴딩(Scaffolding)하고 기능을 
     "realizedPnlDaily": 120000.0000
   }
   ```
+* **Contract Rule (중요):**
+  * `availableQuantity`는 canonical이다.
+  * `availableQty`는 호환 alias이며 항상 `availableQty == availableQuantity`를 만족해야 한다.
+  * `balance`는 canonical이다.
+  * `availableBalance`는 호환 alias이며 항상 `availableBalance == balance`를 만족해야 한다.
+  * `memberId`는 클라이언트 입력값이 아니라 channel-service 세션(`AUTH_MEMBER_ID`)에서 유도된 값만 허용한다.
+* **Error Rule (고정):**
+  * 소유권 불일치: `403 AUTH-005`
+  * downstream timeout/unavailable: `CORE-901`/`CORE-902` (retriable)
 
 #### [API-CH-05] 전체 포지션 리스트 조회
 * **Endpoint:** `GET /internal/v1/accounts/{accountId}/positions`
 * **Purpose:** 계좌 상세보기 / 잔고 화면에서 보유 주식 리스트 확인.
-* **Response (200 OK):** `[ { ...API-CH-04 스키마 배열... } ]`
+* **Response (200 OK):** `[ { ...API-CH-04 스키마 배열(availableQuantity canonical) ... } ]`
 
 > **PnL 계산 규칙(MVP 고정):**
 > - 평균단가(`avgPrice`)는 **가중평균** 방식으로 계산한다. (DB 컬럼 매핑: `positions.avg_cost`)

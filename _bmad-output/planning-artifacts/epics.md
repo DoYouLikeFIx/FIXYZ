@@ -909,17 +909,24 @@ So that order decisions can be made safely.
 **Acceptance Criteria:**
 
 - **Given** valid owned account  
-  **When** position/balance API is called  
-  **Then** current position quantity, available quantity, and cash balance are returned.
+  **When** `GET /api/v1/accounts/{accountId}/positions?symbol={symbol}` is called  
+  **Then** current position quantity, available quantity, cash balance, and `availableBalance` alias (`== balance`) are returned with currency/as-of metadata.
 - **Given** non-owned account request  
-  **When** authorization is checked  
-  **Then** access is denied.
+  **When** authorization is checked via session `AUTH_MEMBER_ID` ownership boundary  
+  **Then** API returns forbidden (`403`) with stable machine code `AUTH-005`.
 - **Given** concurrent updates  
   **When** reads occur  
-  **Then** response remains transactionally consistent.
+  **Then** response remains transactionally consistent with coherent cash/position snapshot.
 - **Given** downstream error  
   **When** query fails  
-  **Then** normalized retriable/non-retriable code is returned.
+  **Then** normalized retriable/non-retriable code is returned using fixed mapping table (`CORE-901/CORE-902` retriable, `AUTH-005/CORE_001/VALIDATION_001` non-retriable).
+
+**Contract Freeze (Story 2.2, 2026-03-10):**
+
+- Channel external path: `GET /api/v1/accounts/{accountId}/positions?symbol={symbol}`.
+- Corebank internal path: `GET /internal/v1/accounts/{accountId}/positions?symbol={symbol}&memberId={memberId}`.
+- Canonical fields: `quantity`, `availableQuantity`, `balance`.
+- Compatibility aliases: `availableQty == availableQuantity`, `availableBalance == balance`.
 
 ### Story 2.3: [BE][AC] Order History API
 
