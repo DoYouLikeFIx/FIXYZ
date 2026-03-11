@@ -42,7 +42,7 @@ so that account access rules stay consistent across clients.
 
 ### Developer Context Section
 
-- Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 1 (`1.1`~`1.6`).
+- Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 1 (`1.1`~`1.10`).
 - Supplemental artifact `_bmad-output/implementation-artifacts/epic-1-user-authentication-and-account-access.md` has a different numbering/scope (`1.1`~`1.10`); use it only for technical constraints, not story ID mapping.
 
 - Depends on Story 1.1, 1.2, and 0.4 mobile scaffold.
@@ -95,7 +95,7 @@ so that account access rules stay consistent across clients.
 ### Quinn Reinforcement Checks
 
 - Numbering regression gate:
-  - Verify 'story_key ↔ filename ↔ sprint-status key' are identical before moving status from 'ready-for-dev' to 'in-progress'.
+  - Verify 'story_key ??filename ??sprint-status key' are identical before moving status from 'ready-for-dev' to 'in-progress'.
   - Reject implementation start if key mismatch is detected between canonical Epic 1 numbering (`epics.md`) and supplemental Epic artifact.
 - FE/MOB session consistency gate:
   - Validate same behavior matrix for FE and MOB on: valid session, expired session, invalidated-by-new-login, logout-after-call, app/browser resume.
@@ -111,11 +111,11 @@ so that account access rules stay consistent across clients.
   - Attach automated test evidence for this story and impacted Epic 1 regression scenarios.
   - Attach negative-path replay result for `N-1`, `N`, `N+1` boundaries and session expiry paths.
   - Attach one correlation sample linking client-visible error to server-side security event/log.
-- Party review resolution status (2026-02-25):
-  - [ ] App resume/background revalidation evidence attached for deterministic stale-session rejection.
-  - [ ] Re-auth navigation evidence attached (no loop/back-stack corruption on auth-required response).
-  - [ ] Field/global auth error rendering evidence attached and aligned with backend code semantics.
-  - [ ] MOB behavior parity evidence recorded against FE baseline session matrix.
+- Party review resolution status (closeout confirmed 2026-03-11):
+  - [x] App resume/background revalidation evidence attached for deterministic stale-session rejection.
+  - [x] Re-auth navigation evidence attached (no loop/back-stack corruption on auth-required response).
+  - [x] Field/global auth error rendering evidence attached and aligned with backend code semantics.
+  - [x] MOB behavior parity evidence recorded against FE baseline session matrix.
 
 - Execution reference:
   - Run Epic 1 focused checklist: `_bmad-output/implementation-artifacts/epic-1-qa-reinforcement-checklist.md`.
@@ -176,23 +176,23 @@ GPT-5 Codex (Codex desktop)
 
 ### File List
 
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/1-4-mob-mobile-auth-flow.md
-- /Users/yeongjae/fixyz/MOB/tests/e2e/mobile-auth-flow.e2e.test.ts
-- /Users/yeongjae/fixyz/MOB/e2e/maestro/auth-live/01-register-success-live-be.yaml
-- /Users/yeongjae/fixyz/MOB/e2e/maestro/auth-live/02-login-success-live-be.yaml
-- /Users/yeongjae/fixyz/MOB/src/auth/use-auth-flow-view-model.ts
-- /Users/yeongjae/fixyz/MOB/src/auth/mobile-auth-service.ts
-- /Users/yeongjae/fixyz/MOB/src/auth/use-login-view-model.ts
-- /Users/yeongjae/fixyz/MOB/src/auth/use-register-view-model.ts
-- /Users/yeongjae/fixyz/MOB/src/auth/auth-flow-view-model.ts
-- /Users/yeongjae/fixyz/MOB/App.tsx
-- /Users/yeongjae/fixyz/MOB/src/screens/auth/LoginScreen.tsx
-- /Users/yeongjae/fixyz/MOB/src/screens/auth/RegisterScreen.tsx
-- /Users/yeongjae/fixyz/MOB/src/navigation/AppNavigator.tsx
-- /Users/yeongjae/fixyz/MOB/tests/unit/auth/mobile-auth-service.test.ts
-- /Users/yeongjae/fixyz/MOB/tests/unit/auth/auth-flow-view-model.test.ts
-- /Users/yeongjae/fixyz/MOB/src/network/csrf.ts
-- /Users/yeongjae/fixyz/BE/channel-service/src/test/java/com/fix/channel/integration/ChannelAuthFlowTest.java
-- /Users/yeongjae/fixyz/BE/channel-service/src/test/java/com/fix/channel/integration/ChannelAuthSessionIntegrationTest.java
-- /Users/yeongjae/fixyz/BE/channel-service/src/test/java/com/fix/channel/integration/ChannelContainersIntegrationTest.java
-- /Users/yeongjae/fixyz/BE/channel-service/src/test/java/com/fix/channel/integration/ChannelSessionTimeoutIntegrationTest.java
+- _bmad-output/implementation-artifacts/1-4-mob-mobile-auth-flow.md
+- MOB/tests/e2e/mobile-auth-flow.e2e.test.ts
+- MOB/e2e/maestro/auth-live/01-register-success-live-be.yaml
+- MOB/e2e/maestro/auth-live/02-login-success-live-be.yaml
+- MOB/src/auth/use-auth-flow-view-model.ts
+- MOB/src/auth/mobile-auth-service.ts
+- MOB/src/auth/use-login-view-model.ts
+- MOB/src/auth/use-register-view-model.ts
+- MOB/src/auth/auth-flow-view-model.ts
+- MOB/App.tsx
+- MOB/src/screens/auth/LoginScreen.tsx
+- MOB/src/screens/auth/RegisterScreen.tsx
+- MOB/src/navigation/AppNavigator.tsx
+- MOB/tests/unit/auth/mobile-auth-service.test.ts
+- MOB/tests/unit/auth/auth-flow-view-model.test.ts
+- MOB/src/network/csrf.ts
+- BE/channel-service/src/test/java/com/fix/channel/integration/ChannelAuthFlowTest.java
+- BE/channel-service/src/test/java/com/fix/channel/integration/ChannelAuthSessionIntegrationTest.java
+- BE/channel-service/src/test/java/com/fix/channel/integration/ChannelContainersIntegrationTest.java
+- BE/channel-service/src/test/java/com/fix/channel/integration/ChannelSessionTimeoutIntegrationTest.java

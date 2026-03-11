@@ -1,6 +1,6 @@
 # Story 1.1: BE Registration and Login Session
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -19,25 +19,25 @@ so that I can access protected features safely.
 
 ## Tasks / Subtasks
 
-- [ ] Implement registration endpoint and member creation policy (AC: 1)
-  - [ ] Enforce role defaulting and password hashing policy
-  - [ ] Return normalized success contract for register result
-- [ ] Implement login endpoint with Spring Session Redis issuance (AC: 2)
-  - [ ] Issue `JSESSIONID` with secure cookie attributes
-  - [ ] Store and refresh authenticated session state in Redis
-- [ ] Enforce single active session policy per account (AC: 3)
-  - [ ] Expire prior active session on re-login
-  - [ ] Return deterministic behavior for old/new session usage
-- [ ] Normalize authentication error responses (AC: 4)
-  - [ ] Unify invalid credentials/non-existent account response semantics
-  - [ ] Ensure consistent global error envelope
-- [ ] Add integration coverage for register/login/session baseline (AC: 1, 2, 3, 4)
+- [x] Implement registration endpoint and member creation policy (AC: 1)
+  - [x] Enforce role defaulting and password hashing policy
+  - [x] Return normalized success contract for register result
+- [x] Implement login endpoint with Spring Session Redis issuance (AC: 2)
+  - [x] Issue `JSESSIONID` with secure cookie attributes
+  - [x] Store and refresh authenticated session state in Redis
+- [x] Enforce single active session policy per account (AC: 3)
+  - [x] Expire prior active session on re-login
+  - [x] Return deterministic behavior for old/new session usage
+- [x] Normalize authentication error responses (AC: 4)
+  - [x] Unify invalid credentials/non-existent account response semantics
+  - [x] Ensure consistent global error envelope
+- [x] Add integration coverage for register/login/session baseline (AC: 1, 2, 3, 4)
 
 ## Dev Notes
 
 ### Developer Context Section
 
-- Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 1 (`1.1`~`1.6`).
+- Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 1 (`1.1`~`1.10`).
 - Supplemental artifact `_bmad-output/implementation-artifacts/epic-1-user-authentication-and-account-access.md` has a different numbering/scope (`1.1`~`1.10`); use it only for technical constraints, not story ID mapping.
 
 - Epic 1 foundation story for all subsequent auth stories.
@@ -93,7 +93,7 @@ so that I can access protected features safely.
 ### Quinn Reinforcement Checks
 
 - Numbering regression gate:
-  - Verify 'story_key ↔ filename ↔ sprint-status key' are identical before moving status from 'ready-for-dev' to 'in-progress'.
+  - Verify 'story_key ??filename ??sprint-status key' are identical before moving status from 'ready-for-dev' to 'in-progress'.
   - Reject implementation start if key mismatch is detected between canonical Epic 1 numbering (`epics.md`) and supplemental Epic artifact.
 - FE/MOB session consistency gate:
   - Validate same behavior matrix for FE and MOB on: valid session, expired session, invalidated-by-new-login, logout-after-call, app/browser resume.
@@ -109,11 +109,11 @@ so that I can access protected features safely.
   - Attach automated test evidence for this story and impacted Epic 1 regression scenarios.
   - Attach negative-path replay result for `N-1`, `N`, `N+1` boundaries and session expiry paths.
   - Attach one correlation sample linking client-visible error to server-side security event/log.
-- Party review resolution status (2026-02-25):
-  - [ ] Scope alignment confirmed: lockout/rate-limit policy implementation is owned by Story 1.5; Story 1.1 only guarantees auth/session baseline compatibility.
-  - [ ] Redis+MySQL integration evidence attached for register/login/session issuance path (including secure cookie attributes).
-  - [ ] Duplicate-login invalidation evidence attached showing deterministic old-session denial and new-session success.
-  - [ ] Invalid-credential normalization evidence attached with non-enumerating auth error semantics.
+- Party review resolution status (closeout confirmed 2026-03-11):
+  - [x] Scope alignment confirmed: lockout/rate-limit policy implementation is owned by Story 1.5; Story 1.1 only guarantees auth/session baseline compatibility.
+  - [x] Redis+MySQL integration evidence attached for register/login/session issuance path (including secure cookie attributes).
+  - [x] Duplicate-login invalidation evidence attached showing deterministic old-session denial and new-session success.
+  - [x] Invalid-credential normalization evidence attached with non-enumerating auth error semantics.
 
 - Execution reference:
   - Run Epic 1 focused checklist: `_bmad-output/implementation-artifacts/epic-1-qa-reinforcement-checklist.md`.
@@ -132,8 +132,8 @@ so that I can access protected features safely.
 
 ### Story Completion Status
 
-- Status set to `ready-for-dev`.
-- Completion note: Ultimate context engine analysis completed - comprehensive developer guide created.
+- Status set to `done`.
+- Completion note: Story closed as done to reflect the delivered registration, login, and session baseline that underpins the completed Epic 1 auth platform.
 
 ### References
 
@@ -161,4 +161,4 @@ GPT-5 Codex (Codex desktop)
 
 ### File List
 
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/1-1-be-registration-login-session.md
+- _bmad-output/implementation-artifacts/1-1-be-registration-login-session.md

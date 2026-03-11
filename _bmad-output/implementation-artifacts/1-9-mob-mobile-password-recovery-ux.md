@@ -1,6 +1,6 @@
 # Story 1.9: MOB Mobile Password Recovery UX
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -181,8 +181,8 @@ so that I can regain access on mobile without relying on inconsistent web-only b
 
 ### Story Completion Status
 
-- Status set to `ready-for-dev`.
-- Completion note: Created as the MOB companion to Story 1.7 so the mobile lane can implement the dedicated password recovery screens and submit flow now missing from the shipped auth surface.
+- Status set to `done`.
+- Completion note: Mobile password recovery screens, submit flow, and terminal error guidance were implemented and the story is closed as done with Epic 1.
 
 ### References
 
@@ -220,13 +220,13 @@ GPT-5 Codex (Codex desktop)
 
 ### Debug Log References
 
-- `npm --prefix /Users/yeongjae/fixyz/MOB run lint`
-- `npm --prefix /Users/yeongjae/fixyz/MOB test -- auth-flow-view-model.test.ts mobile-password-recovery.e2e.test.ts`
-- `npm --prefix /Users/yeongjae/fixyz/MOB run typecheck`
-- `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer /Users/yeongjae/fixyz/MOB/scripts/run-maestro-auth-suite.sh /Users/yeongjae/fixyz/MOB/e2e/maestro/auth/12-password-recovery-terminal-403.yaml`
-- `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer /Users/yeongjae/fixyz/MOB/scripts/run-maestro-auth-suite.sh /Users/yeongjae/fixyz/MOB/e2e/maestro/auth/13-password-recovery-challenge-terminal-403.yaml`
-- `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer /Users/yeongjae/fixyz/MOB/scripts/run-maestro-auth-suite.sh /Users/yeongjae/fixyz/MOB/e2e/maestro/auth/14-password-reset-terminal-403.yaml`
-- `LIVE_API_BASE_URL=http://127.0.0.1:8080 LIVE_EMAIL=<unique_email> DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer /Users/yeongjae/fixyz/MOB/scripts/run-maestro-auth-suite.sh /Users/yeongjae/fixyz/MOB/e2e/maestro/auth-live/06-password-recovery-challenge-live-be.yaml`
+- `npm --prefix MOB run lint`
+- `npm --prefix MOB test -- auth-flow-view-model.test.ts mobile-password-recovery.e2e.test.ts`
+- `npm --prefix MOB run typecheck`
+- `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer MOB/scripts/run-maestro-auth-suite.sh MOB/e2e/maestro/auth/12-password-recovery-terminal-403.yaml`
+- `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer MOB/scripts/run-maestro-auth-suite.sh MOB/e2e/maestro/auth/13-password-recovery-challenge-terminal-403.yaml`
+- `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer MOB/scripts/run-maestro-auth-suite.sh MOB/e2e/maestro/auth/14-password-reset-terminal-403.yaml`
+- `LIVE_API_BASE_URL=http://127.0.0.1:8080 LIVE_EMAIL=<unique_email> DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer MOB/scripts/run-maestro-auth-suite.sh MOB/e2e/maestro/auth-live/06-password-recovery-challenge-live-be.yaml`
 
 ### Completion Notes List
 
