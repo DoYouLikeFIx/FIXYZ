@@ -1,6 +1,6 @@
 # Story 1.8: FE Web Password Recovery UX
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -21,33 +21,34 @@ so that I can regain access from the login experience without revealing whether 
 
 ## Tasks / Subtasks
 
-- [ ] Add public FE recovery routes and entry points (AC: 1, 5)
-  - [ ] Add a forgot-password page reachable from `/login` and a dedicated public recovery entry within the existing auth router
-  - [ ] Add a reset-password page reachable from a supported token-bearing public entry owned by the FE router
-  - [ ] Preserve `PublicOnlyRoute` semantics so authenticated users are not pushed into a broken recovery loop
-- [ ] Implement FE recovery API client contract on top of the existing auth client stack (AC: 2, 3, 4, 5)
-  - [ ] Extend `FE/src/api/authApi.ts` with JSON-body recovery endpoints while leaving login/register form submissions unchanged
-  - [ ] Reuse `FE/src/lib/axios.ts` CSRF bootstrap and one-refresh/one-retry behavior for forgot, challenge, and reset submits
-  - [ ] Keep recovery challenge token and reset token in transient route/controller state only
-- [ ] Implement web forgot-password UX and challenge step handling (AC: 1, 2, 3)
-  - [ ] Reuse the existing auth frame/look-and-feel instead of introducing a second auth design system
-  - [ ] Submit email, show fixed accepted copy, and support optional challenge bootstrap/submit without eligibility disclosure
-  - [ ] Surface challenge TTL/type without hardcoding a provider-specific dependency beyond the backend contract
-- [ ] Implement web reset-password UX and post-success handoff (AC: 4, 5, 6)
-  - [ ] Validate new password against the shared password policy before submit
-  - [ ] On `204`, route back to `/login` with a deterministic success banner and cleared recovery state
-  - [ ] Map `AUTH-012` through `AUTH-016` and unknown errors to clear next actions
-- [ ] Add FE regression and live coverage for the full recovery surface (AC: 1, 2, 3, 4, 5, 6)
-  - [ ] Expand unit/integration coverage around controllers, route guards, and error mapping
-  - [ ] Extend Playwright coverage beyond the current guidance panel into forgot, challenge, reset, and stale-session follow-up
+- [x] Add public FE recovery routes and entry points (AC: 1, 5)
+  - [x] Add a forgot-password page reachable from `/login` and a dedicated public recovery entry within the existing auth router
+  - [x] Add a reset-password page reachable from a supported token-bearing public entry owned by the FE router
+  - [x] Preserve `PublicOnlyRoute` semantics so authenticated users are not pushed into a broken recovery loop
+- [x] Implement FE recovery API client contract on top of the existing auth client stack (AC: 2, 3, 4, 5)
+  - [x] Extend `FE/src/api/authApi.ts` with JSON-body recovery endpoints while leaving login/register form submissions unchanged
+  - [x] Reuse `FE/src/lib/axios.ts` CSRF bootstrap and one-refresh/one-retry behavior for forgot, challenge, and reset submits
+  - [x] Keep recovery challenge token and reset token in transient route/controller state only
+- [x] Implement web forgot-password UX and challenge step handling (AC: 1, 2, 3)
+  - [x] Reuse the existing auth frame/look-and-feel instead of introducing a second auth design system
+  - [x] Submit email, show fixed accepted copy, and support optional challenge bootstrap/submit without eligibility disclosure
+  - [x] Surface challenge TTL/type without hardcoding a provider-specific dependency beyond the backend contract
+- [x] Implement web reset-password UX and post-success handoff (AC: 4, 5, 6)
+  - [x] Validate new password against the shared password policy before submit
+  - [x] On `204`, route back to `/login` with a deterministic success banner and cleared recovery state
+  - [x] Map `AUTH-012` through `AUTH-016` and unknown errors to clear next actions
+- [x] Add FE regression coverage and targeted live smoke coverage for the recovery surface (AC: 1, 2, 3, 4, 5, 6)
+  - [x] Expand unit/integration coverage around controllers, route guards, and error mapping
+  - [x] Extend Playwright coverage beyond the current guidance panel into forgot, challenge, reset, stale challenge cleanup, and terminal CSRF guidance, with live smoke on accepted forgot, challenge bootstrap, invalid reset, and optional env-backed reset success
 
 ## Dev Notes
 
 ### Developer Context Section
 
-- Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 1 (`1.1`~`1.9`).
+- Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 1 (`1.1`~`1.10`).
 - Supplemental artifact `_bmad-output/implementation-artifacts/epic-1-user-authentication-and-account-access.md` uses historical numbering and must not override canonical story ID ownership.
 - Story 1.7 already fixed the backend contract and evidence baseline. This story is the FE lane that consumes that contract; do not redesign the recovery semantics.
+- Execution gate: keep this story `ready-for-dev`, but do not move implementation to `in-progress` until Story 1.7 exits `review` or the recovery API contract is explicitly reconfirmed unchanged.
 - Current shipped FE surface only provides login-form guidance plus direct contract checks. This story introduces the missing dedicated recovery pages and submit flow on top of that existing baseline.
 
 ### Technical Requirements
@@ -199,23 +200,66 @@ so that I can regain access from the login experience without revealing whether 
 - `FE/src/hooks/auth/useLoginPageController.ts`
 - `FE/e2e/auth-recovery.spec.ts`
 
+## Change Log
+
+- 2026-03-10: Implemented web password recovery routes, challenge/reset UX, recovery error handling, deterministic stale-state cleanup, and FE regression plus targeted live smoke coverage.
+
 ## Dev Agent Record
 
 ### Agent Model Used
 
 GPT-5 Codex (Codex desktop)
 
+### Implementation Plan
+
+- Extend the existing auth router and login controller with dedicated forgot/reset recovery entry points that preserve `PublicOnlyRoute` behavior.
+- Add recovery request, challenge, and reset contracts to the FE auth API/client stack while keeping CSRF retry semantics centralized in `lib/axios.ts`.
+- Build controller-driven forgot/reset pages and components that keep recovery tokens transient, reuse the current auth frame, and return success through the normal login flow.
+- Cover the flow with unit, integration, and Playwright regression/live tests for accepted-copy parity, challenge bootstrap, reset success handoff, and recovery error mapping.
+- Add targeted live smoke for accepted forgot, challenge bootstrap, and invalid reset, while keeping live reset-success available as an env-backed optional path because a real recovery token is required.
+
 ### Debug Log References
 
-- Story synthesized from Epic 1 canonical planning artifacts, Story 1.7 evidence, current FE auth controllers, and shipped recovery-guidance test coverage on 2026-03-10.
+- `pnpm --dir /Users/yeongjae/fixyz/FE lint`
+- `pnpm --dir /Users/yeongjae/fixyz/FE test -- password-recovery.test.tsx`
+- `pnpm --dir /Users/yeongjae/fixyz/FE exec tsc -b --noEmit`
+- `pnpm --dir /Users/yeongjae/fixyz/FE exec playwright test /Users/yeongjae/fixyz/FE/e2e/auth-recovery.spec.ts`
+- `LIVE_API_BASE_URL=http://127.0.0.1:8080 pnpm --dir /Users/yeongjae/fixyz/FE exec playwright test /Users/yeongjae/fixyz/FE/e2e/live/auth-live.spec.ts`
 
 ### Completion Notes List
 
-- Added canonical FE password recovery UX story to close the gap between the shipped guidance-only surface and the backend recovery contract.
-- Kept the story scoped to the FE lane and existing auth architecture rather than inventing a second auth stack.
+- Added dedicated forgot/reset routes, pages, and controller-driven challenge handling while preserving the existing public auth routing semantics.
+- Kept reset and challenge tokens transient by scrubbing the web handoff token into route state and avoiding persistent browser storage.
+- Fixed stale challenge replay cleanup, latest-token replacement in the same SPA session, and `AUTH-016` reauth routing back to login.
+- Added FE unit, integration, and Playwright coverage for recovery routing, accepted-copy parity, challenge replay, terminal second-`403` guidance, reset success handoff, and deterministic recovery error mapping.
+- Added live smoke coverage for accepted forgot, challenge bootstrap, and invalid reset, plus an optional env-backed live reset-success path when a real token is available.
 
 ### File List
 
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/1-8-fe-web-password-recovery-ux.md
-- /Users/yeongjae/fixyz/_bmad-output/planning-artifacts/epics.md
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/sprint-status.yaml
+- FE/src/types/auth.ts
+- FE/src/lib/axios.ts
+- FE/src/lib/auth-errors.ts
+- FE/src/lib/schemas/auth.schema.ts
+- FE/src/api/authApi.ts
+- FE/src/router/navigation.ts
+- FE/src/router/AppRouter.tsx
+- FE/src/hooks/auth/useLoginPageController.ts
+- FE/src/components/auth/LoginForm.tsx
+- FE/src/components/auth/ForgotPasswordForm.tsx
+- FE/src/components/auth/PasswordResetForm.tsx
+- FE/src/hooks/auth/useForgotPasswordPageController.ts
+- FE/src/hooks/auth/useResetPasswordPageController.ts
+- FE/src/pages/ForgotPasswordPage.tsx
+- FE/src/pages/PasswordResetPage.tsx
+- FE/src/index.css
+- FE/tests/unit/api/authApi.test.ts
+- FE/tests/unit/lib/axios.test.ts
+- FE/tests/unit/lib/auth-errors.test.ts
+- FE/tests/integration/App.test.tsx
+- FE/tests/integration/password-recovery.test.tsx
+- FE/tests/unit/hooks/auth/useAppBootstrap.test.tsx
+- FE/e2e/auth-recovery.spec.ts
+- FE/e2e/live/auth-live.spec.ts
+- FE/README.md
+- _bmad-output/implementation-artifacts/1-8-fe-web-password-recovery-ux.md
+- _bmad-output/implementation-artifacts/sprint-status.yaml

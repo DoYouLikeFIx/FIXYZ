@@ -792,7 +792,7 @@ LIMIT 50;
 
 ---
 
-# 9) Password Recovery Queries (Story 1.7 Addendum, 2026-03-05)
+# 9) Password Recovery Queries (Story 1.7 / Story 1.10 Addendum, 2026-03-11)
 
 ## 9.1 Issue reset token (single active token invariant)
 
@@ -802,20 +802,22 @@ LIMIT 50;
 -- 1) lock member row first
 SELECT id, member_uuid, status
 FROM members
-WHERE member_uuid = ?
+WHERE id = ?
   AND deleted_at IS NULL
 FOR UPDATE;
 
 -- 2) invalidate current active token row
 UPDATE password_reset_tokens
 SET active_slot = NULL,
+    terminal_reason = 'SUPERSEDED',
+    terminalized_at = NOW(6),
     updated_at = NOW(6)
-WHERE member_uuid = ?
+WHERE member_id = ?
   AND active_slot = 1;
 
 -- 3) insert new active token
 INSERT INTO password_reset_tokens (
-  member_uuid,
+  member_id,
   token_hash,
   pepper_version,
   active_slot,
@@ -840,12 +842,12 @@ INSERT INTO password_reset_tokens (
 -- 1) lock member row first
 SELECT id, member_uuid, password_hash
 FROM members
-WHERE member_uuid = ?
+WHERE id = ?
   AND deleted_at IS NULL
 FOR UPDATE;
 
 -- 2) lock candidate active token rows
-SELECT id, token_hash, pepper_version, expires_at, consumed_at
+SELECT id, member_id, token_hash, pepper_version, expires_at, consumed_at, terminal_reason, terminalized_at
 FROM password_reset_tokens
 WHERE token_hash IN (?, ?)
 FOR UPDATE;
@@ -854,6 +856,8 @@ FOR UPDATE;
 UPDATE password_reset_tokens
 SET consumed_at = NOW(6),
     active_slot = NULL,
+    terminal_reason = 'CONSUMED',
+    terminalized_at = NOW(6),
     updated_at = NOW(6)
 WHERE id = ?
   AND consumed_at IS NULL;
@@ -863,7 +867,7 @@ UPDATE members
 SET password_hash = ?,
     password_changed_at = NOW(3),
     updated_at = NOW(6)
-WHERE member_uuid = ?
+WHERE id = ?
   AND deleted_at IS NULL;
 
 -- transaction commit
@@ -873,11 +877,20 @@ WHERE member_uuid = ?
 
 ```sql
 -- repeat per batch while batchCount < 8 and runSeconds < 20
-DELETE FROM password_reset_tokens
-WHERE (
-    (expires_at < NOW(6) AND active_slot IS NULL)
-    OR (consumed_at IS NOT NULL AND consumed_at < NOW(6) - INTERVAL 30 DAY)
-)
+UPDATE password_reset_tokens
+SET active_slot = NULL,
+    terminal_reason = 'EXPIRED',
+    terminalized_at = NOW(6),
+    updated_at = NOW(6)
+WHERE active_slot = 1
+  AND expires_at < NOW(6)
 ORDER BY expires_at ASC
+LIMIT 500;
+
+-- repeat per batch while batchCount < 8 and runSeconds < 20
+DELETE FROM password_reset_tokens
+WHERE active_slot IS NULL
+  AND terminalized_at < NOW(6) - INTERVAL 30 DAY
+ORDER BY terminalized_at ASC, expires_at ASC
 LIMIT 500;
 ```

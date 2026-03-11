@@ -250,7 +250,7 @@
 
 ---
 
-## 9. Password Recovery Table Addendum (Story 1.7, 2026-03-05)
+## 9. Password Recovery Table Addendum (Story 1.7 / Story 1.10, 2026-03-11)
 
 ### 9.1 members extension
 
@@ -261,7 +261,7 @@ Backfill:
 - from `updated_at` (fallback `created_at`)
 
 Index:
-- `(member_uuid, password_changed_at)`
+- `(password_changed_at)`
 
 ### 9.2 password_reset_tokens
 
@@ -271,11 +271,19 @@ Purpose:
 
 Required constraints:
 - `UNIQUE(token_hash)`
-- `UNIQUE(member_uuid, active_slot)`
+- `UNIQUE(member_id, active_slot)`
 - `CHECK (active_slot IS NULL OR active_slot = 1)`
+- `CHECK (terminal_reason IS NULL OR terminal_reason IN ('CONSUMED', 'SUPERSEDED', 'EXPIRED'))`
+
+Required columns:
+- `terminal_reason VARCHAR(20) NULL`
+- `terminalized_at DATETIME(6) NULL`
 
 Required operational policy:
 - no raw token persistence
 - only HMAC token hash persistence
-- retention: terminal rows 30 days then purge
+- terminalized rows retain explicit reason codes: `CONSUMED`, `SUPERSEDED`, `EXPIRED`
+- expired active rows are terminalized with `consumed_at = NULL`
+- retention: terminal rows 30 days from `terminalized_at` then purge
 - cleanup loop bounds: `batchSize=500`, `maxBatchesPerRun=8`, `maxRunSeconds=20`
+- purge ordering: oldest `terminalized_at` first

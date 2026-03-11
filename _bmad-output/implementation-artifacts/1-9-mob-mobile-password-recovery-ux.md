@@ -1,6 +1,6 @@
 # Story 1.9: MOB Mobile Password Recovery UX
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -21,33 +21,34 @@ so that I can regain access on mobile without relying on inconsistent web-only b
 
 ## Tasks / Subtasks
 
-- [ ] Add native mobile recovery routes and entry points (AC: 1, 5)
-  - [ ] Add a forgot-password screen reachable from the login screen and a reset-password screen reachable from the supported token handoff owned by the current app shell
-  - [ ] Extend the custom auth navigation state instead of introducing a second navigation framework
-  - [ ] Preserve deterministic return-to-login behavior after success or terminal failure
-- [ ] Implement mobile recovery API client contract on top of the existing auth/network stack (AC: 2, 3, 4, 5)
-  - [ ] Extend `MOB/src/api/auth-api.ts` with JSON-body recovery endpoints while leaving login/register form submissions unchanged
-  - [ ] Reuse `CsrfTokenManager` and current unsafe-method header injection for forgot, challenge, and reset submits
-  - [ ] Keep recovery challenge token and reset token in transient view-model/navigation state only
-- [ ] Implement native forgot-password UX and challenge step handling (AC: 1, 2, 3)
-  - [ ] Reuse current auth scaffolding, form field patterns, and banner treatments
-  - [ ] Submit email, show fixed accepted copy, and support optional challenge bootstrap/submit without eligibility disclosure
-  - [ ] Surface challenge TTL/type without hardcoding a provider SDK dependency beyond the backend contract
-- [ ] Implement native reset-password UX and post-success handoff (AC: 4, 5, 6)
-  - [ ] Validate the new password against the shared password policy before submit
-  - [ ] On `204`, clear recovery state and route the user back to the login screen with deterministic success guidance
-  - [ ] Map `AUTH-012` through `AUTH-016` and unknown errors to mobile-specific field/global guidance
-- [ ] Add mobile regression and live coverage for the full recovery surface (AC: 1, 2, 3, 4, 5, 6)
-  - [ ] Expand unit/e2e coverage around view models, app-state behavior, and error mapping
-  - [ ] Extend Maestro coverage beyond the current guidance panel into forgot, challenge, reset, and post-reset re-auth handling
+- [x] Add native mobile recovery routes and entry points (AC: 1, 5)
+  - [x] Add a forgot-password screen reachable from the login screen and a reset-password screen reachable from the supported token handoff owned by the current app shell
+  - [x] Extend the custom auth navigation state instead of introducing a second navigation framework
+  - [x] Preserve deterministic return-to-login behavior after success or terminal failure
+- [x] Implement mobile recovery API client contract on top of the existing auth/network stack (AC: 2, 3, 4, 5)
+  - [x] Extend `MOB/src/api/auth-api.ts` with JSON-body recovery endpoints while leaving login/register form submissions unchanged
+  - [x] Reuse `CsrfTokenManager` and current unsafe-method header injection for forgot, challenge, and reset submits
+  - [x] Keep recovery challenge token and reset token in transient view-model/navigation state only
+- [x] Implement native forgot-password UX and challenge step handling (AC: 1, 2, 3)
+  - [x] Reuse current auth scaffolding, form field patterns, and banner treatments
+  - [x] Submit email, show fixed accepted copy, and support optional challenge bootstrap/submit without eligibility disclosure
+  - [x] Surface challenge TTL/type without hardcoding a provider SDK dependency beyond the backend contract
+- [x] Implement native reset-password UX and post-success handoff (AC: 4, 5, 6)
+  - [x] Validate the new password against the shared password policy before submit
+  - [x] On `204`, clear recovery state and route the user back to the login screen with deterministic success guidance
+  - [x] Map `AUTH-012` through `AUTH-016` and unknown errors to mobile-specific field/global guidance
+- [x] Add mobile regression coverage and targeted live smoke coverage for the recovery surface (AC: 1, 2, 3, 4, 5, 6)
+  - [x] Expand unit/e2e coverage around view models, app-state behavior, and error mapping
+  - [x] Extend Maestro coverage beyond the current guidance panel into forgot, challenge, reset, terminal CSRF UX, deep-link handoff, and targeted live smoke on accepted forgot, challenge bootstrap, invalid reset, and optional env-backed reset success
 
 ## Dev Notes
 
 ### Developer Context Section
 
-- Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 1 (`1.1`~`1.9`).
+- Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 1 (`1.1`~`1.10`).
 - Supplemental artifact `_bmad-output/implementation-artifacts/epic-1-user-authentication-and-account-access.md` uses historical numbering and must not override canonical story ID ownership.
 - Story 1.7 already fixed the backend contract and evidence baseline. This story is the MOB lane that consumes that contract; do not redesign the recovery semantics.
+- Execution gate: keep this story `ready-for-dev`, but do not move implementation to `in-progress` until Story 1.7 exits `review` or the recovery API contract is explicitly reconfirmed unchanged.
 - Current shipped mobile surface only provides login-screen guidance. This story introduces the missing dedicated native recovery screens and submit flow.
 
 ### Technical Requirements
@@ -198,7 +199,11 @@ so that I can regain access on mobile without relying on inconsistent web-only b
 - `MOB/src/network/csrf.ts`
 - `MOB/src/auth/use-auth-flow-view-model.ts`
 - `MOB/src/navigation/auth-navigation.ts`
-- `MOB/e2e/maestro/auth-live/04-login-password-recovery-guidance-live-be.yaml`
+- `MOB/e2e/maestro/auth-live/04-password-recovery-request-live-be.yaml`
+
+## Change Log
+
+- 2026-03-10: Implemented mobile password recovery screens, deep-link handoff preservation, dev-only QA reset input mode, deterministic stale-state cleanup, and mobile regression plus targeted live smoke coverage.
 
 ## Dev Agent Record
 
@@ -206,17 +211,79 @@ so that I can regain access on mobile without relying on inconsistent web-only b
 
 GPT-5 Codex (Codex desktop)
 
+### Implementation Plan
+
+- Extend the current auth navigation state and flow view model with native forgot/reset routes instead of introducing a new navigation framework.
+- Add recovery request, challenge, and reset calls to the mobile auth/network stack while preserving centralized CSRF refresh-and-retry handling.
+- Build dedicated native forgot/reset screens and view models that keep challenge/reset tokens transient and route success back to the existing login surface.
+- Add mobile unit, e2e, and Maestro coverage for recovery entry, challenge bootstrap, reset completion, terminal CSRF UX, deep-link handoff, and deterministic recovery error handling, while keeping live reset success env-backed because a real recovery token is required.
+
 ### Debug Log References
 
-- Story synthesized from Epic 1 canonical planning artifacts, Story 1.7 evidence, current mobile auth MVVM/navigation files, and shipped recovery-guidance test coverage on 2026-03-10.
+- `npm --prefix /Users/yeongjae/fixyz/MOB run lint`
+- `npm --prefix /Users/yeongjae/fixyz/MOB test -- auth-flow-view-model.test.ts mobile-password-recovery.e2e.test.ts`
+- `npm --prefix /Users/yeongjae/fixyz/MOB run typecheck`
+- `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer /Users/yeongjae/fixyz/MOB/scripts/run-maestro-auth-suite.sh /Users/yeongjae/fixyz/MOB/e2e/maestro/auth/12-password-recovery-terminal-403.yaml`
+- `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer /Users/yeongjae/fixyz/MOB/scripts/run-maestro-auth-suite.sh /Users/yeongjae/fixyz/MOB/e2e/maestro/auth/13-password-recovery-challenge-terminal-403.yaml`
+- `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer /Users/yeongjae/fixyz/MOB/scripts/run-maestro-auth-suite.sh /Users/yeongjae/fixyz/MOB/e2e/maestro/auth/14-password-reset-terminal-403.yaml`
+- `LIVE_API_BASE_URL=http://127.0.0.1:8080 LIVE_EMAIL=<unique_email> DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer /Users/yeongjae/fixyz/MOB/scripts/run-maestro-auth-suite.sh /Users/yeongjae/fixyz/MOB/e2e/maestro/auth-live/06-password-recovery-challenge-live-be.yaml`
 
 ### Completion Notes List
 
-- Added canonical MOB password recovery UX story to close the gap between the shipped guidance-only surface and the backend recovery contract.
-- Kept the story scoped to the mobile lane and existing auth/navigation architecture rather than inventing a second auth stack.
+- Added native forgot/reset screens and auth-route transitions on top of the existing auth MVVM and custom navigation stack.
+- Implemented recovery endpoints plus one-refresh/one-retry CSRF handling in the mobile HTTP client without persisting challenge or reset tokens.
+- Preserved cold-start deep-link reset handoff across bootstrap, and limited the Maestro plaintext-password hook to dev builds only.
+- Added mobile unit, e2e, and Maestro recovery coverage for challenge bootstrap, terminal second-`403` UX, reset success handoff, deep-link handoff, and the manual token-entry flow.
+- Added live smoke coverage for accepted forgot, challenge bootstrap, invalid reset, and an optional env-backed reset-success deep-link flow.
 
 ### File List
 
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/1-9-mob-mobile-password-recovery-ux.md
-- /Users/yeongjae/fixyz/_bmad-output/planning-artifacts/epics.md
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/sprint-status.yaml
+- MOB/src/types/auth.ts
+- MOB/src/types/auth-ui.ts
+- MOB/src/network/types.ts
+- MOB/src/network/errors.ts
+- MOB/src/network/csrf.ts
+- MOB/src/network/http-client.ts
+- MOB/src/api/auth-api.ts
+- MOB/src/navigation/auth-navigation.ts
+- MOB/src/auth/mobile-auth-service.ts
+- MOB/src/auth/auth-errors.ts
+- MOB/src/auth/form-validation.ts
+- MOB/src/auth/auth-flow-view-model.ts
+- MOB/src/auth/password-reset-handoff.ts
+- MOB/src/auth/use-auth-flow-view-model.ts
+- MOB/src/auth/use-forgot-password-view-model.ts
+- MOB/src/auth/use-reset-password-view-model.ts
+- MOB/src/config/runtime-options.ts
+- MOB/src/navigation/AppNavigator.tsx
+- MOB/src/screens/auth/LoginScreen.tsx
+- MOB/src/screens/auth/ForgotPasswordScreen.tsx
+- MOB/src/screens/auth/ResetPasswordScreen.tsx
+- MOB/src/index.ts
+- MOB/scripts/mock-auth-server.mjs
+- MOB/scripts/run-maestro-auth-suite.sh
+- MOB/README.md
+- MOB/ios/FIXYZMob/Info.plist
+- MOB/android/app/src/main/AndroidManifest.xml
+- MOB/tests/unit/api/auth-api.test.ts
+- MOB/tests/unit/network/csrf.test.ts
+- MOB/tests/unit/network/http-client.test.ts
+- MOB/tests/unit/auth/auth-errors.test.ts
+- MOB/tests/unit/auth/form-validation.test.ts
+- MOB/tests/unit/navigation/auth-navigation.test.ts
+- MOB/tests/unit/auth/auth-flow-view-model.test.ts
+- MOB/tests/unit/auth/mobile-auth-service.test.ts
+- MOB/tests/e2e/mobile-password-recovery.e2e.test.ts
+- MOB/e2e/maestro/auth/08-password-recovery-request.yaml
+- MOB/e2e/maestro/auth/09-password-reset-manual-token.yaml
+- MOB/e2e/maestro/auth/10-password-reset-success.yaml
+- MOB/e2e/maestro/auth/11-password-reset-deeplink-handoff.yaml
+- MOB/e2e/maestro/auth/12-password-recovery-terminal-403.yaml
+- MOB/e2e/maestro/auth/13-password-recovery-challenge-terminal-403.yaml
+- MOB/e2e/maestro/auth/14-password-reset-terminal-403.yaml
+- MOB/e2e/maestro/auth-live/04-password-recovery-request-live-be.yaml
+- MOB/e2e/maestro/auth-live/05-password-reset-invalid-token-live-be.yaml
+- MOB/e2e/maestro/auth-live/06-password-recovery-challenge-live-be.yaml
+- MOB/e2e/maestro/auth-live/07-password-reset-success-live-be.yaml
+- _bmad-output/implementation-artifacts/1-9-mob-mobile-password-recovery-ux.md
+- _bmad-output/implementation-artifacts/sprint-status.yaml

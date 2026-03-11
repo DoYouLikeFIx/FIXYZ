@@ -233,18 +233,20 @@ DB 레벨 목표:
 
 ---
 
-## 3.8 password_reset_tokens (Password Recovery Addendum, 2026-03-05)
+## 3.8 password_reset_tokens (Password Recovery Addendum, Story 1.7 / Story 1.10, 2026-03-11)
 
 | Column | Type | Null | Constraint | Description |
 | --- | --- | --- | --- | --- |
 | id | BIGINT UNSIGNED | N | PK(AUTO) | Internal key |
-| member_uuid | CHAR(36) | N | IDX | Target member UUID |
+| member_id | BIGINT UNSIGNED | N | IDX | Target member internal id (`members.id`) |
 | token_hash | CHAR(64) | N | UK | HMAC-SHA-256(token, pepper) only |
 | pepper_version | SMALLINT | N | | Active/previous pepper key version |
 | active_slot | TINYINT | Y | CHECK | `1` for active, `NULL` for terminal |
 | issued_at | DATETIME(6) | N | | Issued timestamp |
 | expires_at | DATETIME(6) | N | IDX | Expiry timestamp |
 | consumed_at | DATETIME(6) | Y | IDX | Consume timestamp |
+| terminal_reason | VARCHAR(20) | Y | CHECK | Terminal reason: `CONSUMED`, `SUPERSEDED`, `EXPIRED` |
+| terminalized_at | DATETIME(6) | Y | IDX | Terminalization timestamp and retention anchor |
 | request_ip | VARCHAR(45) | Y | | Masked source IP |
 | request_user_agent_hash | CHAR(64) | Y | | User-agent hash |
 | created_at | DATETIME(6) | N | | Insert timestamp |
@@ -252,24 +254,29 @@ DB 레벨 목표:
 
 Required constraints:
 - `UNIQUE(token_hash)`
-- `UNIQUE(member_uuid, active_slot)` (one active token per member)
+- `UNIQUE(member_id, active_slot)` (one active token per member)
 - `CHECK (active_slot IS NULL OR active_slot = 1)`
+- `CHECK (terminal_reason IS NULL OR terminal_reason IN ('CONSUMED', 'SUPERSEDED', 'EXPIRED'))`
 
 Required indexes:
 - `(expires_at)`
+- `(terminalized_at)`
 - `(consumed_at)`
-- `(member_uuid, active_slot)`
+- `(member_id, active_slot)`
 
 Scheduler policy:
 - Every 15 minutes
 - `batchSize=500`, `maxBatchesPerRun=8`, `maxRunSeconds=20`
 - Alert threshold: `backlogAlertThresholdRows=10000`
-- Processing order: oldest `expires_at` first
-- Retain terminal rows 30 days, then purge
+- Processing order: oldest `expires_at` first for terminalization candidates, oldest `terminalized_at` first for purge candidates
+- Expired active rows are terminalized with `terminal_reason='EXPIRED'`, `terminalized_at=NOW(6)`, and `consumed_at` unchanged (`NULL`)
+- Reissue-invalidated rows are terminalized with `terminal_reason='SUPERSEDED'` and `terminalized_at` set in the same lifecycle transition
+- Successfully consumed rows are terminalized with `terminal_reason='CONSUMED'`, `consumed_at` set, and `terminalized_at` set in the same lifecycle transition
+- Retain terminal rows 30 days from `terminalized_at`, then purge
 
 ## 3.9 members password_changed_at (Password Recovery Addendum)
 
 `members` table adds:
 - `password_changed_at DATETIME(3) NOT NULL`
 - Backfill from `updated_at` (fallback `created_at`)
-- Index: `(member_uuid, password_changed_at)`
+- Index: `(password_changed_at)`

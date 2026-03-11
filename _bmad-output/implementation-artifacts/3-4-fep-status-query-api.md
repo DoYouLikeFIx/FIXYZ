@@ -1,6 +1,6 @@
 # Story 3.4: [FEP] FEP Status Query API
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -19,14 +19,14 @@ So that UNKNOWN/EXECUTING outcomes can be reconciled.
 
 ## Tasks / Subtasks
 
-- [ ] Implement acceptance-criteria scope 1 (AC: 1)
-  - [ ] Add test coverage for AC 1
-- [ ] Implement acceptance-criteria scope 2 (AC: 2)
-  - [ ] Add test coverage for AC 2
-- [ ] Implement acceptance-criteria scope 3 (AC: 3)
-  - [ ] Add test coverage for AC 3
-- [ ] Implement acceptance-criteria scope 4 (AC: 4)
-  - [ ] Add test coverage for AC 4
+- [x] Implement acceptance-criteria scope 1 (AC: 1)
+  - [x] Add test coverage for AC 1
+- [x] Implement acceptance-criteria scope 2 (AC: 2)
+  - [x] Add test coverage for AC 2
+- [x] Implement acceptance-criteria scope 3 (AC: 3)
+  - [x] Add test coverage for AC 3
+- [x] Implement acceptance-criteria scope 4 (AC: 4)
+  - [x] Add test coverage for AC 4
 
 ## Dev Notes
 
@@ -73,12 +73,42 @@ GPT-5 Codex (Codex desktop)
 
 ### Debug Log References
 
-- Generated from canonical planning artifact for Epic 3.
+- `./gradlew.bat :corebank-service:generateOpenApiDocs`
+- `./gradlew.bat :corebank-service:test --tests "com.fix.corebank.service.CorebankOrderServiceTest" --tests "com.fix.corebank.controller.CorebankInternalApiSkeletonTest" --tests "com.fix.corebank.integration.CorebankExternalErrorFlowIntegrationTest" --tests "com.fix.corebank.contract.CorebankOpenApiCompatibilityTest" --rerun-tasks`
+- `./gradlew.bat :corebank-service:test --tests com.fix.corebank.client.FepClientContractTest --rerun-tasks`
+- `./gradlew.bat :corebank-service:test --rerun-tasks`
 
 ### Completion Notes List
 
-- Story scaffold generated with canonical numbering guardrail.
+- Added scheduler-facing requery attempt tracking with normalized retry/escalation metadata (`message`, `retriable`, `escalationRequired`, `attemptCount`, `maxRetryCount`) for unresolved and transient FEP status outcomes.
+- Preserved normalized response shape for known and unknown external statuses while validating `attemptCount >= 1` and making the retry threshold configurable via `recovery.max-retry-count`.
+- Synced the committed Corebank OpenAPI contract with the generated requery schema changes, including a real `attemptCount` query parameter on `GET /internal/v1/orders/{clOrdId}/requery`.
+- Expanded unit, MVC, integration, and contract coverage for AC1-AC4 and replaced one brittle inline-mock test dependency with a Java 25-safe stub implementation.
+- Isolated the external-error integration tests by resetting the dedicated `fep-submit` and `fep-status` circuit breakers between test methods so expected gateway-failure scenarios do not contaminate later assertions.
+- Verified the full `corebank-service` test suite passes after the Story 3.4 changes.
+- Resolved code review follow-ups by separating submit/status circuit breakers, preventing transient requery failures from marking terminal local orders as retriable, and tightening the OpenAPI contract check to require a real `attemptCount` query parameter.
 
 ### File List
 
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/3-4-fep-status-query-api.md
+- BE/contracts/openapi/corebank-service.json
+- BE/corebank-service/src/main/java/com/fix/corebank/client/FepClient.java
+- BE/corebank-service/src/main/java/com/fix/corebank/controller/InternalCorebankController.java
+- BE/corebank-service/src/main/java/com/fix/corebank/dto/request/InternalOrderRequeryRequest.java
+- BE/corebank-service/src/main/java/com/fix/corebank/dto/response/InternalOrderResponse.java
+- BE/corebank-service/src/main/java/com/fix/corebank/service/CorebankOrderService.java
+- BE/corebank-service/src/main/java/com/fix/corebank/vo/InternalOrderRequeryCommand.java
+- BE/corebank-service/src/main/java/com/fix/corebank/vo/InternalOrderResult.java
+- BE/corebank-service/src/main/resources/application.yml
+- BE/corebank-service/src/test/java/com/fix/corebank/contract/CorebankOpenApiCompatibilityTest.java
+- BE/corebank-service/src/test/java/com/fix/corebank/client/FepClientContractTest.java
+- BE/corebank-service/src/test/java/com/fix/corebank/controller/CorebankInternalApiSkeletonTest.java
+- BE/corebank-service/src/test/java/com/fix/corebank/integration/CorebankExternalErrorFlowIntegrationTest.java
+- BE/corebank-service/src/test/java/com/fix/corebank/service/CorebankOrderServiceTest.java
+- _bmad-output/implementation-artifacts/3-4-fep-status-query-api.md
+- _bmad-output/implementation-artifacts/sprint-status.yaml
+
+## Change Log
+
+- 2026-03-10: Implemented Story 3.4 status requery normalization with scheduler retry/escalation signaling, synced the Corebank OpenAPI contract, added AC1-AC4 regression coverage, and moved the story to `review`.
+- 2026-03-10: Resolved code review findings by decoupling FEP submit/status circuit breakers, suppressing retries for terminal local orders on transient requery failures, tightening the `attemptCount` OpenAPI contract shape, and moving the story to `done`.
+- 2026-03-10: Confirmed the published requery contract exposes `attemptCount` as a real query parameter, refreshed the Story 3.4 artifact notes, and re-verified the scoped `corebank-service` regression paths.
