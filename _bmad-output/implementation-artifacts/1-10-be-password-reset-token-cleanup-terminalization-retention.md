@@ -1,6 +1,6 @@
 # Story 1.10: BE Password Reset Token Cleanup, Terminalization and Retention
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -131,8 +131,8 @@ so that password recovery storage remains operationally safe while preserving sh
 
 ### Story Completion Status
 
-- Status set to `review`.
-- Completion note: Implemented password-reset token terminal lifecycle metadata, bounded cleanup scheduling, retention purge, backlog evidence, and regression coverage without changing the externally visible recovery contract.
+- Status set to `done`.
+- Completion note: Implemented password-reset token terminal lifecycle metadata, bounded cleanup scheduling, retention purge, backlog evidence, and regression coverage, and closed the final Epic 1 backend recovery-hardening gap.
 
 ### References
 

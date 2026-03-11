@@ -1,6 +1,6 @@
 # Story 1.2: BE Logout, Profile, and Session Security
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -19,28 +19,28 @@ so that account access remains under my control.
 
 ## Tasks / Subtasks
 
-- [ ] Implement explicit logout endpoint and session invalidation (AC: 1)
-  - [ ] Invalidate server session and expire cookie immediately
-  - [ ] Ensure subsequent request with old cookie is rejected
-- [ ] Implement profile read/update and password update flow (AC: 2)
-  - [ ] Apply validation and secure password-change flow
-  - [ ] Persist audit trail entries for profile/security updates
-- [ ] Enforce protected-route auth error normalization (AC: 3)
-  - [ ] Ensure 401 behavior is deterministic for invalidated/expired sessions
-- [ ] Enforce session timeout handling path (AC: 4)
-  - [ ] Validate TTL-based expiry path and client-visible behavior contract
-- [ ] Add integration tests for logout/profile/session expiry behavior (AC: 1, 2, 3, 4)
+- [x] Implement explicit logout endpoint and session invalidation (AC: 1)
+  - [x] Invalidate server session and expire cookie immediately
+  - [x] Ensure subsequent request with old cookie is rejected
+- [x] Implement profile read/update and password update flow (AC: 2)
+  - [x] Apply validation and secure password-change flow
+  - [x] Persist audit trail entries for profile/security updates
+- [x] Enforce protected-route auth error normalization (AC: 3)
+  - [x] Ensure 401 behavior is deterministic for invalidated/expired sessions
+- [x] Enforce session timeout handling path (AC: 4)
+  - [x] Validate TTL-based expiry path and client-visible behavior contract
+- [x] Add integration tests for logout/profile/session expiry behavior (AC: 1, 2, 3, 4)
 
 ## Dev Notes
 
 ### Developer Context Section
 
-- Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 1 (`1.1`~`1.6`).
+- Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 1 (`1.1`~`1.10`).
 - Supplemental artifact `_bmad-output/implementation-artifacts/epic-1-user-authentication-and-account-access.md` has a different numbering/scope (`1.1`~`1.10`); use it only for technical constraints, not story ID mapping.
 
 - Depends on Story 1.1 auth/session issuance.
 - This story owns account-control safety behavior (logout + profile/password + expiry semantics).
-- Supplemental detailed artifact maps similar concerns under different split; keep this plan’s Story 1.2 numbering as source of truth.
+- Supplemental detailed artifact maps similar concerns under different split; keep this plan?셲 Story 1.2 numbering as source of truth.
 
 ### Technical Requirements
 
@@ -84,7 +84,7 @@ so that account access remains under my control.
 ### Quinn Reinforcement Checks
 
 - Numbering regression gate:
-  - Verify 'story_key ↔ filename ↔ sprint-status key' are identical before moving status from 'ready-for-dev' to 'in-progress'.
+  - Verify 'story_key ??filename ??sprint-status key' are identical before moving status from 'ready-for-dev' to 'in-progress'.
   - Reject implementation start if key mismatch is detected between canonical Epic 1 numbering (`epics.md`) and supplemental Epic artifact.
 - FE/MOB session consistency gate:
   - Validate same behavior matrix for FE and MOB on: valid session, expired session, invalidated-by-new-login, logout-after-call, app/browser resume.
@@ -100,11 +100,11 @@ so that account access remains under my control.
   - Attach automated test evidence for this story and impacted Epic 1 regression scenarios.
   - Attach negative-path replay result for `N-1`, `N`, `N+1` boundaries and session expiry paths.
   - Attach one correlation sample linking client-visible error to server-side security event/log.
-- Party review resolution status (2026-02-25):
-  - [ ] Logout invalidation is atomic (server session delete + cookie expiry) and evidenced in one flow.
-  - [ ] Old cookie replay after logout/expiry returns deterministic auth-required contract (401 path evidence attached).
-  - [ ] Profile/password update validation evidence attached with required audit-trail persistence proof.
-  - [ ] Session timeout path evidence attached for inactivity-expired behavior on protected endpoints.
+- Party review resolution status (closeout confirmed 2026-03-11):
+  - [x] Logout invalidation is atomic (server session delete + cookie expiry) and evidenced in one flow.
+  - [x] Old cookie replay after logout/expiry returns deterministic auth-required contract (401 path evidence attached).
+  - [x] Profile/password update validation evidence attached with required audit-trail persistence proof.
+  - [x] Session timeout path evidence attached for inactivity-expired behavior on protected endpoints.
 
 - Execution reference:
   - Run Epic 1 focused checklist: `_bmad-output/implementation-artifacts/epic-1-qa-reinforcement-checklist.md`.
@@ -131,8 +131,8 @@ so that account access remains under my control.
 
 ### Story Completion Status
 
-- Status set to `ready-for-dev`.
-- Completion note: Ultimate context engine analysis completed - comprehensive developer guide created.
+- Status set to `done`.
+- Completion note: Story closed as done to reflect delivered logout, profile/password, and session-security behavior for the completed Epic 1 auth lane.
 
 ### References
 
@@ -159,4 +159,4 @@ GPT-5 Codex (Codex desktop)
 
 ### File List
 
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/1-2-be-logout-profile-session-security.md
+- _bmad-output/implementation-artifacts/1-2-be-logout-profile-session-security.md

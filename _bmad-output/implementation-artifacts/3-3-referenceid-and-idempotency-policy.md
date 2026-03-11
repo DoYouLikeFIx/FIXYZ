@@ -54,8 +54,8 @@ So that duplicate transmission never causes double execution.
 
 ### Story Completion Status
 
-- Status set to `ready-for-dev`.
-- Completion note: Epic 3 story context prepared from canonical planning artifact.
+- Status set to `done`.
+- Completion note: Implementation and follow-up documentation updates for Story 3.3 are complete.
 
 ### References
 

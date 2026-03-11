@@ -50,7 +50,7 @@ so that authenticated routes behave predictably.
 
 ### Developer Context Section
 
-- Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 1 (`1.1`~`1.6`).
+- Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 1 (`1.1`~`1.10`).
 - Supplemental artifact `_bmad-output/implementation-artifacts/epic-1-user-authentication-and-account-access.md` has a different numbering/scope (`1.1`~`1.10`); use it only for technical constraints, not story ID mapping.
 
 - Depends on Story 1.1 + 1.2 + 0.3.
@@ -106,7 +106,7 @@ so that authenticated routes behave predictably.
 ### Quinn Reinforcement Checks
 
 - Numbering regression gate:
-  - Verify 'story_key ↔ filename ↔ sprint-status key' are identical before moving status from 'ready-for-dev' to 'in-progress'.
+  - Verify 'story_key ??filename ??sprint-status key' are identical before moving status from 'ready-for-dev' to 'in-progress'.
   - Reject implementation start if key mismatch is detected between canonical Epic 1 numbering (`epics.md`) and supplemental Epic artifact.
 - FE/MOB session consistency gate:
   - Validate same behavior matrix for FE and MOB on: valid session, expired session, invalidated-by-new-login, logout-after-call, app/browser resume.
@@ -187,12 +187,12 @@ GPT-5 Codex (Codex desktop)
 
 ### File List
 
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/1-3-fe-web-auth-flow.md
-- /Users/yeongjae/fixyz/FE/tests/integration/App.test.tsx
-- /Users/yeongjae/fixyz/BE/channel-service/src/main/java/com/fix/channel/controller/NotificationController.java
-- /Users/yeongjae/fixyz/BE/channel-service/src/main/java/com/fix/channel/service/NotificationSseRegistry.java
-- /Users/yeongjae/fixyz/BE/channel-service/src/main/java/com/fix/channel/config/ChannelSecurityConfig.java
-- /Users/yeongjae/fixyz/BE/channel-service/src/test/java/com/fix/channel/integration/ChannelAuthFlowTest.java
-- /Users/yeongjae/fixyz/BE/channel-service/src/test/java/com/fix/channel/integration/ChannelAuthSessionIntegrationTest.java
-- /Users/yeongjae/fixyz/BE/channel-service/src/test/java/com/fix/channel/integration/ChannelContainersIntegrationTest.java
-- /Users/yeongjae/fixyz/BE/channel-service/src/test/java/com/fix/channel/integration/ChannelSessionTimeoutIntegrationTest.java
+- _bmad-output/implementation-artifacts/1-3-fe-web-auth-flow.md
+- FE/tests/integration/App.test.tsx
+- BE/channel-service/src/main/java/com/fix/channel/controller/NotificationController.java
+- BE/channel-service/src/main/java/com/fix/channel/service/NotificationSseRegistry.java
+- BE/channel-service/src/main/java/com/fix/channel/config/ChannelSecurityConfig.java
+- BE/channel-service/src/test/java/com/fix/channel/integration/ChannelAuthFlowTest.java
+- BE/channel-service/src/test/java/com/fix/channel/integration/ChannelAuthSessionIntegrationTest.java
+- BE/channel-service/src/test/java/com/fix/channel/integration/ChannelContainersIntegrationTest.java
+- BE/channel-service/src/test/java/com/fix/channel/integration/ChannelSessionTimeoutIntegrationTest.java

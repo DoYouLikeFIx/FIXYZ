@@ -1,6 +1,6 @@
 # Story 1.8: FE Web Password Recovery UX
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -181,8 +181,8 @@ so that I can regain access from the login experience without revealing whether 
 
 ### Story Completion Status
 
-- Status set to `ready-for-dev`.
-- Completion note: Created as the FE companion to Story 1.7 so the browser lane can implement the dedicated password recovery pages and submit flow now missing from the shipped auth surface.
+- Status set to `done`.
+- Completion note: FE password recovery routes, submit flow, and recovery-state UX were implemented and the story is closed as done with Epic 1.
 
 ### References
 
@@ -220,11 +220,11 @@ GPT-5 Codex (Codex desktop)
 
 ### Debug Log References
 
-- `pnpm --dir /Users/yeongjae/fixyz/FE lint`
-- `pnpm --dir /Users/yeongjae/fixyz/FE test -- password-recovery.test.tsx`
-- `pnpm --dir /Users/yeongjae/fixyz/FE exec tsc -b --noEmit`
-- `pnpm --dir /Users/yeongjae/fixyz/FE exec playwright test /Users/yeongjae/fixyz/FE/e2e/auth-recovery.spec.ts`
-- `LIVE_API_BASE_URL=http://127.0.0.1:8080 pnpm --dir /Users/yeongjae/fixyz/FE exec playwright test /Users/yeongjae/fixyz/FE/e2e/live/auth-live.spec.ts`
+- `pnpm --dir FE lint`
+- `pnpm --dir FE test -- password-recovery.test.tsx`
+- `pnpm --dir FE exec tsc -b --noEmit`
+- `pnpm --dir FE exec playwright test FE/e2e/auth-recovery.spec.ts`
+- `LIVE_API_BASE_URL=http://127.0.0.1:8080 pnpm --dir FE exec playwright test FE/e2e/live/auth-live.spec.ts`
 
 ### Completion Notes List
 

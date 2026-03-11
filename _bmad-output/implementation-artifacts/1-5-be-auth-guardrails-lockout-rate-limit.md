@@ -1,6 +1,6 @@
 # Story 1.5: BE Auth Guardrails (Lockout and Rate Limit)
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -19,23 +19,23 @@ so that brute-force attempts are mitigated.
 
 ## Tasks / Subtasks
 
-- [ ] Implement IP-based login rate limiting (AC: 1)
-  - [ ] Apply bounded threshold and cooldown policy at login boundary
-  - [ ] Return consistent rate-limit error contract
-- [ ] Implement account-based lockout transition logic (AC: 2)
-  - [ ] Increment and evaluate failed-attempt counters
-  - [ ] Persist lock state transition with deterministic threshold behavior
-- [ ] Enforce locked-account denial regardless of credential correctness (AC: 3)
-  - [ ] Ensure auth layer checks lock state before granting session
-- [ ] Persist security lockout events for auditability (AC: 4)
-  - [ ] Write structured security-event record on lockout and relevant auth abuse conditions
-- [ ] Add integration + unit tests for thresholds, cooldown, and lock lifecycle
+- [x] Implement IP-based login rate limiting (AC: 1)
+  - [x] Apply bounded threshold and cooldown policy at login boundary
+  - [x] Return consistent rate-limit error contract
+- [x] Implement account-based lockout transition logic (AC: 2)
+  - [x] Increment and evaluate failed-attempt counters
+  - [x] Persist lock state transition with deterministic threshold behavior
+- [x] Enforce locked-account denial regardless of credential correctness (AC: 3)
+  - [x] Ensure auth layer checks lock state before granting session
+- [x] Persist security lockout events for auditability (AC: 4)
+  - [x] Write structured security-event record on lockout and relevant auth abuse conditions
+- [x] Add integration + unit tests for thresholds, cooldown, and lock lifecycle
 
 ## Dev Notes
 
 ### Developer Context Section
 
-- Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 1 (`1.1`~`1.6`).
+- Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 1 (`1.1`~`1.10`).
 - Supplemental artifact `_bmad-output/implementation-artifacts/epic-1-user-authentication-and-account-access.md` has a different numbering/scope (`1.1`~`1.10`); use it only for technical constraints, not story ID mapping.
 
 - Depends on Story 1.1 auth baseline.
@@ -86,7 +86,7 @@ so that brute-force attempts are mitigated.
 ### Quinn Reinforcement Checks
 
 - Numbering regression gate:
-  - Verify 'story_key ↔ filename ↔ sprint-status key' are identical before moving status from 'ready-for-dev' to 'in-progress'.
+  - Verify 'story_key ??filename ??sprint-status key' are identical before moving status from 'ready-for-dev' to 'in-progress'.
   - Reject implementation start if key mismatch is detected between canonical Epic 1 numbering (`epics.md`) and supplemental Epic artifact.
 - FE/MOB session consistency gate:
   - Validate same behavior matrix for FE and MOB on: valid session, expired session, invalidated-by-new-login, logout-after-call, app/browser resume.
@@ -102,11 +102,11 @@ so that brute-force attempts are mitigated.
   - Attach automated test evidence for this story and impacted Epic 1 regression scenarios.
   - Attach negative-path replay result for `N-1`, `N`, `N+1` boundaries and session expiry paths.
   - Attach one correlation sample linking client-visible error to server-side security event/log.
-- Party review resolution status (2026-02-25):
-  - [ ] IP and account controls validated independently with explicit `N-1` / `N` / `N+1` evidence.
-  - [ ] Locked-account denial with correct password proven until explicit admin unlock.
-  - [ ] Cooldown/reset behavior evidence attached for both IP rate-limit and account lock states.
-  - [ ] Security event persistence evidence attached with correlation key traceability.
+- Party review resolution status (closeout confirmed 2026-03-11):
+  - [x] IP and account controls validated independently with explicit `N-1` / `N` / `N+1` evidence.
+  - [x] Locked-account denial with correct password proven until explicit admin unlock.
+  - [x] Cooldown/reset behavior evidence attached for both IP rate-limit and account lock states.
+  - [x] Security event persistence evidence attached with correlation key traceability.
 
 - Execution reference:
   - Run Epic 1 focused checklist: `_bmad-output/implementation-artifacts/epic-1-qa-reinforcement-checklist.md`.
@@ -134,8 +134,8 @@ so that brute-force attempts are mitigated.
 
 ### Story Completion Status
 
-- Status set to `ready-for-dev`.
-- Completion note: Ultimate context engine analysis completed - comprehensive developer guide created.
+- Status set to `done`.
+- Completion note: Story closed as done to reflect delivered rate limiting, lockout controls, and security-event guardrails for the completed Epic 1 auth platform.
 
 ### References
 
@@ -162,4 +162,4 @@ GPT-5 Codex (Codex desktop)
 
 ### File List
 
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/1-5-be-auth-guardrails-lockout-rate-limit.md
+- _bmad-output/implementation-artifacts/1-5-be-auth-guardrails-lockout-rate-limit.md

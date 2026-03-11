@@ -1,6 +1,6 @@
 # Story 3.6: Visible External Error UX
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -51,8 +51,8 @@ So that I know whether to retry, wait, or contact support.
 
 ### Story Completion Status
 
-- Status set to `ready-for-dev`.
-- Completion note: Epic 3 story context prepared from canonical planning artifact.
+- Status set to `done`.
+- Completion note: Implementation and review remediation for Story 3.6 are complete.
 
 ### References
 

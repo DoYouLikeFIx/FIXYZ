@@ -1,6 +1,6 @@
 # Story 1.7: BE Password Forgot Reset API
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -246,8 +246,8 @@ so that I can regain access without leaking whether my account exists.
 
 ### Story Completion Status
 
-- Status set to `review`.
-- Completion note: Story artifact corrected to match the canonical password-recovery contract and planning hierarchy across `prd.md`, `architecture.md`, `channels/db_schema.md`, `channels/table_spec.md`, `channels/erd.md`, `channels/login_flow.md`, `channels/api-spec.md`, and `epics.md`.
+- Status set to `done`.
+- Completion note: Password recovery API delivery is complete and the story artifact now reflects the final canonical recovery contract and planning hierarchy used to close Epic 1.
 
 ### References
 

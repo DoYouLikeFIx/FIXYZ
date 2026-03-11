@@ -13,7 +13,10 @@ This artifact records the shared Epic 1 QA reinforcement evidence referenced by 
 - `cd FE && pnpm type-check` -> PASS
 - `cd FE && pnpm lint` -> PASS
 - `cd MOB && npm test` -> PASS (`8` files, `27` tests) on the prior 2026-03-07 parity pass; mobile code was not changed in this rerun
-- Current workspace snapshot does not contain BE auth guardrail implementation files under `BE/channel-service/src/main/**/auth/**` or matching lockout/rate-limit tests, so executable Story `1.5` replay evidence could not be generated in this pass.
+- `cmd /c pnpm --dir FE test -- tests/unit/lib/auth-errors.test.ts tests/unit/lib/axios.test.ts` -> PASS (`16` files, `96` tests) on 2026-03-11 closeout normalization
+- `cmd /c npm --prefix MOB test -- tests/unit/auth/auth-errors.test.ts tests/unit/network/errors.test.ts tests/unit/network/csrf.test.ts tests/unit/bootstrap/app-bootstrap.test.ts` -> PASS (`4` files, `35` tests) on 2026-03-11 closeout normalization
+- `cd BE && .\\gradlew.bat :channel-service:test --tests "com.fix.channel.integration.ChannelAuthFlowTest" --tests "com.fix.channel.integration.ChannelAuthSessionIntegrationTest" --tests "com.fix.channel.integration.ChannelAuthGuardrailsIntegrationTest" --tests "com.fix.channel.integration.ChannelSessionTimeoutIntegrationTest"` -> BUILD SUCCESSFUL on 2026-03-11
+- Current workspace contains BE auth/session and auth-guardrail implementation plus matching integration sources under `BE/channel-service/src/main/**` and `BE/channel-service/src/test/java/com/fix/channel/integration/**`.
 
 ## Story Ownership Map
 
@@ -103,10 +106,15 @@ This artifact records the shared Epic 1 QA reinforcement evidence referenced by 
   - `_bmad-output/implementation-artifacts/1-5-be-auth-guardrails-lockout-rate-limit.md`
   - `_bmad-output/implementation-artifacts/1-1-be-registration-login-session.md`
   - `_bmad-output/implementation-artifacts/1-2-be-logout-profile-session-security.md`
+  - `BE/channel-service/src/main/java/com/fix/channel/service/AuthService.java`
+  - `BE/channel-service/src/test/java/com/fix/channel/integration/ChannelAuthGuardrailsIntegrationTest.java`
+  - `BE/channel-service/src/test/java/com/fix/channel/integration/ChannelAuthSessionIntegrationTest.java`
 
 ### Workspace status note
 
-- Because the current BE workspace snapshot does not yet contain auth guardrail implementation/test files, this checklist records the ownership handoff and client-consumption contract, but not a fabricated server replay result.
+- The current workspace now contains the backend guardrail implementation and targeted integration coverage.
+- The 2026-03-11 closeout rerun confirmed the targeted Gradle test task completes successfully in this workspace, while the generated XML reports still annotate some container-backed integration cases as skipped in the local environment.
+- This checklist therefore records both executable source/test ownership and the final Epic 1 closeout normalization instead of leaving Story `1.5` evidence unresolved.
 
 ## Correlation Contract Sample
 
@@ -130,3 +138,4 @@ This is a contract sample, not a captured production log.
 - FE/MOB parity evidence is now recorded in one shared matrix.
 - The missing Epic 1 checklist reference now exists at the path all Epic 1 stories already cite.
 - Story `1.3` no longer needs a local follow-up for lockout/correlation ownership; that dependency is now traced explicitly to Story `1.5` and Epic `8.x` correlation stories.
+- Story `1.1`, `1.2`, `1.4`, `1.5`, and `1.6` Quinn reinforcement review items were normalized to resolved during Epic 1 closeout on 2026-03-11.

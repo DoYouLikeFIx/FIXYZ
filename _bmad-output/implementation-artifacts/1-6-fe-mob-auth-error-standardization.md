@@ -1,6 +1,6 @@
 # Story 1.6: FE/MOB Auth Error Standardization
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -33,7 +33,7 @@ so that users receive consistent guidance regardless of client.
 
 ### Developer Context Section
 
-- Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 1 (`1.1`~`1.6`).
+- Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 1 (`1.1`~`1.10`).
 - Supplemental artifact `_bmad-output/implementation-artifacts/epic-1-user-authentication-and-account-access.md` has a different numbering/scope (`1.1`~`1.10`); use it only for technical constraints, not story ID mapping.
 
 - Depends on Stories 1.3, 1.4, and 1.5.
@@ -99,11 +99,11 @@ so that users receive consistent guidance regardless of client.
   - Attach automated test evidence for this story and impacted Epic 1 regression scenarios.
   - Attach negative-path replay result for `N-1`, `N`, `N+1` boundaries and session expiry paths.
   - Attach one correlation sample linking client-visible error to server-side security event/log.
-- Party review resolution status (2026-02-25):
-  - [ ] FE/MOB canonical mapping table evidence attached (`same code -> same semantics`) with diff-free review.
-  - [ ] Lockout/expired/rate-limit recoverable next-action parity evidence attached for both clients.
-  - [ ] Unknown-code fallback evidence attached (safe generic message + correlation id visibility).
-  - [ ] Regression evidence attached ensuring mapping changes stay synchronized across FE and MOB lanes.
+- Party review resolution status (closeout confirmed 2026-03-11):
+  - [x] FE/MOB canonical mapping table evidence attached (`same code -> same semantics`) with diff-free review.
+  - [x] Lockout/expired/rate-limit recoverable next-action parity evidence attached for both clients.
+  - [x] Unknown-code fallback evidence attached (safe generic message + correlation id visibility).
+  - [x] Regression evidence attached ensuring mapping changes stay synchronized across FE and MOB lanes.
 
 - Execution reference:
   - Run Epic 1 focused checklist: `_bmad-output/implementation-artifacts/epic-1-qa-reinforcement-checklist.md`.
@@ -131,8 +131,8 @@ so that users receive consistent guidance regardless of client.
 
 ### Story Completion Status
 
-- Status set to `ready-for-dev`.
-- Completion note: Ultimate context engine analysis completed - comprehensive developer guide created.
+- Status set to `done`.
+- Completion note: FE and MOB auth error semantics were standardized and verified; the story is now closed as done with the rest of Epic 1.
 
 ### References
 
