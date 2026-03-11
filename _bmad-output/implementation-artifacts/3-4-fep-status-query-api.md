@@ -1,6 +1,6 @@
 # Story 3.4: [FEP] FEP Status Query API
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -54,8 +54,8 @@ So that UNKNOWN/EXECUTING outcomes can be reconciled.
 
 ### Story Completion Status
 
-- Status set to `ready-for-dev`.
-- Completion note: Epic 3 story context prepared from canonical planning artifact.
+- Status set to `done`.
+- Completion note: Implementation and review remediation for Story 3.4 are complete.
 
 ### References
 
