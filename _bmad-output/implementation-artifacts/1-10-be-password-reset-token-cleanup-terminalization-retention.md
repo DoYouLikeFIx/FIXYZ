@@ -1,6 +1,6 @@
 # Story 1.10: BE Password Reset Token Cleanup, Terminalization and Retention
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -26,26 +26,26 @@ so that password recovery storage remains operationally safe while preserving sh
 
 ## Tasks / Subtasks
 
-- [ ] Extend password-recovery persistence schema for terminal lifecycle state (AC: 2, 3, 4, 5)
-  - [ ] Add `terminal_reason` and `terminalized_at` to `password_reset_tokens`
-  - [ ] Enforce allowed reason values and add retention-friendly indexing
-  - [ ] Keep raw-token prohibition and one-active-token semantics unchanged
-- [ ] Update existing recovery lifecycle writes to stamp terminal state deterministically (AC: 3, 4, 10)
-  - [ ] Set `terminal_reason='CONSUMED'` and `terminalized_at` when reset succeeds
-  - [ ] Set `terminal_reason='SUPERSEDED'` and `terminalized_at` when reissue invalidates the prior active token
-  - [ ] Preserve `consumed_at = NULL` for non-consumed terminal states
-- [ ] Implement bounded cleanup scheduler for expired-active terminalization and terminal purge (AC: 1, 2, 5, 6, 9, 10)
-  - [ ] Run every `15 minutes` in the single-instance runtime
-  - [ ] Terminalize expired active rows before purge evaluation
-  - [ ] Purge only terminal rows older than `30 days` from `terminalized_at`
-  - [ ] Enforce `batchSize=500`, `maxBatchesPerRun=8`, `maxRunSeconds=20`
-- [ ] Externalize cleanup configuration and operational evidence (AC: 7, 8)
-  - [ ] Add configuration properties and environment overrides for cadence, retention, batch, runtime, and alert threshold
-  - [ ] Emit structured logs and/or metrics for backlog visibility without exposing raw tokens or unhashed secrets
-- [ ] Add regression coverage for cleanup lifecycle and Story 1.7 non-regression (AC: 2, 3, 4, 5, 6, 8, 9, 10, 11)
-  - [ ] Add repository/service tests for `EXPIRED`, `SUPERSEDED`, and `CONSUMED` transitions
-  - [ ] Add scheduler/integration coverage for bounded purge behavior and idempotent reruns
-  - [ ] Prove valid active tokens remain untouched and existing forgot/challenge/reset behavior does not regress
+- [x] Extend password-recovery persistence schema for terminal lifecycle state (AC: 2, 3, 4, 5)
+  - [x] Add `terminal_reason` and `terminalized_at` to `password_reset_tokens`
+  - [x] Enforce allowed reason values and add retention-friendly indexing
+  - [x] Keep raw-token prohibition and one-active-token semantics unchanged
+- [x] Update existing recovery lifecycle writes to stamp terminal state deterministically (AC: 3, 4, 10)
+  - [x] Set `terminal_reason='CONSUMED'` and `terminalized_at` when reset succeeds
+  - [x] Set `terminal_reason='SUPERSEDED'` and `terminalized_at` when reissue invalidates the prior active token
+  - [x] Preserve `consumed_at = NULL` for non-consumed terminal states
+- [x] Implement bounded cleanup scheduler for expired-active terminalization and terminal purge (AC: 1, 2, 5, 6, 9, 10)
+  - [x] Run every `15 minutes` in the single-instance runtime
+  - [x] Terminalize expired active rows before purge evaluation
+  - [x] Purge only terminal rows older than `30 days` from `terminalized_at`
+  - [x] Enforce `batchSize=500`, `maxBatchesPerRun=8`, `maxRunSeconds=20`
+- [x] Externalize cleanup configuration and operational evidence (AC: 7, 8)
+  - [x] Add configuration properties and environment overrides for cadence, retention, batch, runtime, and alert threshold
+  - [x] Emit structured logs and/or metrics for backlog visibility without exposing raw tokens or unhashed secrets
+- [x] Add regression coverage for cleanup lifecycle and Story 1.7 non-regression (AC: 2, 3, 4, 5, 6, 8, 9, 10, 11)
+  - [x] Add repository/service tests for `EXPIRED`, `SUPERSEDED`, and `CONSUMED` transitions
+  - [x] Add scheduler/integration coverage for bounded purge behavior and idempotent reruns
+  - [x] Prove valid active tokens remain untouched and existing forgot/challenge/reset behavior does not regress
 
 ## Dev Notes
 
@@ -131,8 +131,8 @@ so that password recovery storage remains operationally safe while preserving sh
 
 ### Story Completion Status
 
-- Status set to `ready-for-dev`.
-- Completion note: Created as the Epic 1 follow-on BE story for password-reset-token terminalization, cleanup, and retention without changing the externally visible recovery contract.
+- Status set to `review`.
+- Completion note: Implemented password-reset token terminal lifecycle metadata, bounded cleanup scheduling, retention purge, backlog evidence, and regression coverage without changing the externally visible recovery contract.
 
 ### References
 
@@ -152,14 +152,47 @@ so that password recovery storage remains operationally safe while preserving sh
 
 GPT-5 Codex (Codex desktop)
 
+### Implementation Plan
+
+- Add terminal lifecycle metadata and backfill/index migration for password reset tokens.
+- Stamp `CONSUMED` and `SUPERSEDED` transitions inside the existing recovery flow without changing the Story 1.7 contract.
+- Add a bounded cleanup service plus scheduled trigger, configurable retention knobs, and backlog metrics/logging.
+- Prove lifecycle, purge, rerun idempotency, and Story 1.7 non-regression with unit and integration tests.
+
 ### Debug Log References
 
-- Generated from canonical Epic 1 planning artifacts and password-recovery addendum alignment.
+- Added `V7__password_reset_token_cleanup_retention.sql` with terminal-state backfill, constraints, and cleanup indexes.
+- Added `PasswordRecoveryCleanupService` / `PasswordRecoveryCleanupScheduler` and wired cleanup configuration defaults through `PasswordRecoveryProperties`.
+- Updated recovery lifecycle writes so reissue stores `SUPERSEDED` and reset stores `CONSUMED` with `terminalized_at`.
+- Verified with `./gradlew :channel-domain:test :channel-service:test`.
+- `./gradlew :channel-service:check` reached `generateOpenApiDocs`, but OpenAPI generation could not bind because local port `18080` was already in use by an unrelated `node` process.
 
 ### Completion Notes List
 
-- Created Story 1.10 as the canonical follow-on BE story for password-reset-token terminalization, bounded cleanup, and retention.
+- Implemented terminal lifecycle persistence with `PasswordResetTokenTerminalReason`, `terminal_reason`, and `terminalized_at`.
+- Added cleanup cadence/retention/batch/runtime/threshold configuration with default values matching the story.
+- Implemented bounded expired-token terminalization and terminal-row purge with backlog counters/gauges and threshold logging.
+- Added lifecycle and cleanup tests covering `CONSUMED`, `SUPERSEDED`, `EXPIRED`, bounded purge, reruns, backlog evidence, and Story 1.7 regression behavior.
 
 ### File List
 
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/1-10-be-password-reset-token-cleanup-terminalization-retention.md
+- BE/channel-domain/src/main/java/com/fix/channel/entity/PasswordResetToken.java
+- BE/channel-domain/src/main/java/com/fix/channel/entity/PasswordResetTokenTerminalReason.java
+- BE/channel-service/src/main/java/com/fix/channel/config/PasswordRecoveryConfig.java
+- BE/channel-service/src/main/java/com/fix/channel/config/PasswordRecoveryProperties.java
+- BE/channel-service/src/main/java/com/fix/channel/repository/PasswordResetTokenRepository.java
+- BE/channel-service/src/main/java/com/fix/channel/service/PasswordRecoveryCleanupScheduler.java
+- BE/channel-service/src/main/java/com/fix/channel/service/PasswordRecoveryCleanupService.java
+- BE/channel-service/src/main/java/com/fix/channel/service/PasswordRecoveryService.java
+- BE/channel-service/src/main/resources/application.yml
+- BE/channel-service/src/main/resources/db/migration/V7__password_reset_token_cleanup_retention.sql
+- BE/channel-service/src/test/java/com/fix/channel/integration/ChannelPasswordRecoveryIntegrationTest.java
+- BE/channel-service/src/test/java/com/fix/channel/integration/ChannelPasswordRecoveryCleanupSchedulerIntegrationTest.java
+- BE/channel-service/src/test/java/com/fix/channel/integration/ChannelPasswordResetCleanupIntegrationTest.java
+- BE/channel-service/src/test/java/com/fix/channel/service/PasswordRecoveryCleanupServiceTest.java
+- _bmad-output/implementation-artifacts/1-10-be-password-reset-token-cleanup-terminalization-retention.md
+- _bmad-output/implementation-artifacts/sprint-status.yaml
+
+## Change Log
+
+- 2026-03-11: Implemented password reset token terminalization, bounded cleanup retention, configuration, and regression coverage for Story 1.10.
