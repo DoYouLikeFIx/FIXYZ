@@ -80,4 +80,4 @@ GPT-5 Codex (Codex desktop)
 
 ### File List
 
-- _bmad-output/implementation-artifacts/4-5-web-otp-plus-step-c.md
+- _bmad-output/implementation-artifacts/4-5-web-conditional-step-up-plus-step-c.md

@@ -80,4 +80,4 @@ GPT-5 Codex (Codex desktop)
 
 ### File List
 
-- _bmad-output/implementation-artifacts/4-3-fsm-transition-governance.md
+- _bmad-output/implementation-artifacts/4-3-order-session-fsm-transition-governance.md

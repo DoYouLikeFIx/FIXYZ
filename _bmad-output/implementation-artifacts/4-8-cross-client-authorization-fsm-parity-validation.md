@@ -77,4 +77,4 @@ GPT-5 Codex (Codex desktop)
 
 ### File List
 
-- _bmad-output/implementation-artifacts/4-8-cross-client-fsm-parity-validation.md
+- _bmad-output/implementation-artifacts/4-8-cross-client-authorization-fsm-parity-validation.md

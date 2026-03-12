@@ -82,4 +82,4 @@ GPT-5 Codex (Codex desktop)
 
 ### File List
 
-- _bmad-output/implementation-artifacts/4-7-mobile-otp-plus-step-c.md
+- _bmad-output/implementation-artifacts/4-7-mobile-conditional-step-up-plus-step-c.md

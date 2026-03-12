@@ -71,13 +71,13 @@ development_status:
 
   epic-4: in-progress
   4-1-order-session-create-status-plus-ownership: ready-for-dev
-  4-2-otp-verification-policy: ready-for-dev
-  4-3-fsm-transition-governance: ready-for-dev
+  4-2-risk-based-order-authorization-policy: ready-for-dev
+  4-3-order-session-fsm-transition-governance: ready-for-dev
   4-4-web-order-step-a-b: ready-for-dev
-  4-5-web-otp-plus-step-c: ready-for-dev
+  4-5-web-conditional-step-up-plus-step-c: ready-for-dev
   4-6-mobile-order-step-a-b: ready-for-dev
-  4-7-mobile-otp-plus-step-c: ready-for-dev
-  4-8-cross-client-fsm-parity-validation: ready-for-dev
+  4-7-mobile-conditional-step-up-plus-step-c: ready-for-dev
+  4-8-cross-client-authorization-fsm-parity-validation: ready-for-dev
   epic-4-retrospective: optional
 
   epic-5: backlog

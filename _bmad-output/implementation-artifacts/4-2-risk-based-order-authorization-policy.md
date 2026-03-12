@@ -85,4 +85,4 @@ GPT-5 Codex (Codex desktop)
 
 ### File List
 
-- _bmad-output/implementation-artifacts/4-2-otp-verification-policy.md
+- _bmad-output/implementation-artifacts/4-2-risk-based-order-authorization-policy.md
