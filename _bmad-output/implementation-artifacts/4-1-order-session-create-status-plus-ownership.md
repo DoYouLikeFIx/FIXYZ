@@ -1,6 +1,6 @@
 # Story 4.1: [BE][CH] Order Session Create/Status + Ownership
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -20,13 +20,13 @@ So that unauthorized access and invalid session usage are blocked.
 
 ## Tasks / Subtasks
 
-- [ ] Implement order-session creation contract with ownership, TTL, and authorization-decision metadata (AC: 1, 2)
-  - [ ] Return `challengeRequired`, `authorizationReason`, `status`, and `expiresAt` consistently
-- [ ] Implement owner-only session status query behavior (AC: 3, 4)
-  - [ ] Enforce cross-user access denial with deterministic error contract
-- [ ] Implement expiration handling for query and action paths (AC: 5)
-  - [ ] Ensure expired sessions no longer behave as active authorization context
-- [ ] Add automated coverage for create, owned lookup, forbidden access, auto-authorized path, and expiration (AC: 1, 2, 3, 4, 5)
+- [x] Implement order-session creation contract with ownership, TTL, and authorization-decision metadata (AC: 1, 2)
+  - [x] Return `challengeRequired`, `authorizationReason`, `status`, and `expiresAt` consistently
+- [x] Implement owner-only session status query behavior (AC: 3, 4)
+  - [x] Enforce cross-user access denial with deterministic error contract
+- [x] Implement expiration handling for query and action paths (AC: 5)
+  - [x] Ensure expired sessions no longer behave as active authorization context
+- [x] Add automated coverage for create, owned lookup, forbidden access, auto-authorized path, and expiration (AC: 1, 2, 3, 4, 5)
 
 ## Dev Notes
 
@@ -75,11 +75,72 @@ GPT-5 Codex (Codex desktop)
 ### Debug Log References
 
 - Regenerated from canonical planning artifact for Epic 4.
+- 2026-03-12: `./gradlew.bat :channel-domain:testClasses :channel-service:testClasses`
+- 2026-03-12: `./gradlew.bat :channel-domain:test --tests com.fix.channel.entity.OrderSessionStateMachineTest :channel-service:test --tests com.fix.channel.service.OrderSessionServiceTest --tests com.fix.channel.service.RedisOrderSessionTtlStoreTest --tests com.fix.channel.service.OrderSessionExpirySchedulerTest --tests com.fix.channel.integration.OrderSessionIntegrationTest`
+- 2026-03-12: `./gradlew.bat :channel-service:generateOpenApiDocs`
+- 2026-03-12: `./gradlew.bat :channel-domain:test :channel-service:check`
+- 2026-03-12: `./gradlew.bat :channel-domain:test :channel-service:check` (review follow-up fixes)
+- 2026-03-12: `./gradlew.bat :channel-domain:test :channel-service:check` (current-login MFA scoping, OTP replay guard, EXPIRED backfill regression)
+- 2026-03-12: `./gradlew.bat :channel-domain:test :channel-service:check` (single-use bypass concurrency guard)
+- 2026-03-12: `./gradlew.bat :channel-domain:test :channel-service:check` (Redis-backed session lock for clustered create serialization)
+- 2026-03-12: `./gradlew.bat :channel-service:test --tests com.fix.channel.migration.ChannelFlywayMigrationTest`
+- 2026-03-12: `./gradlew.bat :channel-service:check` (expanded V9 authorization-metadata migration regression coverage)
 
 ### Completion Notes List
 
 - Story scaffold regenerated for order-session create/status and ownership scope.
+- Added persisted authorization-decision metadata to order sessions and exposed `challengeRequired`, `authorizationReason`, `status`, and `expiresAt` in create/status responses.
+- Hydrated fresh MFA and single-use bypass context from real auth session flows so low-risk requests can start in `AUTHED` without the former test-only session mutation path.
+- Tightened auto-authorization to require trusted session continuity, no recent security signal, and no recent order-session velocity before bypassing step-up.
+- Extended unit, integration, migration, and OpenAPI contract coverage for created, replayed, forbidden, auto-authorized, repeated-poll, and expired-session paths.
+- Scoped fresh MFA bypass to the current login session only, rejected OTP replay from refreshing proof timestamps, and backfilled legacy post-auth `EXPIRED` rows via version-aware migration coverage.
+- Serialized same-session order create requests so a single fresh-login MFA bypass cannot authorize multiple concurrent orders before the flag is consumed.
+- Upgraded the session create lock to a Redis-backed distributed lock with local fallback so the single-use bypass rule still holds across multiple channel-service nodes sharing Spring Session.
+- Expanded V9 migration regression coverage so legacy authorized terminal states and version-gated post-auth `EXPIRED` rows are explicitly backfilled and verified.
 
 ### File List
 
+- BE/channel-domain/src/main/java/com/fix/channel/entity/OrderSession.java
+- BE/channel-domain/src/main/java/com/fix/channel/entity/OrderSessionAuthorizationReason.java
+- BE/channel-domain/src/test/java/com/fix/channel/entity/OrderSessionStateMachineTest.java
+- BE/channel-service/src/main/java/com/fix/channel/controller/OrderSessionController.java
+- BE/channel-service/src/main/java/com/fix/channel/controller/AuthController.java
+- BE/channel-service/src/main/java/com/fix/channel/dto/request/OrderSessionCreateRequest.java
+- BE/channel-service/src/main/java/com/fix/channel/dto/response/OrderSessionResponse.java
+- BE/channel-service/src/main/java/com/fix/channel/repository/OrderSessionRepository.java
+- BE/channel-service/src/main/java/com/fix/channel/repository/OtpVerificationRepository.java
+- BE/channel-service/src/main/java/com/fix/channel/repository/SecurityEventRepository.java
+- BE/channel-service/src/main/java/com/fix/channel/service/AuthService.java
+- BE/channel-service/src/main/java/com/fix/channel/service/ChannelScaffoldService.java
+- BE/channel-service/src/main/java/com/fix/channel/service/OrderSessionAuthorizationDecisionService.java
+- BE/channel-service/src/main/java/com/fix/channel/service/OrderSessionPersistenceService.java
+- BE/channel-service/src/main/java/com/fix/channel/service/OrderSessionService.java
+- BE/channel-service/src/main/java/com/fix/channel/service/OrderSessionTtlStore.java
+- BE/channel-service/src/main/java/com/fix/channel/service/RedisOrderSessionTtlStore.java
+- BE/channel-service/src/main/java/com/fix/channel/session/ChannelSessionAttributes.java
+- BE/channel-service/src/main/java/com/fix/channel/session/ChannelSessionRequestLock.java
+- BE/channel-service/src/main/java/com/fix/channel/vo/OrderSessionAuthorizationDecision.java
+- BE/channel-service/src/main/java/com/fix/channel/vo/OrderSessionCreateCommand.java
+- BE/channel-service/src/main/java/com/fix/channel/vo/OrderSessionResult.java
+- BE/channel-service/src/main/resources/db/migration/V9__add_order_session_authorization_metadata.sql
+- BE/channel-service/src/test/java/com/fix/channel/contract/ChannelOpenApiCompatibilityTest.java
+- BE/channel-service/src/test/java/com/fix/channel/integration/ChannelAuthSessionIntegrationTest.java
+- BE/channel-service/src/test/java/com/fix/channel/integration/OrderSessionIntegrationTest.java
+- BE/channel-service/src/test/java/com/fix/channel/migration/ChannelFlywayMigrationTest.java
+- BE/channel-service/src/test/java/com/fix/channel/service/OrderSessionExpirySchedulerTest.java
+- BE/channel-service/src/test/java/com/fix/channel/service/OrderSessionServiceTest.java
+- BE/channel-service/src/test/java/com/fix/channel/service/RedisOrderSessionTtlStoreTest.java
+- BE/channel-service/src/test/java/com/fix/channel/session/ChannelSessionRequestLockTest.java
+- BE/channel-service/src/test/java/com/fix/channel/web/OrderSessionControllerConcurrencyTest.java
+- BE/contracts/openapi/channel-service.json
 - _bmad-output/implementation-artifacts/4-1-order-session-create-status-plus-ownership.md
+- _bmad-output/implementation-artifacts/sprint-status.yaml
+
+## Change Log
+
+- 2026-03-12: Implemented order-session authorization metadata, session-backed auto-`AUTHED` creation, owner-only status enforcement regression coverage, and updated the committed OpenAPI contract.
+- 2026-03-12: Addressed review follow-ups by backfilling legacy authorized rows correctly and wiring low-risk auto-authorization to real MFA session context plus conservative risk gates.
+- 2026-03-12: Addressed second review follow-ups by binding fresh MFA proof to the active login session, preventing OTP replay from extending bypass freshness, and covering legacy `EXPIRED` backfill with migration regression tests.
+- 2026-03-12: Addressed concurrent create replay risk by serializing same-session order-session creation and adding a controller-level concurrency regression test.
+- 2026-03-12: Replaced the single-node session lock with a Redis-backed distributed lock and added cross-instance session-lock regression coverage.
+- 2026-03-12: Expanded V9 authorization-metadata migration regression coverage and documented the post-auth `EXPIRED` backfill rule inline in the migration.

@@ -70,7 +70,7 @@ development_status:
   epic-3-retrospective: done
 
   epic-4: in-progress
-  4-1-order-session-create-status-plus-ownership: ready-for-dev
+  4-1-order-session-create-status-plus-ownership: review
   4-2-risk-based-order-authorization-policy: ready-for-dev
   4-3-order-session-fsm-transition-governance: ready-for-dev
   4-4-web-order-step-a-b: ready-for-dev
