@@ -54,7 +54,7 @@ When Epic 12 implementation resumes:
 2. Update the relevant design documents in the same change as the code.
 3. Recreate verification automation only after the underlying runtime controls exist.
 4. Keep privileged DMZ operator surfaces out of the public edge contract.
-5. Treat this file and the Epic 12 story files as the documentation baseline for new implementation work.
+5. Treat this file, `_bmad-output/planning-artifacts/epics.md`, and the Epic 12 story files as the documentation baseline for new implementation work.
 
 ## Removed Runtime Assets
 

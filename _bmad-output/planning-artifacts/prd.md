@@ -78,7 +78,7 @@ _Complete Product Requirements Document for FIX. Audience: human stakeholders an
 
 **Target Users:** Korean bank-affiliated securities firm hiring managers and FinTech engineering teams evaluating backend candidates. For evaluators, FIX provides a coherent, documented system where each architectural claim is backed by tests and each major design decision is explained.
 
-**Problem Solved:** Many backend portfolios stop at CRUD. Korean securities engineering interviews often go further: they test why the channel layer should not own position state, why order execution needs step-up OTP re-authentication, how a circuit breaker protects CoreBanking from exchange-side failures, and how FIX 4.2 models real exchange communication. FIX is built to demonstrate that level of systems thinking.
+**Problem Solved:** Many backend portfolios stop at CRUD. Korean securities engineering interviews often go further: they test why the channel layer should not own position state, how mandatory login MFA and risk-based order authorization balance security with UX, how a circuit breaker protects CoreBanking from exchange-side failures, and how FIX 4.2 models real exchange communication. FIX is built to demonstrate that level of systems thinking.
 
 ### What Makes This Special
 
@@ -90,7 +90,7 @@ FIX bridges the gap between "I know Spring Boot" and "I understand why securitie
 
 **Demonstrable Correctness:** Seven non-negotiable acceptance scenarios cover concurrent position integrity, `ClOrdID` idempotency, execution ledger correctness, FIX 4.2 circuit breaker behavior, and session security. These scenarios are the portfolio's technical proof points.
 
-**Dual-Audience Experience:** A securities-domain interviewer can open the README and immediately find OWASP-referenced audit log rules, OTP step-up rationale, PII masking rules, and FIX 4.2 session-state documentation. A FinTech interviewer can inspect the CI badge, open the concurrent sell-order test, and confirm 10-thread race-condition coverage in GitHub Actions.
+**Dual-Audience Experience:** A securities-domain interviewer can open the README and immediately find OWASP-referenced audit log rules, mandatory login MFA plus risk-based order step-up rationale, PII masking rules, and FIX 4.2 session-state documentation. A FinTech interviewer can inspect the CI badge, open the concurrent sell-order test, and confirm 10-thread race-condition coverage in GitHub Actions.
 
 ## Project Classification
 
@@ -317,14 +317,17 @@ Phase 1 -> Prepare
   -> Initialize `ch:otp-attempts:{sessionId}` = 3 (NX EX 600)
   -> Return `sessionId` and `expiresAt`
 
-Phase 2 -> TOTP Verify
-  POST /api/v1/orders/sessions/{sessionId}/otp/verify
-  -> Validate RFC 6238 code (6 digits, 30-second window)
+Phase 2 -> Authorization Decision / Conditional Step-Up
+  POST /api/v1/orders/sessions/{sessionId}/authorization
+  -> Evaluate login MFA recency, trusted-device/session context, network change, and order risk attributes
+  -> Low risk: auto-authorize, session status becomes AUTHED
+  -> Elevated risk: require `POST /api/v1/orders/sessions/{sessionId}/otp/verify`
+  -> Validate RFC 6238 code (6 digits, 30-second window) only when challenge required
   -> Read secret from Vault: `secret/fix/member/{memberUuid}/totp-secret`
   -> Replay prevention: `ch:totp-used:{memberUuid}:{windowIndex}:{code}` TTL 60s
   -> Attempt tracking: `ch:otp-attempts:{sessionId}` with lockout at 0
   -> Debounce guard: `ch:otp-attempt-ts:{sessionId}` NX EX 1
-  -> Success: session status becomes AUTHED
+  -> Step-up success: session status becomes AUTHED
   -> 3 failures: session status becomes FAILED
 
 Phase 3 -> Execute
@@ -834,8 +837,9 @@ GET    /api/v1/accounts/{accountId}
 GET    /api/v1/accounts/{accountId}/positions
 GET    /api/v1/accounts/{accountId}/cash
 
-# Orders (Prepare -> OTP Verify -> Execute)
+# Orders (Prepare -> Authorize -> Execute)
 POST   /api/v1/orders/sessions
+POST   /api/v1/orders/sessions/{sessionId}/authorization
 POST   /api/v1/orders/sessions/{sessionId}/otp/verify
 POST   /api/v1/orders/sessions/{sessionId}/execute
 GET    /api/v1/orders/sessions/{sessionId}/status
@@ -1298,7 +1302,7 @@ jobs:
 - **FR-09:** Authenticated user can view the details of a specific account including masked account number and current balance
 - **FR-10:** System can display account numbers in a privacy-preserving masked format in all user-facing surfaces
 
-### Order Initiation & OTP
+### Order Initiation & Authorization
 
 - **FR-11:** Authenticated user can initiate an order (buy/sell) by specifying account, symbol, quantity, and side
 - **FR-12:** System can validate an order request against available position quantity before proceeding
@@ -1530,7 +1534,7 @@ jobs:
 | ------------------------------------------ | ---------------------------------------------------- | -------------------------------------------------------------------------- |
 | FR-01~07, FR-52, FR-57~61 (Authentication & Session) | NFR-S1, NFR-S2, NFR-S3, NFR-S7            | Session cookie security, CSRF enforcement, unauthenticated rejection, anti-enumeration |
 | FR-01~07, FR-57~61 (Authentication)        | NFR-T1 (Channel >= 70% coverage)                     | Auth and password recovery logic are primary channel test targets          |
-| FR-11~18 (Order Initiation & OTP)       | NFR-S5 (TOTP 3-attempt lockout enforced per session)         | Attempt counter in Redis enforces FR-16 lockout requirement               |
+| FR-11~18 (Order Initiation & Authorization)       | NFR-S5 (conditional TOTP 3-attempt lockout enforced per session)         | Attempt counter in Redis enforces FR-16 lockout requirement when step-up is required |
 | FR-19~25 (Order Execution & Position)     | NFR-D1 (No negative qty, no oversell)         | Every executed order is a `PositionIntegrityIntegrationTest` data point       |
 | FR-43 (Concurrent position protection)     | NFR-P4 (10 threads <= 5s), NFR-P5 (lock <= 100ms)    | Concurrency scenario drives both performance and lock NFRs                 |
 | FR-44 (Atomic position update)             | NFR-D1, NFR-T2 (CoreBanking >= 80%)                  | Atomicity requires high CoreBanking coverage to verify                     |

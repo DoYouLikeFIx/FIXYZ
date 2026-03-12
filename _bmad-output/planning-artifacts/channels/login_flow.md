@@ -666,7 +666,7 @@ ALTER TABLE member ADD COLUMN totp_enrolled_at TIMESTAMP NULL;
 | Operation | Vault API | Trigger |
 |----------|-----------|---------|
 | Store secret | `PUT /v1/secret/fix/member/{memberUuid}/totp-secret` | TOTP enroll |
-| Read secret | `GET /v1/secret/fix/member/{memberUuid}/totp-secret` | TOTP confirm and order OTP verify |
+| Read secret | `GET /v1/secret/fix/member/{memberUuid}/totp-secret` | TOTP confirm, login MFA verify, and conditional order step-up verify |
 | Delete secret | `DELETE /v1/secret/fix/member/{memberUuid}/totp-secret` | TOTP disable |
 
 ```java

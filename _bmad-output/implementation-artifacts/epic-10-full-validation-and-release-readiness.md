@@ -134,7 +134,7 @@ All mandatory scenarios below must pass before merge or release approval.
 |---|---|---|---|
 | Core acceptance | Order request to execution happy path | Broken core transaction flow | Full flow succeeds with correct final state |
 | Core acceptance | Concurrent sell on same position | Over-sell or race corruption | No over-sell and final quantity stays consistent |
-| Core acceptance | OTP failure blocks execution | Missing step-up auth control | Execution is blocked with deterministic failure |
+| Core acceptance | Required step-up failure blocks execution | Missing risk-based authorization control | Execution is blocked with deterministic failure |
 | Core acceptance | Duplicate client order key replay | Double execution from retries | Idempotent response with no duplicate posting |
 | Core acceptance | Repeated external timeout opens protection circuit | Cascading external failure | Circuit opens and fallback path returns safely |
 | Core acceptance | Session invalidated after logout | Session security bypass | Subsequent protected API is rejected |

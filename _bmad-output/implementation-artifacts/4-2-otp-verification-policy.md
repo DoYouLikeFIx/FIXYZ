@@ -1,6 +1,4 @@
-# Story 4.2: [CH] OTP Verification Policy
-
-> Historical artifact. This story file preserves prior implementation context and may diverge from the current canonical target contract. For active design truth, refer to `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/prd.md`, `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/channels/api-spec.md`, and Epic 12 documentation for scaffold-divergence handling.
+# Story 4.2: [BE][CH] Risk-Based Order Authorization Policy
 
 Status: ready-for-dev
 
@@ -9,71 +7,67 @@ Status: ready-for-dev
 ## Story
 
 As an authenticated order initiator,
-I want robust OTP verification controls,
-So that step-up authentication is secure and abuse-resistant.
+I want the system to require extra verification only when order risk warrants it,
+So that UX friction is reduced without weakening high-risk order protection.
 
 ## Acceptance Criteria
 
-1. Given valid OTP in allowed time window When verify endpoint is called Then verification succeeds and session can advance.
-2. Given duplicate rapid verify attempts When debounce policy applies Then request is throttled without attempt over-consumption.
-3. Given OTP replay in same window When replay is detected Then request is rejected.
-4. Given max attempts exceeded When further verify is attempted Then session is failed and execution blocked.
+1. Given a low-risk order context with trusted session signals and fresh login MFA, when authorization policy runs, then the session auto-advances to `AUTHED` without additional step-up.
+2. Given an elevated-risk order context such as stale login MFA, new device or network, sensitive order amount, or security-event recency, when authorization policy runs, then additional TOTP step-up is required before execution can proceed.
+3. Given required step-up verification inside the allowed time window, when the verify endpoint is called with a valid code, then verification succeeds and the session can advance.
+4. Given duplicate rapid verify attempts, when debounce policy applies, then the request is throttled without attempt over-consumption.
+5. Given TOTP replay in the same window, when replay is detected, then the request is rejected deterministically.
+6. Given max attempts exceeded on a required step-up challenge, when further verify is attempted, then the session is failed and execution is blocked.
 
 ## Tasks / Subtasks
 
-- [ ] Implement acceptance-criteria scope 1 (AC: 1)
-  - [ ] Add test coverage for AC 1
-- [ ] Implement acceptance-criteria scope 2 (AC: 2)
-  - [ ] Add test coverage for AC 2
-- [ ] Implement acceptance-criteria scope 3 (AC: 3)
-  - [ ] Add test coverage for AC 3
-- [ ] Implement acceptance-criteria scope 4 (AC: 4)
-  - [ ] Add test coverage for AC 4
+- [ ] Implement policy evaluation for low-risk versus elevated-risk contexts (AC: 1, 2)
+  - [ ] Consume login MFA freshness, device or network continuity, and order-risk inputs
+- [ ] Implement conditional TOTP verify path for challenge-required sessions (AC: 3)
+  - [ ] Prevent verify flow from running on already authorized or terminal sessions
+- [ ] Implement debounce and replay-prevention logic (AC: 4, 5)
+  - [ ] Ensure repeated submits do not consume attempts incorrectly
+- [ ] Implement max-attempt exhaustion behavior and failure transition (AC: 6)
+  - [ ] Block downstream execution after session failure
+- [ ] Add automated coverage for low-risk bypass, challenge-required path, debounce, replay rejection, and max-attempt exhaustion (AC: 1, 2, 3, 4, 5, 6)
 
 ## Dev Notes
 
 ### Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 4.
-- Supplemental artifact `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` has different scope/numbering; use it only as technical reference, not story ID authority.
+- Companion artifact `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` is the epic-level implementation contract for canonical Epic 4.
 - Depends on: Story 4.1, Story 1.2.
 
 ### Technical Requirements
 
-- Implement only the scope defined in this story's acceptance criteria.
-- Keep API, error, and ownership semantics consistent with architecture and PRD contracts.
-- Avoid cross-lane coupling outside required integration boundaries.
+- This story owns risk-based decisioning, not universal per-order OTP.
+- TOTP step-up must remain conditional and time-bounded.
+- Replay prevention, debounce, and attempt exhaustion must all be auditable and deterministic.
 
 ### Architecture Compliance
 
-- Follow architecture-defined module boundaries, security contracts, and error envelope conventions.
-- Keep lane ownership explicit (BE/FE/MOB) and avoid logic duplication across clients/services.
+- Use Vault-backed TOTP verification and architecture-defined Redis key patterns.
+- Preserve session-state transition boundaries rather than allowing direct execution bypass.
+- Keep authorization policy server-owned; clients consume decisions but do not author them.
 
 ### Testing Requirements
 
-- Validate all acceptance criteria with automated tests (unit/integration/e2e as appropriate).
-- Ensure negative paths and validation/authorization/error flows are covered.
+- Cover low-risk auto-authorization, elevated-risk challenge, successful verify, debounce throttling, replay rejection, and attempt exhaustion.
+- Include negative-path verification for already terminal or already `AUTHED` sessions.
 
-#### TC-4.2-OTP-DEBOUNCE: OTP 동일 츽 재전송 경계 테스트
-
-- GIVEN 동일 `orderSessionId`에서 T=0에 유효한 OTP 검증 성공 (AC 1)
-- WHEN T=5s에 동일 TOTP 값(30초 윈도우 내)으로 `POST /api/v1/orders/sessions/{id}/otp` 재호출
-- THEN HTTP 200 idempotent 리턴 — 성공 코드 재전송은 attempt를 추가 소비하지 않음
-- AND `attempt` 카운터가 중복 호출로 인해 추가 소비되지 않아야 함 (AC 2)
-- AND 동일 창에서 **`CHANNEL-002`로 실패한 코드**를 재전송하면 `attempt` 카운터가 1 증가하고 `CHANNEL-002(422)`가 반환됨 — idempotent 미적용 (실패 코드는 캐시 키에 포함되지 않음)
-- VERIFY 새 TOTP 윈도우(T+31s)의 OTP는 정상 처리되는지 확인
-- NOTE TOTP 윈도우 시간을 Mock하여 단위 테스트 수행, 참고: `channels/api-spec.md` §2.2
+### Story Completion Status
 
 - Status set to `ready-for-dev`.
-- Completion note: Epic 4 story context prepared from canonical planning artifact.
+- Completion note: Story regenerated for conditional step-up policy rather than always-on per-order OTP.
 
 ### References
 
 - `_bmad-output/planning-artifacts/epics.md` (Epic 4, Story 4.2)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
-- `_bmad-output/planning-artifacts/channels/api-spec.md` (채널계 API 명세)
-- `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` (supplemental only)
+- `_bmad-output/planning-artifacts/channels/api-spec.md`
+- `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md`
 
 ## Dev Agent Record
 
@@ -83,12 +77,12 @@ GPT-5 Codex (Codex desktop)
 
 ### Debug Log References
 
-- Generated from canonical planning artifact for Epic 4.
+- Regenerated from canonical planning artifact for Epic 4.
 
 ### Completion Notes List
 
-- Story scaffold generated with canonical numbering guardrail.
+- Story scaffold regenerated for risk-based order authorization and conditional step-up behavior.
 
 ### File List
 
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/4-2-otp-verification-policy.md
+- _bmad-output/implementation-artifacts/4-2-otp-verification-policy.md

@@ -73,7 +73,7 @@ Core Objectives:
 | 1 | Channel Auth & Session Platform | Channel | CH | Channel Engineer |
 | 2 | Account Domain & Inquiry APIs | Account | AC | Account Engineer |
 | 3 | External Gateway Contract (FEP) | External | FEP | FEP Owner (acting Account Engineer) |
-| 4 | Channel Order Session & OTP FSM    | Channel | CH | Channel Engineer |
+| 4 | Channel Order Authorization & Session FSM | Channel | CH | Channel Engineer |
 | 5 | Account Ledger, Limits, Idempotency, Concurrency | Account | AC | Account Engineer |
 | 6 | External Resilience, Chaos, Replay/Recovery Ops | External | FEP | FEP Owner (acting Account Engineer) |
 | 7 | Channel Notifications, Admin, Channel Security | Channel | CH | Channel Engineer |
@@ -90,7 +90,7 @@ To avoid over-scoping and to produce a demonstrable working core early, implemen
 ### P0 (Must-run core flow first)
 
 - Story 4.1: Order Session Create/Status + Ownership
-- Story 4.2: OTP Verify Policy
+- Story 4.2: Risk-Based Order Authorization Policy
 - Story 5.2: Order Execution & Position Update
 - Story 2.2: Position & Available-Quantity API
 
@@ -130,7 +130,7 @@ Provides the common development foundation (module structure, execution infrastr
 
 ### Epic 1: Channel Auth & Session Platform
 
-Completes the channel authentication/session foundation, adds password recovery capability plus bounded recovery-token cleanup/retention, and establishes the FE/MOB authentication UX.
+Completes the channel authentication/session foundation, adds password recovery capability plus bounded recovery-token cleanup/retention, and extends the platform with follow-on Google Authenticator enrollment/login MFA stories.
 
 **Story Hints:**
 - Story 1.1: BE Registration & Login Session
@@ -143,6 +143,11 @@ Completes the channel authentication/session foundation, adds password recovery 
 - Story 1.8: FE Password Recovery UX
 - Story 1.9: MOB Password Recovery UX
 - Story 1.10: BE Password Reset Token Cleanup, Terminalization & Retention
+- Story 1.11: BE Google Authenticator Enrollment & Login MFA Core
+- Story 1.12: FE Web Google Authenticator Enrollment & Login MFA Flow
+- Story 1.13: MOB Mobile Google Authenticator Enrollment & Login MFA Flow
+- Story 1.14: BE MFA Recovery, Rebind & Session Invalidation
+- Story 1.15: FE/MOB MFA Recovery & Error UX Alignment
 
 ### Epic 2: Account Domain & Inquiry APIs
 
@@ -168,19 +173,19 @@ Finalizes the external FEP contract, mapping, tracing, status inquiry, and contr
 - Story 3.5: BE Contract Test Suite
 - Story 3.6: FE/MOB Visible External Error UX
 
-### Epic 4: Channel Order Session & OTP FSM
+### Epic 4: Channel Order Authorization & Session FSM
 
-Implements the channel order session/OTP state machine and the FE/MOB multi-step order UX.
+Implements the channel order session, risk-based authorization decision, and the FE/MOB multi-step order UX.
 
 **Story Hints:**
 - Story 4.1: BE Order Session Create/Status + Ownership
-- Story 4.2: BE OTP Verify Policy
+- Story 4.2: BE Risk-Based Order Authorization Policy
 - Story 4.3: BE FSM Transition Governance
 - Story 4.4: FE Order Step A/B
-- Story 4.5: FE OTP + Step C
+- Story 4.5: FE Conditional Step-Up + Step C
 - Story 4.6: MOB Order Step A/B
-- Story 4.7: MOB OTP + Step C
-- Story 4.8: Cross-Client FSM Parity Validation
+- Story 4.7: MOB Conditional Step-Up + Step C
+- Story 4.8: Cross-Client Authorization FSM Parity Validation
 
 ### Epic 5: Position Ledger, Limits, Idempotency, Concurrency
 
@@ -914,6 +919,124 @@ So that password recovery storage remains operationally safe while preserving sh
   **When** the feature is verified  
   **Then** tests prove expired-active terminalization, `CONSUMED` / `SUPERSEDED` / `EXPIRED` terminal-reason assignment, `terminalized_at`-based retention, bounded purge execution, structured backlog evidence emission, idempotent reruns, and non-regression of Story 1.7 recovery behavior.
 
+### Story 1.11: [BE][CH] Google Authenticator Enrollment & Login MFA Core
+
+As a **registered user**,  
+I want Google Authenticator enrollment and TOTP-based login MFA,  
+So that account access requires a second factor before privileged actions.
+
+**Depends On:** Story 1.1, Story 1.2, Story 1.5, Story 0.8
+
+**Acceptance Criteria:**
+
+- **Given** a newly registered member or an authenticated existing member without TOTP enabled  
+  **When** MFA enrollment is initiated  
+  **Then** the backend issues a bounded bootstrap contract (`qrUri`, `manualEntryKey`, `enrollmentToken`, `expiresAt`) and stores the raw secret only in the approved secret store.
+- **Given** a valid first TOTP confirmation  
+  **When** enrollment is completed  
+  **Then** `totp_enabled=true`, `totp_enrolled_at` is recorded, and the bootstrap token is consumed.
+- **Given** a login attempt for a member that requires MFA  
+  **When** password is correct but TOTP is missing, invalid, or enrollment is incomplete  
+  **Then** no authenticated session is issued and a deterministic MFA-required or invalid-code error is returned.
+- **Given** a login attempt with valid password and current TOTP  
+  **When** authentication succeeds  
+  **Then** Redis-backed session cookie is issued with secure attributes and the session stores MFA proof metadata for downstream authorization policy.
+- **Given** repeated invalid TOTP attempts during login  
+  **When** threshold is exceeded  
+  **Then** the MFA verification path returns deterministic throttle or lock guidance without issuing a session.
+
+### Story 1.12: [FE] Web Google Authenticator Enrollment & Login MFA Flow
+
+As a **web user**,  
+I want browser registration and login flows that include Google Authenticator setup and TOTP verification,  
+So that the web experience matches the MFA requirement cleanly.
+
+**Depends On:** Story 1.3, Story 1.6, Story 1.11
+
+**Acceptance Criteria:**
+
+- **Given** a newly registered user or `MFA_ENROLLMENT_REQUIRED` state  
+  **When** the browser enters MFA setup  
+  **Then** it renders QR, manual entry key guidance, expiry information, and first-code confirmation UX.
+- **Given** the web login experience  
+  **When** valid password and current TOTP are submitted  
+  **Then** the user enters the protected route flow without bypassing the MFA step.
+- **Given** invalid TOTP, required enrollment, or MFA throttle responses  
+  **When** the browser receives the backend code  
+  **Then** it maps the response to deterministic next-action guidance without leaking sensitive details.
+- **Given** session expiry or explicit logout after MFA rollout  
+  **When** the user returns to login  
+  **Then** the browser re-enters the password plus TOTP flow while preserving safe return-to navigation.
+
+### Story 1.13: [MOB] Mobile Google Authenticator Enrollment & Login MFA Flow
+
+As a **mobile user**,  
+I want native Google Authenticator enrollment and login MFA parity with web,  
+So that the mobile client follows the same second-factor rules.
+
+**Depends On:** Story 1.4, Story 1.6, Story 1.11
+
+**Acceptance Criteria:**
+
+- **Given** a newly registered user or `MFA_ENROLLMENT_REQUIRED` state  
+  **When** the mobile app enters MFA setup  
+  **Then** it shows QR or secure manual-entry/deep-link enrollment guidance plus first-code confirmation.
+- **Given** the mobile login experience  
+  **When** valid password and current TOTP are submitted  
+  **Then** the authenticated app stack is entered only after MFA succeeds.
+- **Given** invalid TOTP, required enrollment, or MFA throttle responses  
+  **When** the app receives the backend code  
+  **Then** it maps field/global guidance deterministically and avoids back-stack corruption.
+- **Given** app resume or session expiry after MFA rollout  
+  **When** the app rechecks session state  
+  **Then** stale sessions route back into the password plus TOTP login flow safely.
+
+### Story 1.14: [BE][CH] MFA Recovery, Rebind & Session Invalidation
+
+As a **device-lost or authenticator-reset user**,  
+I want secure MFA recovery and rebind controls,  
+So that I can regain access without weakening account security.
+
+**Depends On:** Story 1.7, Story 1.10, Story 1.11, Story 0.8
+
+**Acceptance Criteria:**
+
+- **Given** an authenticated password-confirmed member or a member who has completed the approved recovery proof  
+  **When** MFA rebind is initiated  
+  **Then** the existing authenticator secret is terminalized before a fresh enrollment bootstrap contract is issued.
+- **Given** a valid MFA recovery or rebind completion  
+  **When** the new TOTP secret is confirmed  
+  **Then** all active sessions are invalidated, prior trusted-session markers are cleared, and only the newly enrolled authenticator remains active.
+- **Given** invalid, expired, consumed, or replayed MFA recovery proof  
+  **When** the backend rejects the request  
+  **Then** no secret rotation occurs and deterministic recovery error codes are returned.
+- **Given** MFA recovery and rebind activity  
+  **When** security events are recorded  
+  **Then** initiation, completion, failure, and terminalization are auditable without exposing raw secret material.
+
+### Story 1.15: [FE/MOB] MFA Recovery & Error UX Alignment
+
+As a **cross-client user**,  
+I want consistent MFA recovery and error guidance on web and mobile,  
+So that I can recover access predictably from any channel.
+
+**Depends On:** Story 1.12, Story 1.13, Story 1.14
+
+**Acceptance Criteria:**
+
+- **Given** invalid TOTP, enrollment required, recovery required, or MFA throttle outcomes  
+  **When** FE and MOB render the response  
+  **Then** both clients present aligned next-action semantics even if the visuals differ.
+- **Given** a supported MFA recovery entry point  
+  **When** the user begins recovery on web or mobile  
+  **Then** the client routes into the approved rebind flow without disclosing account existence or stale secret state.
+- **Given** successful MFA recovery or rebind  
+  **When** the user is returned to sign-in  
+  **Then** stale authenticated state is cleared and the next login requires password plus current TOTP.
+- **Given** an unknown MFA error  
+  **When** the client cannot map it to a known case  
+  **Then** correlation or support context remains visible and the user receives safe fallback guidance.
+
 ---
 
 ## Epic 2: Account Domain & Inquiry APIs
@@ -1206,7 +1329,7 @@ So that I know whether to retry, wait, or contact support.
 
 ---
 
-## Epic 4: Channel Order Session & OTP FSM
+## Epic 4: Channel Order Authorization & Session FSM
 
 ### Story 4.1: [BE][CH] Order Session Create/Status + Ownership
 
@@ -1220,7 +1343,10 @@ So that unauthorized access and invalid session usage are blocked.
 
 - **Given** valid order initiation request  
   **When** session API is called  
-  **Then** order session is created with PENDING_NEW status and TTL.
+  **Then** order session is created with TTL, ownership metadata, and an authorization decision payload that includes `challengeRequired`, `authorizationReason`, and current status.
+- **Given** low-risk order context with fresh login MFA proof  
+  **When** policy allows challenge bypass  
+  **Then** the returned session may already be `AUTHED` without extra per-order verification.
 - **Given** status query for owned session  
   **When** endpoint is called  
   **Then** current session state is returned.
@@ -1231,26 +1357,32 @@ So that unauthorized access and invalid session usage are blocked.
   **When** status/action is requested  
   **Then** not-found/expired contract is returned.
 
-### Story 4.2: [BE][CH] OTP Verification Policy
+### Story 4.2: [BE][CH] Risk-Based Order Authorization Policy
 
 As an **authenticated order initiator**,  
-I want robust OTP verification controls,  
-So that step-up authentication is secure and abuse-resistant.
+I want the system to require extra verification only when order risk warrants it,  
+So that UX friction is reduced without weakening high-risk order protection.
 
 **Depends On:** Story 4.1, Story 1.2
 
 **Acceptance Criteria:**
 
-- **Given** valid OTP in allowed time window  
+- **Given** low-risk order context (trusted device/session, recent login MFA, normal order profile)  
+  **When** authorization policy runs  
+  **Then** the session auto-advances to `AUTHED` and no additional step-up prompt is required.
+- **Given** elevated-risk order context (for example stale login MFA, new device/network, sensitive order amount, or security-event recency)  
+  **When** authorization policy runs  
+  **Then** additional TOTP step-up is required before execution can proceed.
+- **Given** required step-up verification in allowed time window  
   **When** verify endpoint is called  
-  **Then** verification succeeds and session can advance.
+  **Then** verification succeeds and the session can advance.
 - **Given** duplicate rapid verify attempts  
   **When** debounce policy applies  
   **Then** request is throttled without attempt over-consumption.
-- **Given** OTP replay in same window  
+- **Given** TOTP replay in same window  
   **When** replay is detected  
   **Then** request is rejected.
-- **Given** max attempts exceeded  
+- **Given** max attempts exceeded on a required step-up challenge  
   **When** further verify is attempted  
   **Then** session is failed and execution blocked.
 
@@ -1261,7 +1393,7 @@ I want explicit order session transition rules,
 So that invalid state progression cannot occur.
 
 > **Reference:** OrderSession FSM transition table is defined in `architecture.md`, section `OrderSession FSM`.  
-> Valid transitions: `PENDING_NEW -> AUTHED -> EXECUTING -> (COMPLETED|FAILED|CANCELED|REQUERYING)`, `REQUERYING -> (COMPLETED|CANCELED|ESCALATED)`, `ESCALATED -> (COMPLETED|FAILED|CANCELED)`, `PENDING_NEW|AUTHED -> EXPIRED`.
+> Valid transitions: `PENDING_NEW -> AUTHED -> EXECUTING -> (COMPLETED|FAILED|CANCELED|REQUERYING)`, `REQUERYING -> (COMPLETED|CANCELED|ESCALATED)`, `ESCALATED -> (COMPLETED|FAILED|CANCELED)`, `PENDING_NEW|AUTHED -> EXPIRED`. `PENDING_NEW -> AUTHED` may be reached either by automatic low-risk authorization or by successful step-up verification.
 
 **Depends On:** Story 4.2
 
@@ -1283,8 +1415,8 @@ So that invalid state progression cannot occur.
 ### Story 4.4: [FE] Web Order Step A/B
 
 As a **web user**,  
-I want step-based order input (symbol/qty) and OTP preparation flow,  
-So that order setup is clear and reversible.
+I want step-based order input and clear authorization guidance,  
+So that order setup is clear and only risky orders interrupt me with extra verification.
 
 **Depends On:** Story 4.1, Story 2.4
 
@@ -1296,27 +1428,33 @@ So that order setup is clear and reversible.
 - **Given** invalid form data  
   **When** validation runs  
   **Then** client-side and server-side errors are shown.
-- **Given** transition to step B  
-  **When** order session advances to OTP step  
-  **Then** OTP input UI becomes active.
+- **Given** transition after initiation  
+  **When** response indicates `challengeRequired=true`  
+  **Then** step-up input UI becomes active with reason/explanation.
+- **Given** transition after initiation  
+  **When** response indicates `challengeRequired=false` and status `AUTHED`  
+  **Then** UI skips directly to confirmation/execution step.
 - **Given** API/network error  
   **When** request fails  
   **Then** user receives retry guidance.
 
-### Story 4.5: [FE] Web OTP + Step C
+### Story 4.5: [FE] Web Conditional Step-Up + Step C
 
 As a **web user**,  
-I want OTP verification and order execution result screens,  
+I want conditional additional verification and order execution result screens,  
 So that I can complete order execution with clear status feedback.
 
 **Depends On:** Story 4.2, Story 4.3, Story 4.4
 
 **Acceptance Criteria:**
 
-- **Given** valid OTP submission  
-  **When** verify succeeds  
+- **Given** required step-up challenge  
+  **When** valid TOTP submission succeeds  
   **Then** UI transitions to confirmation/execution step.
-- **Given** OTP failure cases  
+- **Given** low-risk order where no challenge is required  
+  **When** session is already `AUTHED`  
+  **Then** UI enters confirmation/execution step directly and shows that additional verification was not required.
+- **Given** step-up failure cases  
   **When** code is invalid/expired/replayed  
   **Then** mapped error message is displayed.
 - **Given** execution in progress  
@@ -1329,8 +1467,8 @@ So that I can complete order execution with clear status feedback.
 ### Story 4.6: [MOB] Mobile Order Step A/B
 
 As a **mobile user**,  
-I want order input (symbol/qty) and OTP preparation on mobile flow,  
-So that I can initiate order with same capability as web.
+I want order input and authorization guidance on mobile,  
+So that I can initiate orders with the same risk-aware behavior as web.
 
 **Depends On:** Story 4.1, Story 2.5
 
@@ -1342,27 +1480,33 @@ So that I can initiate order with same capability as web.
 - **Given** invalid symbol/quantity input  
   **When** validation fails  
   **Then** contextual error indicators are displayed.
-- **Given** OTP pending session  
-  **When** user navigates to OTP step  
+- **Given** challenge-required session  
+  **When** user navigates to step-up step  
   **Then** remaining session context is preserved.
+- **Given** auto-authorized session  
+  **When** the API returns `challengeRequired=false`  
+  **Then** app skips directly to confirmation.
 - **Given** navigation interruption  
   **When** user returns  
   **Then** state restoration logic preserves flow continuity.
 
-### Story 4.7: [MOB] Mobile OTP + Step C
+### Story 4.7: [MOB] Mobile Conditional Step-Up + Step C
 
 As a **mobile user**,  
-I want OTP verification and order execution result flow on mobile,  
+I want conditional additional verification and order execution result flow on mobile,  
 So that complete order execution experience is parity with web.
 
 **Depends On:** Story 4.2, Story 4.3, Story 4.6
 
 **Acceptance Criteria:**
 
-- **Given** OTP verify on mobile  
+- **Given** required step-up on mobile  
   **When** valid code is entered  
   **Then** app transitions to confirmation/execution.
-- **Given** OTP or execution errors  
+- **Given** low-risk session already authorized  
+  **When** the step-up screen is not required  
+  **Then** app transitions directly to confirmation/execution.
+- **Given** step-up or execution errors  
   **When** response received  
   **Then** user sees mapped action guidance.
 - **Given** final result response  
@@ -1372,7 +1516,7 @@ So that complete order execution experience is parity with web.
   **When** session resumes  
   **Then** current order status is recovered.
 
-### Story 4.8: [FE/MOB] Cross-client FSM Parity Validation
+### Story 4.8: [FE/MOB] Cross-Client Authorization FSM Parity Validation
 
 As a **product quality owner**,  
 I want FE and MOB FSM behavior parity,  
@@ -2352,7 +2496,7 @@ All mandatory scenarios must pass before merge/release approval.
 |---|---|---|---|
 | Core acceptance | Order request -> execution -> completion happy path | Broken core transaction flow | Full flow succeeds with correct final state |
 | Core acceptance | Concurrent sell (10-thread) on same position | Over-sell / race corruption | No over-sell; final quantity remains consistent |
-| Core acceptance | OTP failure blocks execution | Missing step-up auth control | Execution blocked with deterministic failure |
+| Core acceptance | Required step-up failure blocks execution | Missing risk-based authorization control | Execution blocked with deterministic failure |
 | Core acceptance | Duplicate client order key replay | Double execution from retry | Idempotent response; no duplicate posting |
 | Core acceptance | Repeated external timeout opens protection circuit | Cascading external failure | Circuit opens and fallback path returns safely |
 | Core acceptance | Session invalidated after logout | Session security bypass | Subsequent protected API is rejected |

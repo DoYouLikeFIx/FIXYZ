@@ -1,4 +1,4 @@
-# Story 4.3: [CH] FSM Transition Governance
+# Story 4.3: [BE][CH] FSM Transition Governance
 
 Status: ready-for-dev
 
@@ -12,76 +12,57 @@ So that invalid state progression cannot occur.
 
 ## Acceptance Criteria
 
-1. Given order FSM definition When state transition command is applied Then only allowed transitions are accepted.
-2. Given invalid transition request When attempted Then deterministic conflict/error is returned.
-3. Given state persistence event When transition completes Then status and timestamps are stored consistently.
-4. Given API status response When serialized Then optional fields follow status-specific contract.
+1. Given the order-session FSM definition, when a transition command is applied, then only allowed transitions are accepted.
+2. Given an invalid transition request, when it is attempted, then a deterministic conflict or validation error is returned.
+3. Given a valid state persistence event, when the transition completes, then status and timestamps are stored consistently.
+4. Given API status serialization, when a session is returned, then optional fields follow the status-specific response contract.
 
 ## Tasks / Subtasks
 
-- [ ] Implement acceptance-criteria scope 1 (AC: 1)
-  - [ ] Add test coverage for AC 1
-- [ ] Implement acceptance-criteria scope 2 (AC: 2)
-  - [ ] Add test coverage for AC 2
-- [ ] Implement acceptance-criteria scope 3 (AC: 3)
-  - [ ] Add test coverage for AC 3
-- [ ] Implement acceptance-criteria scope 4 (AC: 4)
-  - [ ] Add test coverage for AC 4
+- [ ] Implement the canonical order-session transition table in the domain layer (AC: 1, 2)
+  - [ ] Reject impossible or out-of-order transitions deterministically
+- [ ] Persist status and transition timestamps consistently (AC: 3)
+  - [ ] Ensure expiration and failure transitions remain auditable
+- [ ] Implement status-specific serialization rules for API consumers (AC: 4)
+  - [ ] Expose only the optional fields allowed for the current state
+- [ ] Add automated coverage for valid transitions, invalid transitions, and response serialization behavior (AC: 1, 2, 3, 4)
 
 ## Dev Notes
 
 ### Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 4.
-- Supplemental artifact `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` has different scope/numbering; use it only as technical reference, not story ID authority.
+- Companion artifact `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` is the epic-level implementation contract for canonical Epic 4.
 - Depends on: Story 4.2.
 
 ### Technical Requirements
 
-- Implement only the scope defined in this story's acceptance criteria.
-- Keep API, error, and ownership semantics consistent with architecture and PRD contracts.
-- Avoid cross-lane coupling outside required integration boundaries.
+- `PENDING_NEW -> AUTHED` must support both low-risk bypass and successful step-up.
+- Terminal states must not re-open without an explicit documented recovery path.
+- State-specific optional fields must stay consistent across persistence and API response layers.
 
 ### Architecture Compliance
 
-- Follow architecture-defined module boundaries, security contracts, and error envelope conventions.
-- Keep lane ownership explicit (BE/FE/MOB) and avoid logic duplication across clients/services.
+- Follow the FSM defined in `architecture.md`.
+- Keep state governance in the channel domain instead of duplicating it in controllers or clients.
+- Preserve correlation between transition decisions and stored timestamps.
 
 ### Testing Requirements
 
-- Validate all acceptance criteria with automated tests (unit/integration/e2e as appropriate).
-- Ensure negative paths and validation/authorization/error flows are covered.
+- Cover the allowed transition matrix, invalid transition rejection, expiration handling, and status-specific serialization behavior.
 
-#### TC-4.3-FSM-BOUNDARY: ORD-009 FSM 불법 상태 전이 전체 열거
-
-아래 모든 전이를 단위 테스트로 검증해야 한다 (AC 2):
-
-| 현재 상태 | 시도한 전이 | 예상 결과 |
-|---|---|---|
-| `PENDING_NEW` | OTP없이 바로 execute | HTTP 409 `ORD-009` |
-| `PENDING_NEW` | 주문 준비 없이 execute 직접 호출 (`PENDING_NEW` 단계 생략) | HTTP 409 `ORD-009` |
-| `PENDING_NEW` | 동일 `PENDING_NEW` 유지 요청 | HTTP 409 `ORD-009` |
-| `AUTHED` | 다시 OTP 호출 | HTTP 409 `ORD-009` |
-| `EXECUTING` | execute 재호출 | HTTP 409 `ORD-009` (상태 전이 불가) 또는 `ORD-010` (락 충돌) — 순서 아래 참고 |
-| `COMPLETED` | OTP 또는 execute | HTTP 409 `ORD-009` |
-| `FAILED` | execute | HTTP 409 `ORD-009` |
-| `ESCALATED` | execute | HTTP 409 `ORD-009` |
-
-- **판단 순서 (CRITICAL)**: 상태 검증(`ORD-009`)이 Redis SETNX 락 획득(`ORD-010`)보다 **항상 먼저** 실행된다.  
-  따라서 `EXECUTING` 상태에서 execute 재호출 시: 상태 검증 선행 → `ORD-009` 반환 (락 획득 시도 안 함).  
-  `AUTHED` 상태에서 동시 2개 요청 경쟁 시에만 `ORD-010` 발생 가능.
-- NOTE 허용 전이만 열거: `PENDING_NEW→AUTHED(OTP성공)`, `AUTHED→EXECUTING(execute)`, `EXECUTING→REQUERYING/COMPLETED/FAILED/CANCELED`, `REQUERYING→COMPLETED/CANCELED/ESCALATED`, `ESCALATED→COMPLETED/FAILED/CANCELED` (Admin Replay), 참고: `channels/api-spec.md` §2.3/§4.2
+### Story Completion Status
 
 - Status set to `ready-for-dev`.
-- Completion note: Epic 4 story context prepared from canonical planning artifact.
+- Completion note: Story regenerated for explicit order-session FSM governance.
 
 ### References
 
 - `_bmad-output/planning-artifacts/epics.md` (Epic 4, Story 4.3)
 - `_bmad-output/planning-artifacts/architecture.md`
 - `_bmad-output/planning-artifacts/prd.md`
-- `_bmad-output/planning-artifacts/channels/api-spec.md` (채널계 API 명세)
-- `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` (supplemental only)
+- `_bmad-output/planning-artifacts/channels/api-spec.md`
+- `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md`
 
 ## Dev Agent Record
 
@@ -91,12 +72,12 @@ GPT-5 Codex (Codex desktop)
 
 ### Debug Log References
 
-- Generated from canonical planning artifact for Epic 4.
+- Regenerated from canonical planning artifact for Epic 4.
 
 ### Completion Notes List
 
-- Story scaffold generated with canonical numbering guardrail.
+- Story scaffold regenerated for FSM transition governance and status contract behavior.
 
 ### File List
 
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/4-3-fsm-transition-governance.md
+- _bmad-output/implementation-artifacts/4-3-fsm-transition-governance.md

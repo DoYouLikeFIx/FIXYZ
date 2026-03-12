@@ -103,9 +103,8 @@ This artifact records the shared Epic 1 QA reinforcement evidence referenced by 
   - cooldown/reset behavior
   - security-event persistence on lockout
 - Source references:
-  - `_bmad-output/implementation-artifacts/1-5-be-auth-guardrails-lockout-rate-limit.md`
-  - `_bmad-output/implementation-artifacts/1-1-be-registration-login-session.md`
-  - `_bmad-output/implementation-artifacts/1-2-be-logout-profile-session-security.md`
+  - `_bmad-output/implementation-artifacts/epic-1-user-authentication-and-account-access.md`
+  - `_bmad-output/planning-artifacts/epics.md` (Epic 1 canonical story map)
   - `BE/channel-service/src/main/java/com/fix/channel/service/AuthService.java`
   - `BE/channel-service/src/test/java/com/fix/channel/integration/ChannelAuthGuardrailsIntegrationTest.java`
   - `BE/channel-service/src/test/java/com/fix/channel/integration/ChannelAuthSessionIntegrationTest.java`

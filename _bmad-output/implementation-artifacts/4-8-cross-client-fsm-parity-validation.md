@@ -1,4 +1,4 @@
-# Story 4.8: Cross-client FSM Parity Validation
+# Story 4.8: [FE/MOB] Cross-Client Authorization FSM Parity Validation
 
 Status: ready-for-dev
 
@@ -12,55 +12,54 @@ So that one client does not diverge from core order rules.
 
 ## Acceptance Criteria
 
-1. Given same scenario input sequence When run on FE and MOB Then state transitions are equivalent.
-2. Given same error codes When rendered on both clients Then severity/action semantics are aligned.
-3. Given regression suite When CI runs Then parity checks pass.
+1. Given the same scenario input sequence, when it runs on FE and MOB, then state transitions are equivalent.
+2. Given the same backend error codes, when they are rendered on both clients, then severity and action semantics are aligned.
+3. Given the regression suite, when CI runs, then parity checks pass.
 
 ## Tasks / Subtasks
 
-- [ ] Implement acceptance-criteria scope 1 (AC: 1)
-  - [ ] Add test coverage for AC 1
-- [ ] Implement acceptance-criteria scope 2 (AC: 2)
-  - [ ] Add test coverage for AC 2
-- [ ] Implement acceptance-criteria scope 3 (AC: 3)
-  - [ ] Add test coverage for AC 3
+- [ ] Define the canonical scenario matrix for FE and MOB authorization-state parity (AC: 1)
+  - [ ] Include challenge-required, auto-authorized, expired, and failed-session paths
+- [ ] Implement cross-client validation for shared error-code semantics (AC: 2)
+  - [ ] Verify aligned next actions for the same backend outcome
+- [ ] Add CI-parity regression coverage for the canonical FSM flow (AC: 3)
+  - [ ] Fail the regression gate when web and mobile diverge in state or guidance
 
 ## Dev Notes
 
 ### Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 4.
-- Supplemental artifact `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` has different scope/numbering; use it only as technical reference, not story ID authority.
+- Companion artifact `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` is the epic-level implementation contract for canonical Epic 4.
 - Depends on: Story 4.5, Story 4.7.
 
 ### Technical Requirements
 
-- Implement only the scope defined in this story's acceptance criteria.
-- Keep API, error, and ownership semantics consistent with architecture and PRD contracts.
-- Avoid cross-lane coupling outside required integration boundaries.
+- FE and MOB may differ in layout, but they must preserve the same state meaning and next-action guidance.
+- Parity coverage should include both low-risk bypass and elevated-risk step-up scenarios.
+- Regression checks must remain cheap enough to run continuously.
 
 ### Architecture Compliance
 
-- Follow architecture-defined module boundaries, security contracts, and error envelope conventions.
-- Keep lane ownership explicit (BE/FE/MOB) and avoid logic duplication across clients/services.
+- Use the canonical Epic 4 FSM as the parity source of truth.
+- Keep error semantics tied to backend codes rather than client-specific reinterpretation.
+- Preserve deterministic result-state handling across both clients.
 
 ### Testing Requirements
 
-- Validate all acceptance criteria with automated tests (unit/integration/e2e as appropriate).
-- Ensure negative paths and validation/authorization/error flows are covered.
+- Cover the shared scenario matrix, shared error-code semantics, and CI regression enforcement.
 
 ### Story Completion Status
 
 - Status set to `ready-for-dev`.
-- Completion note: Epic 4 story context prepared from canonical planning artifact.
+- Completion note: Story regenerated for FE and MOB authorization FSM parity validation.
 
 ### References
 
 - `_bmad-output/planning-artifacts/epics.md` (Epic 4, Story 4.8)
+- `_bmad-output/planning-artifacts/ux-design-specification.md`
 - `_bmad-output/planning-artifacts/architecture.md`
-- `_bmad-output/planning-artifacts/prd.md`
-- `_bmad-output/planning-artifacts/channels/api-spec.md` (채널계 API 명세)
-- `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` (supplemental only)
+- `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md`
 
 ## Dev Agent Record
 
@@ -70,12 +69,12 @@ GPT-5 Codex (Codex desktop)
 
 ### Debug Log References
 
-- Generated from canonical planning artifact for Epic 4.
+- Regenerated from canonical planning artifact for Epic 4.
 
 ### Completion Notes List
 
-- Story scaffold generated with canonical numbering guardrail.
+- Story scaffold regenerated for FE and MOB authorization-state parity validation.
 
 ### File List
 
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/4-8-cross-client-fsm-parity-validation.md
+- _bmad-output/implementation-artifacts/4-8-cross-client-fsm-parity-validation.md

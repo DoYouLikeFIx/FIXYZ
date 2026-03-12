@@ -1,4 +1,4 @@
-# Story 4.5: [FE] Web OTP + Step C
+# Story 4.5: [FE] Web Conditional Step-Up + Step C
 
 Status: ready-for-dev
 
@@ -7,71 +7,62 @@ Status: ready-for-dev
 ## Story
 
 As a web user,
-I want OTP verification and final confirmation/result screens,
-So that I can complete order with clear status feedback.
+I want conditional additional verification and order execution result screens,
+So that I can complete order execution with clear status feedback.
 
 ## Acceptance Criteria
 
-1. Given valid OTP submission When verify succeeds Then UI transitions to confirmation/execution step.
-2. Given OTP failure cases When code is invalid/expired/replayed Then mapped error message is displayed.
-3. Given execution in progress When status polling/subscription updates Then result screen reflects final state.
-4. Given final state response When completed/failed returned Then reference and reason fields are rendered conditionally.
+1. Given a required step-up challenge, when valid TOTP submission succeeds, then the UI transitions to confirmation or execution step.
+2. Given a low-risk order where no challenge is required, when the session is already `AUTHED`, then the UI enters confirmation or execution step directly and shows that extra verification was not required.
+3. Given step-up failure cases, when the code is invalid, expired, replayed, or throttled, then mapped error guidance is displayed.
+4. Given execution in progress, when status polling or SSE updates arrive, then the result screen reflects the final order state.
+5. Given a final state response, when FILLED, REJECTED, or FAILED is returned, then ClOrdID and failure reason are rendered conditionally.
 
 ## Tasks / Subtasks
 
-- [ ] Implement acceptance-criteria scope 1 (AC: 1)
-  - [ ] Add test coverage for AC 1
-- [ ] Implement acceptance-criteria scope 2 (AC: 2)
-  - [ ] Add test coverage for AC 2
-- [ ] Implement acceptance-criteria scope 3 (AC: 3)
-  - [ ] Add test coverage for AC 3
-- [ ] Implement acceptance-criteria scope 4 (AC: 4)
-  - [ ] Add test coverage for AC 4
+- [ ] Implement conditional step-up submission flow on web (AC: 1, 2)
+  - [ ] Support both challenge-required and already-authorized session entry points
+- [ ] Map TOTP and policy failure states into user guidance (AC: 3)
+  - [ ] Include replay, expiry, and throttle handling without ambiguous messaging
+- [ ] Implement processing and final-result rendering (AC: 4, 5)
+  - [ ] Keep result screen synchronized with order state updates
+- [ ] Add FE coverage for successful step-up, bypass path, failure mapping, and result rendering (AC: 1, 2, 3, 4, 5)
 
 ## Dev Notes
 
 ### Developer Context Section
 
 - Canonical numbering source: `_bmad-output/planning-artifacts/epics.md` Epic 4.
-- Supplemental artifact `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` has different scope/numbering; use it only as technical reference, not story ID authority.
+- Companion artifact `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` is the epic-level implementation contract for canonical Epic 4.
 - Depends on: Story 4.2, Story 4.3, Story 4.4.
 
 ### Technical Requirements
 
-- Implement only the scope defined in this story's acceptance criteria.
-- Keep API, error, and ownership semantics consistent with architecture and PRD contracts.
-- Avoid cross-lane coupling outside required integration boundaries.
+- Step-up is conditional, not mandatory for every order.
+- Result rendering must work for both auto-authorized and step-up-authorized sessions.
+- FE should not imply that OTP occurred when the session was already `AUTHED`.
 
 ### Architecture Compliance
 
-- Follow architecture-defined module boundaries, security contracts, and error envelope conventions.
-- Keep lane ownership explicit (BE/FE/MOB) and avoid logic duplication across clients/services.
+- Preserve the canonical order-session FSM and status-response contracts.
+- Consume backend error codes directly for deterministic guidance.
+- Keep result-flow state aligned with downstream execution ownership.
 
 ### Testing Requirements
 
-- Validate all acceptance criteria with automated tests (unit/integration/e2e as appropriate).
-- Ensure negative paths and validation/authorization/error flows are covered.
+- Cover step-up success, bypass path, invalid or expired code, replay or throttle path, processing state, and final result rendering.
 
-#### TC-SSE-004: CB OPEN/CLOSED 이벤트 코에 자동 UX 응답 (Playwright E2E)
-
-- GIVEN 클라이언트가 SSE 스트림에 구독 중
-- WHEN SSE로 `CB_STATE_CHANGE{state:"OPEN",retryAfterSeconds:10}` 도달
-- THEN "execute" 쮔리퀀 버튼이 `disabled` 상태로 전환되고 countdown timer가 표시됨
-- WHEN 이후 SSE로 `CB_STATE_CHANGE{state:"CLOSED"}` 도달
-- THEN 뉢버튼이 즉시 `enabled` 상태로 복구됨
-- AND 사용자가 수동 조작 없이도 주문 진행할 수 있는 상태
-- NOTE FE 단위 테스트에서 SSE 이벤트를 `MockEventSource` 또는 MSW로 주입; Playwright E2E 대상, 참고: `channels/api-spec.md` §3.1 `CB_STATE_CHANGE` UX 가이드
+### Story Completion Status
 
 - Status set to `ready-for-dev`.
-- Completion note: Epic 4 story context prepared from canonical planning artifact.
+- Completion note: Story regenerated for web conditional step-up and Step C behavior.
 
 ### References
 
 - `_bmad-output/planning-artifacts/epics.md` (Epic 4, Story 4.5)
+- `_bmad-output/planning-artifacts/ux-design-specification.md`
 - `_bmad-output/planning-artifacts/architecture.md`
-- `_bmad-output/planning-artifacts/prd.md`
-- `_bmad-output/planning-artifacts/channels/api-spec.md` (채널계 API 명세)
-- `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md` (supplemental only)
+- `_bmad-output/implementation-artifacts/epic-4-order-execution-and-position-integrity.md`
 
 ## Dev Agent Record
 
@@ -81,12 +72,12 @@ GPT-5 Codex (Codex desktop)
 
 ### Debug Log References
 
-- Generated from canonical planning artifact for Epic 4.
+- Regenerated from canonical planning artifact for Epic 4.
 
 ### Completion Notes List
 
-- Story scaffold generated with canonical numbering guardrail.
+- Story scaffold regenerated for FE conditional step-up and execution-result flow.
 
 ### File List
 
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/4-5-web-otp-plus-step-c.md
+- _bmad-output/implementation-artifacts/4-5-web-otp-plus-step-c.md

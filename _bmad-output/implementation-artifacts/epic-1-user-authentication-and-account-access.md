@@ -1,23 +1,27 @@
 # Epic 1: User Authentication & Account Access
 
-> Completed archival artifact. Canonical Epic 1 is complete as of `2026-03-11`. This document preserves earlier implementation context and may diverge from the current canonical contract. For active design truth, refer to `_bmad-output/planning-artifacts/prd.md`, `_bmad-output/planning-artifacts/channels/api-spec.md`, `_bmad-output/planning-artifacts/ux-design-specification.md`, and `_bmad-output/planning-artifacts/epics.md`.
+> Completed archival artifact for the delivered Epic 1 baseline as of `2026-03-11`.
+> Follow-on Google Authenticator rollout now lives in canonical Story `1.11`~`1.15`; use this document as baseline context plus the canonical planning/story files for extension work.
+> For active design truth, refer to `_bmad-output/planning-artifacts/prd.md`, `_bmad-output/planning-artifacts/channels/api-spec.md`, `_bmad-output/planning-artifacts/ux-design-specification.md`, and `_bmad-output/planning-artifacts/epics.md`.
 
 ## Summary
 
 Users can log in and maintain their session via Spring Session Redis-backed session cookies with a 30-minute sliding TTL, safely view their account list and balances, recover access through anti-enumeration password recovery endpoints, and receive an SSE warning notification 5 minutes before session expiry to extend the session. On logout or password reset, active sessions are invalidated.
+Mandatory Google Authenticator enrollment and login MFA are now tracked as follow-on canonical stories rather than replacing the already delivered Epic 1 baseline.
 
 **FRs covered:** FR-01, FR-02, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-52, FR-57, FR-58, FR-59, FR-60, FR-61  
 **Architecture requirements:** SessionConfig(@EnableRedisHttpSession), SpringSessionBackedSessionRegistry, CorrelationIdFilter, AuthService, OtpService (base), SecurityConfig, CorsConfig, Member Entity, Account Entity, ChannelIntegrationTestBase, CoreBankIntegrationTestBase  
 **Frontend:** LoginPage.tsx, RegisterPage.tsx, DashboardPage.tsx, App.tsx(Router), PrivateRoute, NavigationBar, useAuthStore.ts, useAccount.ts, lib/axios.ts(SSE + 401 handler)
-**Completion snapshot:** Canonical Story `1.1`~`1.10` are complete and Epic 1 is closed in `_bmad-output/implementation-artifacts/sprint-status.yaml`.  
+**Completion snapshot:** Canonical Story `1.1`~`1.10` are complete as the delivered baseline, and follow-on Story `1.11`~`1.15` extend Epic 1 with Google Authenticator rollout scope.  
 **Retrospective:** `_bmad-output/implementation-artifacts/epic-1-retro-2026-03-11.md`  
-**Canonical planning source:** `_bmad-output/planning-artifacts/epics.md` (Epic 1 Story `1.1`~`1.10`)  
+**Canonical planning source:** `_bmad-output/planning-artifacts/epics.md` (Epic 1 Story `1.1`~`1.15`)  
 **Canonical tracking source:** `_bmad-output/implementation-artifacts/sprint-status.yaml`  
 **Usage rule:** This document is supplemental archival context; use canonical Story files and sprint-status keys as the source of truth for completion, implementation tracking, and next-epic handoff.  
-**Numbering notice:** Canonical Epic 1 scope now runs through Story `1.10`. Older non-canonical references that previously occupied `1.7`~`1.9` are relabeled below as supplemental references to avoid ID collisions.  
-**Alignment hint:** Numbered sections below are preserved for historical traceability only. Canonical Story 1.1/1.2/1.3/1.4/1.5/1.6/1.7/1.8/1.9/1.10 retain ownership for all active implementation and maintenance work.  
+**Numbering notice:** Canonical Epic 1 scope now runs through Story `1.15`. Older non-canonical references that previously occupied `1.7`~`1.9` are relabeled below as supplemental references to avoid ID collisions.  
+**Alignment hint:** Numbered sections below are preserved for historical traceability only. Canonical Story `1.1`~`1.10` retain ownership for the delivered baseline, while Story `1.11`~`1.15` own the Google Authenticator rollout.  
 **Recovery cleanup note:** Canonical password-reset-token terminalization and retention behavior now belongs to Story `1.10`; treat any older recovery persistence wording in this historical artifact as supplemental only.  
 **Verification baseline:** Party-mode QA reinforcement is reflected in canonical Story files; validate against canonical Story artifacts because the previous local helper script is not part of this repository.
+**Extension note:** Historical TOTP supplemental notes below are not the active delivery contract for mandatory login MFA; use canonical Story `1.11`~`1.15` for that work.
 
 > **Common Error Format (GlobalExceptionHandler):** All error responses follow the `{ code: string, message: string, timestamp: ISO8601, path: string }` structure. `@ControllerAdvice` `GlobalExceptionHandler` handles this consistently.
 
