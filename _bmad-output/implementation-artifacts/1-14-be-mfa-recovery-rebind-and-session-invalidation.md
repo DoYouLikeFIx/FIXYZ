@@ -1,6 +1,6 @@
 # Story 1.14: BE MFA Recovery, Rebind & Session Invalidation
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -19,15 +19,15 @@ so that I can regain access without weakening account security.
 
 ## Tasks / Subtasks
 
-- [ ] Define MFA recovery and rebind entry conditions (AC: 1)
-  - [ ] Support authenticated password-confirmed and approved recovery-proof paths
-- [ ] Implement old-secret terminalization before re-enrollment bootstrap issuance (AC: 1, 2)
-  - [ ] Invalidate active sessions and trusted-session metadata on success
-- [ ] Add deterministic rejection handling for invalid or replayed recovery proof (AC: 3)
-  - [ ] Prevent partial secret rotation on failed attempts
-- [ ] Emit audit/security events for MFA recovery lifecycle (AC: 4)
-  - [ ] Exclude raw TOTP secret and raw recovery material from logs/events
-- [ ] Add backend test coverage for recovery success, replay failure, secret terminalization, and session invalidation (AC: 1, 2, 3, 4)
+- [x] Define MFA recovery and rebind entry conditions (AC: 1)
+  - [x] Support authenticated password-confirmed and approved recovery-proof paths
+- [x] Implement old-secret terminalization before re-enrollment bootstrap issuance (AC: 1, 2)
+  - [x] Invalidate active sessions and trusted-session metadata on success
+- [x] Add deterministic rejection handling for invalid or replayed recovery proof (AC: 3)
+  - [x] Prevent partial secret rotation on failed attempts
+- [x] Emit audit/security events for MFA recovery lifecycle (AC: 4)
+  - [x] Exclude raw TOTP secret and raw recovery material from logs/events
+- [x] Add backend test coverage for recovery success, replay failure, secret terminalization, and session invalidation (AC: 1, 2, 3, 4)
 
 ## Dev Notes
 
@@ -42,6 +42,13 @@ so that I can regain access without weakening account security.
 - Recovery or rebind proof must be single-use and time-bounded.
 - Existing authenticator secret must be terminalized before the new enrollment becomes active.
 - Session invalidation must cover server session state and any trusted-session marker used by later order authorization.
+- Canonical endpoint contract:
+  - Authenticated path: `POST /api/v1/members/me/totp/rebind { currentPassword }`
+  - Recovery-proof path: `POST /api/v1/auth/mfa-recovery/rebind { recoveryProof }`
+  - Confirm path: `POST /api/v1/auth/mfa-recovery/rebind/confirm { rebindToken, enrollmentToken, otpCode }`
+- Password-reset continuation may issue `X-MFA-Recovery-Proof` with `X-MFA-Recovery-Proof-Expires-In: 600`; clients must keep the proof only in volatile memory.
+- Deterministic recovery error codes are fixed as `AUTH-019` (invalid/expired proof), `AUTH-020` (consumed/replayed proof), and `AUTH-021` (recovery required with `recoveryUrl`).
+- Successful confirm must invalidate all Spring Session rows for the principal, write stale-session markers, clear `AUTH_LAST_MFA_VERIFIED_AT`, and clear any future trusted-session marker namespace if present.
 
 ### Architecture Compliance
 
@@ -51,11 +58,12 @@ so that I can regain access without weakening account security.
 ### Testing Requirements
 
 - Validate recovery initiation, rebind completion, replay rejection, session invalidation, and audit-event emission.
+- Cover both bootstrap entry modes (authenticated password-confirmed path and recovery-proof path) plus confirm success/failure token consumption.
 
 ### Story Completion Status
 
-- Status set to `ready-for-dev`.
-- Completion note: MFA recovery and rebind backend scaffold added to close the mandatory login-MFA support loop.
+- Status set to `done`.
+- Completion note: Backend MFA recovery, rebind, terminalization, and stale-session invalidation shipped with passing contract and integration coverage.
 
 ### References
 
@@ -72,12 +80,29 @@ GPT-5 Codex (Codex desktop)
 
 ### Debug Log References
 
-- Added as follow-on Epic 1 MFA rollout scope after baseline story restoration.
+- `./gradlew --no-daemon :channel-service:test --tests com.fix.channel.integration.ChannelPasswordRecoveryIntegrationTest --tests com.fix.channel.contract.ChannelOpenApiCompatibilityTest`
+- `./gradlew --no-daemon :core-common:test :channel-domain:test :channel-service:test`
 
 ### Completion Notes List
 
-- Story scaffold created for backend MFA recovery, rebind, and session invalidation behavior.
+- Raised rebind confirmation session invalidation to a required synchronous step before pending-secret promotion so failed invalidation aborts completion instead of being swallowed after commit.
+- Extended trusted-session cleanup to remove both `ch:trusted-session:{email}` and `ch:trusted-session:{email}:*` markers through Redis `SCAN`, matching the architecture note and Story 1.14 completion expectations.
+- Normalized rebind bootstrap errors to the canonical contract: `AUTH-026` for current-password mismatch, `AUTH-009` plus `enrollUrl` for missing TOTP enrollment on the authenticated path, and disclosure-safe `AUTH-019` for stale recovery-proof bootstrap attempts.
+- Added integration coverage for canonical error responses, trusted-session namespace cleanup, and the failure path that blocks confirmation when session invalidation is unavailable.
+- Sanitized unexpected confirmation failures to the canonical internal-error contract and added backend-side error-code resolution coverage so `AUTH-026` remains guarded in CI.
 
 ### File List
 
+- BE/channel-service/src/main/java/com/fix/channel/service/ChannelSessionInvalidationService.java
+- BE/channel-service/src/main/java/com/fix/channel/exception/GlobalExceptionHandler.java
+- BE/channel-service/src/main/java/com/fix/channel/service/MfaRecoveryService.java
+- BE/channel-service/src/test/java/com/fix/channel/contract/ChannelOpenApiCompatibilityTest.java
+- BE/channel-service/src/test/java/com/fix/channel/integration/ChannelPasswordRecoveryIntegrationTest.java
+- BE/core-common/src/main/java/com/fix/common/error/ErrorCode.java
+- BE/core-common/src/test/java/com/fix/common/error/CoreCommonContractTest.java
+- docs/contracts/auth-error-standardization.json
 - _bmad-output/implementation-artifacts/1-14-be-mfa-recovery-rebind-and-session-invalidation.md
+
+### Change Log
+
+- 2026-03-13: Aligned backend MFA recovery/rebind follow-up with the architecture contract by making session invalidation blocking, clearing trusted-session namespaces, standardizing canonical error codes, and rerunning BE verification.

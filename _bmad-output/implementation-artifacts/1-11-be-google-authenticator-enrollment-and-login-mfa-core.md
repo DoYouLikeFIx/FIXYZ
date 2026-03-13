@@ -1,6 +1,6 @@
 # Story 1.11: BE Google Authenticator Enrollment & Login MFA Core
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -8,29 +8,32 @@ Status: ready-for-dev
 
 As a registered user,
 I want Google Authenticator enrollment and TOTP-based login MFA,
-so that account access requires a second factor before privileged actions.
+so that every authenticated login requires a second factor before access is granted.
 
 ## Acceptance Criteria
 
-1. Given a newly registered member or authenticated member without TOTP enabled, when MFA enrollment is initiated, then the backend returns a bounded bootstrap contract and stores the raw secret only in the approved secret store.
-2. Given a valid first TOTP confirmation, when enrollment is completed, then `totp_enabled=true`, `totp_enrolled_at` is recorded, and the bootstrap token is consumed.
-3. Given a login attempt for a member that requires MFA, when password is correct but TOTP is missing, invalid, or enrollment is incomplete, then no authenticated session is issued and a deterministic MFA error is returned.
-4. Given a login attempt with valid password and current TOTP, when authentication succeeds, then a Redis-backed session cookie is issued and the session stores MFA proof metadata for downstream authorization policy.
+1. Given a newly registered member or password-verified member without TOTP enabled, when MFA enrollment is initiated, then the backend returns a bounded bootstrap contract and stores the raw secret only in the approved secret store.
+2. Given a valid first TOTP confirmation, when enrollment is completed, then `totp_enabled=true`, `totp_enrolled_at` is recorded, the bootstrap token is consumed, and only then may the first authenticated session be issued.
+3. Given any login attempt, when the password phase succeeds but TOTP is missing, invalid, or enrollment is incomplete, then no authenticated session is issued and a deterministic MFA error or next-action contract is returned.
+4. Given a login attempt with valid password and current TOTP through the dedicated MFA verify step, when authentication succeeds, then a Redis-backed session cookie is issued and the session stores MFA proof metadata for downstream authorization policy.
 5. Given repeated invalid TOTP attempts during login, when threshold is exceeded, then the MFA verification path returns deterministic throttle or lock guidance without issuing a session.
 
 ## Tasks / Subtasks
 
-- [ ] Implement enrollment bootstrap endpoint and secret-store write path (AC: 1)
-  - [ ] Return `qrUri`, `manualEntryKey`, `enrollmentToken`, and expiry metadata
-  - [ ] Prevent raw secret persistence in DB and Redis
-- [ ] Implement first-code confirmation and enrollment activation flow (AC: 2)
-  - [ ] Persist `totp_enabled` and `totp_enrolled_at` only after successful confirmation
-- [ ] Extend login flow with password + TOTP verification ordering (AC: 3, 4)
-  - [ ] Reject incomplete MFA enrollment without issuing authenticated session
-  - [ ] Store MFA proof metadata in the server session
-- [ ] Apply MFA verification abuse controls (AC: 5)
-  - [ ] Reuse lockout/rate-limit conventions without weakening existing login protections
-- [ ] Add automated integration coverage for enroll, confirm, login success/failure, and throttle paths (AC: 1, 2, 3, 4, 5)
+- [x] Implement enrollment bootstrap endpoint and secret-store write path for password-verified pre-auth onboarding (AC: 1)
+  - [x] Return `qrUri`, `manualEntryKey`, `enrollmentToken`, and expiry metadata
+  - [x] Prevent raw secret persistence in DB and Redis
+- [x] Implement first-code confirmation and enrollment activation flow (AC: 2)
+  - [x] Persist `totp_enabled` and `totp_enrolled_at` only after successful confirmation
+- [x] Extend login flow with password + TOTP verification ordering (AC: 3, 4)
+  - [x] Return short-lived `loginToken` + `nextAction` from the password step; password-only session issuance is forbidden
+  - [x] Implement dedicated `/api/v1/auth/otp/verify` session-issuing path for already-enrolled users
+  - [x] Reject incomplete MFA enrollment without issuing authenticated session
+  - [x] Allow first successful enrollment confirmation to finish the first authenticated login for non-enrolled users while still forbidding service use before that point
+  - [x] Store MFA proof metadata in the server session
+- [x] Apply MFA verification abuse controls (AC: 5)
+  - [x] Reuse lockout/rate-limit conventions without weakening existing login protections
+- [x] Add automated integration coverage for enroll, confirm, login success/failure, and throttle paths (AC: 1, 2, 3, 4, 5)
 
 ## Dev Notes
 
@@ -44,6 +47,8 @@ so that account access requires a second factor before privileged actions.
 
 - Google Authenticator-compatible RFC 6238 TOTP.
 - Raw TOTP secret must live only in the approved secret store.
+- Password verification must return only a short-lived pre-auth `loginToken` until MFA is completed.
+- Every successful authenticated login must satisfy both password and current TOTP verification.
 - No authenticated session may be issued before both password and TOTP checks pass.
 - Session must store MFA proof metadata for downstream order-authorization policy.
 
@@ -60,8 +65,8 @@ so that account access requires a second factor before privileged actions.
 
 ### Story Completion Status
 
-- Status set to `ready-for-dev`.
-- Completion note: Follow-on MFA backend scope added without replacing delivered Epic 1 baseline stories.
+- Status set to `done`.
+- Completion note: Implementation and closeout verification completed on 2026-03-12, fixing the MFA backend contract for FE and MOB consumers.
 
 ### References
 
@@ -80,10 +85,11 @@ GPT-5 Codex (Codex desktop)
 ### Debug Log References
 
 - Added as follow-on Epic 1 MFA rollout scope after baseline story restoration.
+- Closeout recorded after backend MFA contract, verification path, and enrollment flow shipped.
 
 ### Completion Notes List
 
-- Story scaffold created for backend Google Authenticator enrollment and login MFA rollout.
+- Backend Google Authenticator enrollment and login MFA rollout implemented and verified.
 
 ### File List
 

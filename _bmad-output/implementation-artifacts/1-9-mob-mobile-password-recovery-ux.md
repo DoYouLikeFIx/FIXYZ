@@ -14,7 +14,7 @@ so that I can regain access on mobile without relying on inconsistent web-only b
 
 1. Given the mobile login screen or a dedicated native recovery entry, when the user opens password recovery, then the app provides a native forgot-password submit experience instead of only inline guidance.
 2. Given `POST /api/v1/auth/password/forgot`, when the user submits any normalized email and the request is not rejected by CSRF or rate limiting, then the app shows the same accepted guidance for known and unknown accounts and does not disclose eligibility.
-3. Given the recovery contract advertises `challengeMayBeRequired=true` or the flow requires challenge bootstrap, when the app calls `POST /api/v1/auth/password/forgot/challenge`, then the challenge token, type, and TTL are handled in transient app state and the follow-up forgot submit preserves the original email payload semantics.
+3. Given the recovery lane exposes challenge bootstrap capability or the flow otherwise enters the challenge branch, when the app calls `POST /api/v1/auth/password/forgot/challenge`, then the challenge token, type, and TTL are handled in transient app state and the follow-up forgot submit preserves the original email payload semantics, without treating `challengeMayBeRequired=true` as proof that the current forgot submit is already challenge-gated.
 4. Given a CSRF failure on forgot, challenge, or reset submit, when the app receives raw `403 Forbidden`, then it refreshes CSRF once, retries once with identical payload, and if the second attempt still fails shows terminal error UX.
 5. Given the app receives a valid recovery token through the supported mobile handoff, when the user opens the reset-password screen and submits a new password, then the app calls `POST /api/v1/auth/password/reset`, handles `204 No Content`, and routes the user back to login with deterministic success guidance.
 6. Given invalid, expired, consumed, same-password, rate-limited, or stale-session outcomes, when the app receives `AUTH-012` through `AUTH-016` or an unknown recovery error, then field/global guidance is mapped deterministically, `Retry-After` guidance is shown where applicable, and stale-session handling returns the user to the login route without back-stack corruption.
@@ -61,6 +61,7 @@ so that I can regain access on mobile without relying on inconsistent web-only b
   - Recovery endpoints use JSON request bodies.
   - Forgot success is always fixed `202 Accepted` for CSRF-valid, non-rate-limited requests.
   - Challenge bootstrap success is fixed `200 OK` with `challengeToken`, `challengeType`, and `challengeTtlSeconds=300`.
+  - `challengeMayBeRequired=true` is capability discovery only and must not be treated as the active challenge-gated state for the current forgot submit.
   - Reset success is bare `204 No Content`.
   - CSRF failure is raw `403 Forbidden`, not the application envelope.
   - On CSRF `403`, MOB behavior is fixed: one CSRF refresh and one retry with identical payload only.

@@ -61,22 +61,27 @@ So that I can create an account and immediately have a trading account ready to 
 
 ---
 
-## Story 1.2: Login & Spring Session Issuance
+## Story 1.2: Password-First Login & Spring Session Issuance
 
 As a **registered user**,  
-I want to log in with my email and password and receive a session cookie,  
-So that I can authenticate subsequent API calls automatically.
+I want to complete login through password verification followed by a separate MFA verify step before receiving a session cookie,  
+So that every authenticated session is issued only after password + current TOTP both succeed.
 
 ### Acceptance Criteria
 
 **Given** `POST /api/v1/auth/login` with valid credentials  
-**When** Spring Security processes authentication  
+**When** the password phase succeeds  
+**Then** a short-lived `loginToken` is returned with the next required action (`VERIFY_TOTP` or `ENROLL_TOTP`)  
+**And** no authenticated session cookie is issued yet  
+**And** loaded only from `REDIS_PASSWORD` environment variable (no hardcoding in code)
+
+**Given** `POST /api/v1/auth/otp/verify` with a valid `loginToken` and current TOTP  
+**When** MFA verification succeeds  
 **Then** session is stored in Spring Session Redis (30-minute sliding TTL)  
 **And** a secure authenticated session cookie is issued  
 **And** `sessionFixation().changeSessionId()` rotates any temporary pre-login session id to a new authenticated session id  
 **And** `maximumSessions(1)` force-expires the previous session on re-login with the same account  
-**And** HTTP 200 returned: `{ memberUuid, email, name }`  
-**And** loaded only from `REDIS_PASSWORD` environment variable (no hardcoding in code)
+**And** HTTP 200 returned: `{ memberUuid, email, name, accountId }`
 
 **Given** login with incorrect password  
 **When** authentication fails  
@@ -106,7 +111,7 @@ So that I can authenticate subsequent API calls automatically.
 
 **Given** `ChannelIntegrationTestBase` (Testcontainers MySQL + Redis)  
 **When** login integration test runs  
-**Then** valid credentials login confirms a secure session cookie is received  
+**Then** valid credentials plus current TOTP confirm a secure session cookie is received  
 **And** session fixation defense confirms the pre-login and post-login session ids differ
 
 ---
@@ -295,7 +300,8 @@ So that unauthenticated users cannot access protected sections of the app.
 **Given** user accesses `/login`  
 **When** login page renders  
 **Then** email and password fields displayed  
-**And** on successful login, member info saved to `useAuthStore` (session cookie automatically managed by the browser) then redirect to `/`
+**And** on successful password step, the client routes to TOTP verify or TOTP enrollment as directed  
+**And** only after MFA completion is member info saved to `useAuthStore` and redirect to `/`
 
 **Given** login failure (HTTP 401)  
 **When** response received  
@@ -323,42 +329,35 @@ So that unauthenticated users cannot access protected sections of the app.
 
 ## Supplemental Reference B: TOTP Enrollment (Google Authenticator)
 
-As an **authenticated user**,  
+As a **password-verified user in pre-auth onboarding state**,  
 I want to register my Google Authenticator app to my account,  
-So that I can use TOTP-based step-up authentication when initiating orders.
+So that I can satisfy mandatory login MFA and provide fresh MFA proof for later privileged actions.
 
 **Depends On:** Story 1.2 (Spring Session authentication), Story 1.6 (password verification pattern)
 
 ### Acceptance Criteria
 
-**Given** `POST /api/v1/members/me/totp/enroll` (valid authenticated session, `member.totp_enabled = false`)  
+**Given** `POST /api/v1/members/me/totp/enroll` (valid password-step `loginToken`, `member.totp_enabled = false`)  
 **When** enrollment initiation request  
 **Then** `TotpOtpService.generateSecret()` generates a Base32 encoded secret (`com.warrenstrange:googleauth:1.5.0` library)  
 **And** Secret stored at Vault path `secret/fix/member/{memberUuid}/totp-secret` (FR-TOTP-04; DB storage prohibited)  
 **And** `member.totp_enabled = false` maintained (before confirmEnrollment)  
-**And** HTTP 200: `{ qrUri: "otpauth://totp/FIX:{email}?secret={base32Secret}&issuer=FIX", expiresAt }` with the secret included only once in this response
+**And** HTTP 200: `{ qrUri: "otpauth://totp/FIX:{email}?secret={base32Secret}&issuer=FIX", manualEntryKey, enrollmentToken, expiresAt }` with the secret included only once in this response
 
-**Given** `POST /api/v1/members/me/totp/confirm` with `{ totpCode: "123456" }`  
+**Given** `POST /api/v1/members/me/totp/confirm` with `{ loginToken, enrollmentToken, totpCode: "123456" }`  
 **When** user submits first code after registering QR in Google Authenticator app  
 **Then** `TotpOtpService.confirmEnrollment(memberUuid, totpCode)` executes  
 **And** Vault retrieves the memberUuid secret and performs RFC 6238 TOTP verification (plus/minus 1 window allowed)  
 **And** verification success updates `member.totp_enabled = true` and `member.totp_enrolled_at = NOW()`  
-**And** HTTP 200: `{ message: "Google OTP registration is complete." }`
+**And** HTTP 200: `{ message: "Google OTP registration is complete." }` plus the first authenticated session may be issued if the originating `loginToken` is still valid  
+**And** every subsequent authenticated login must require password plus current TOTP before session issuance.
 
 **Given** confirmEnrollment attempted with incorrect totpCode  
 **When** TOTP code mismatch  
 **Then** HTTP 401 `{ code: "AUTH-010", message: "The authentication code is incorrect. Please check the current code in your app." }`  
 **And** `totp_enabled = false` maintained (retry possible)
 
-**Given** `GET /api/v1/members/me/totp/status`  
-**When** request processed  
-**Then** HTTP 200: `{ totpEnabled: true/false, enrolledAt: "2026-02-24T10:00:00Z" | null }`
-
-**Given** `DELETE /api/v1/members/me/totp` with `{ currentPassword }` (TOTP reset request)  
-**When** password confirmation passes (BCrypt verification)  
-**Then** Vault TOTP secret for the memberUuid is deleted  
-**And** `member.totp_enabled = false`, `member.totp_enrolled_at = null` reset  
-**And** HTTP 204 returned
+**Note** MFA status 조회, reset, rebind는 후속 recovery/rebind 스토리 범위이며, 이 core story의 구현/계약에는 포함되지 않는다.
 
 **DB Flyway migration (`V?__add_totp_fields_to_member.sql`):**
 ```sql

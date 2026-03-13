@@ -1,37 +1,40 @@
 # Story 1.1: BE Registration and Login Session
 
-Status: done
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
 ## Story
 
 As a new or returning user,
-I want to register and log in with secure session issuance,
-so that I can access protected features safely.
+I want to register and complete the password phase of login that underpins secure session issuance,
+so that protected features are unlocked only after the required MFA flow completes.
+
+> Historical baseline note: this story originally predated mandatory login MFA. The current target contract keeps the registration/password groundwork here, while final authenticated session issuance is completed through Story 1.11.
 
 ## Acceptance Criteria
 
 1. Given valid registration payload, when sign-up is requested, then member is created with default role and secure password hash.
-2. Given valid login credentials, when authentication succeeds, then Redis-backed session cookie is issued with secure attributes.
-3. Given duplicate login from the same account, when a second session is established, then previous session is invalidated by policy.
-4. Given invalid credentials, when login fails, then normalized authentication error is returned.
+2. Given valid login credentials, when the password phase succeeds, then a short-lived `loginToken` and next action are returned and no protected session is issued yet.
+3. Given mandatory login MFA follow-on is completed, when current TOTP verification or first-time enrollment confirmation succeeds, then a Redis-backed session cookie is issued with secure attributes.
+4. Given duplicate login from the same account, when a second fully authenticated session is established, then previous session is invalidated by policy.
+5. Given invalid credentials, when login fails, then normalized authentication error is returned.
 
 ## Tasks / Subtasks
 
 - [x] Implement registration endpoint and member creation policy (AC: 1)
   - [x] Enforce role defaulting and password hashing policy
   - [x] Return normalized success contract for register result
-- [x] Implement login endpoint with Spring Session Redis issuance (AC: 2)
-  - [x] Issue `JSESSIONID` with secure cookie attributes
-  - [x] Store and refresh authenticated session state in Redis
-- [x] Enforce single active session policy per account (AC: 3)
+- [x] Implement password-step login endpoint and baseline auth/session plumbing (AC: 2)
+  - [x] Establish the credential-validation entrypoint that later mandatory MFA builds on
+  - [x] Provide the Redis-backed session/security foundation consumed by the final MFA-complete issuance path
+- [x] Enforce single active session policy per account (AC: 4)
   - [x] Expire prior active session on re-login
   - [x] Return deterministic behavior for old/new session usage
-- [x] Normalize authentication error responses (AC: 4)
+- [x] Normalize authentication error responses (AC: 5)
   - [x] Unify invalid credentials/non-existent account response semantics
   - [x] Ensure consistent global error envelope
-- [x] Add integration coverage for register/login/session baseline (AC: 1, 2, 3, 4)
+- [x] Add integration coverage for register/login/session baseline (AC: 1, 2, 3, 4, 5)
 
 ## Dev Notes
 
@@ -154,11 +157,47 @@ GPT-5 Codex (Codex desktop)
 ### Debug Log References
 
 - Generated via create-story workflow instructions with Epic 1 artifact synthesis.
+- 2026-03-12: Implemented password-step pre-auth `loginToken` flow in `BE/channel-service`, moved authenticated session issuance to `POST /api/v1/auth/otp/verify`, and refreshed impacted integration/openapi contract coverage.
+- Validation:
+  - `./gradlew :channel-service:test --tests 'com.fix.channel.integration.ChannelAuthFlowTest' --tests 'com.fix.channel.integration.ChannelAuthGuardrailsIntegrationTest' --tests 'com.fix.channel.integration.ChannelSessionTimeoutIntegrationTest'`
+  - `./gradlew :channel-service:test --tests 'com.fix.channel.integration.ChannelAuthSessionIntegrationTest' --tests 'com.fix.channel.integration.ChannelPasswordRecoveryIntegrationTest' --tests 'com.fix.channel.integration.OrderSessionIntegrationTest' --tests 'com.fix.channel.integration.ChannelAuthDemoTotpIntegrationTest'`
+  - `./gradlew :channel-service:test --tests 'com.fix.channel.contract.ChannelOpenApiCompatibilityTest' :channel-service:verifyCommittedOpenApi`
+  - `./gradlew :channel-service:test`
 
 ### Completion Notes List
 
 - Added session/security guardrails and deprecated-pattern exclusions.
+- Reworked `/api/v1/auth/login` to validate only the password phase and return `loginToken`, `nextAction`, `totpEnrolled`, and expiry metadata without issuing an authenticated session.
+- Added `LoginTokenService` with Redis-backed storage and in-memory fallback so pre-auth login tokens work in both container-backed integration tests and `spring.session.store-type=none` test slices.
+- Moved authenticated session issuance, duplicate-session invalidation, and MFA proof metadata persistence to `/api/v1/auth/otp/verify`.
+- Updated integration helpers and committed OpenAPI contract so downstream session, order, and password-recovery flows authenticate through `login -> otp verify`.
 
 ### File List
 
 - _bmad-output/implementation-artifacts/1-1-be-registration-login-session.md
+- BE/channel-service/src/main/java/com/fix/channel/service/LoginTokenService.java
+- BE/channel-service/src/main/java/com/fix/channel/service/AuthService.java
+- BE/channel-service/src/main/java/com/fix/channel/service/ChannelScaffoldService.java
+- BE/channel-service/src/main/java/com/fix/channel/controller/AuthController.java
+- BE/channel-service/src/main/java/com/fix/channel/config/ChannelSecurityConfig.java
+- BE/channel-service/src/main/java/com/fix/channel/dto/request/OtpVerifyRequest.java
+- BE/channel-service/src/main/java/com/fix/channel/dto/response/AuthLoginResponse.java
+- BE/channel-service/src/main/java/com/fix/channel/dto/response/OtpVerifyResponse.java
+- BE/channel-service/src/main/java/com/fix/channel/vo/AuthLoginResult.java
+- BE/channel-service/src/main/java/com/fix/channel/vo/OtpVerifyCommand.java
+- BE/channel-service/src/main/java/com/fix/channel/vo/OtpVerifyResult.java
+- BE/channel-service/src/main/resources/application.yml
+- BE/channel-service/src/test/java/com/fix/channel/contract/ChannelOpenApiCompatibilityTest.java
+- BE/channel-service/src/test/java/com/fix/channel/integration/ChannelAuthFlowTest.java
+- BE/channel-service/src/test/java/com/fix/channel/integration/ChannelAuthGuardrailsIntegrationTest.java
+- BE/channel-service/src/test/java/com/fix/channel/integration/ChannelAuthSessionIntegrationTest.java
+- BE/channel-service/src/test/java/com/fix/channel/integration/ChannelAuthDemoTotpIntegrationTest.java
+- BE/channel-service/src/test/java/com/fix/channel/integration/ChannelPasswordRecoveryIntegrationTest.java
+- BE/channel-service/src/test/java/com/fix/channel/integration/ChannelSessionTimeoutIntegrationTest.java
+- BE/channel-service/src/test/java/com/fix/channel/integration/OrderSessionIntegrationTest.java
+- BE/contracts/openapi/channel-service.json
+- BE/core-common/src/main/java/com/fix/common/error/ErrorCode.java
+
+## Change Log
+
+- 2026-03-12: aligned Story 1.1 implementation with mandatory-login-MFA contract by introducing password-step `loginToken` issuance, shifting authenticated session creation to OTP verification, and updating affected tests plus OpenAPI snapshot.

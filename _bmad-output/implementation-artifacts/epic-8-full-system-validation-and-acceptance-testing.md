@@ -181,12 +181,13 @@ docker compose logs channel-service | head -5 | jq -R 'fromjson?' | jq -s '. | l
 
 **Given** Seed Data Verification  
 **When** Login test after `docker compose up`  
-**Then** `POST /api/v1/auth/login` with `{ email: "user@fix.com", password: "Test1234!" }` → HTTP 200  
-**And** `POST /api/v1/auth/login` with `{ email: "admin@fix.com", password: "Admin1234!" }` → HTTP 200
+**Then** `POST /api/v1/auth/login` with `{ email: "user@fix.com", password: "Test1234!" }` → HTTP 200 with `{ loginToken, nextAction }`  
+**And** the follow-on MFA completion path (`POST /api/v1/auth/otp/verify` or, for first-time onboarding, `POST /api/v1/members/me/totp/confirm`) succeeds before any authenticated session is considered valid  
+**And** the same password-step plus MFA-completion contract is verified for `admin@fix.com`
 
 **Given** 5 Concurrent User Sessions Simulation (NFR-SC1)  
-**When** Concurrent login from 5 independent browser/curl sessions  
-**Then** All issue independent session cookies, each account query returns normal response
+**When** Concurrent password-step plus MFA-completion login is executed from 5 independent browser/curl sessions using the test fixtures  
+**Then** each completed authentication flow issues its own valid session cookie and each protected account query returns normal response
 
 **Given** Dependabot Configuration (NFR-S6)  
 **When** Check `.github/dependabot.yml`  

@@ -14,7 +14,7 @@ so that I can regain access from the login experience without revealing whether 
 
 1. Given the web login screen or a dedicated public recovery entry, when the user opens password recovery, then the browser provides a dedicated forgot-password submit experience instead of only inline guidance.
 2. Given `POST /api/v1/auth/password/forgot`, when the user submits any normalized email and the request is not rejected by CSRF or rate limiting, then the UI shows the same accepted guidance for known and unknown accounts and does not disclose eligibility.
-3. Given the recovery contract advertises `challengeMayBeRequired=true` or the flow requires challenge bootstrap, when the browser calls `POST /api/v1/auth/password/forgot/challenge`, then the challenge token, type, and TTL are handled in UI state and the follow-up forgot submit preserves the original email payload semantics.
+3. Given the recovery lane exposes challenge bootstrap capability or the flow otherwise enters the challenge branch, when the browser calls `POST /api/v1/auth/password/forgot/challenge`, then the challenge token, type, and TTL are handled in UI state and the follow-up forgot submit preserves the original email payload semantics, without treating `challengeMayBeRequired=true` as proof that the current forgot submit is already challenge-gated.
 4. Given a CSRF failure on forgot, challenge, or reset submit, when the browser receives raw `403 Forbidden`, then it re-fetches CSRF once, retries once with identical payload, and if the second attempt still fails shows terminal error UX.
 5. Given the browser receives a valid recovery token through the supported web handoff, when the user opens the reset-password experience and submits a new password, then the browser calls `POST /api/v1/auth/password/reset`, handles `204 No Content`, and returns the user to login with deterministic success guidance.
 6. Given invalid, expired, consumed, same-password, rate-limited, or stale-session outcomes, when the browser receives `AUTH-012` through `AUTH-016` or an unknown recovery error, then user-facing guidance is mapped deterministically, `Retry-After` guidance is shown where applicable, and unknown cases preserve visible support correlation context.
@@ -61,6 +61,7 @@ so that I can regain access from the login experience without revealing whether 
   - Recovery endpoints use JSON request bodies.
   - Forgot success is always fixed `202 Accepted` for CSRF-valid, non-rate-limited requests.
   - Challenge bootstrap success is fixed `200 OK` with `challengeToken`, `challengeType`, and `challengeTtlSeconds=300`.
+  - `challengeMayBeRequired=true` is capability discovery only and must not be treated as the active challenge-gated state for the current forgot submit.
   - Reset success is bare `204 No Content`.
   - CSRF failure is raw `403 Forbidden`, not the application envelope.
   - On CSRF `403`, FE behavior is fixed: one CSRF re-fetch and one retry with identical payload only.

@@ -167,7 +167,8 @@ GPT-5 Codex (Codex desktop)
 
 ### Completion Notes List
 
-- Added `docs/contracts/auth-error-standardization.json` as the canonical FE/MOB auth error semantics table for parity tests.
+- Added `docs/contracts/auth-error-standardization.json` as the canonical FE/MOB auth error semantics table for shared login, reauth, register, and MFA baseline parity tests.
+- Split recovery-challenge-specific public auth codes into `docs/contracts/recovery-challenge-auth-errors.json` and fail-closed telemetry reasons into `docs/contracts/recovery-challenge-fail-closed.json` so follow-on challenge stories can evolve independently from the baseline auth contract.
 - Refactored FE and MOB auth error resolvers to return structured semantics (`semantic`, `recoveryAction`, `message`) while preserving existing user-facing copy for known auth cases.
 - Standardized unknown-code fallback to a deterministic safe message and appended visible correlation ids for support diagnostics.
 - Propagated `traceId` through the mobile network error normalizer so fallback handling can surface the same support reference data as FE.
@@ -183,6 +184,8 @@ GPT-5 Codex (Codex desktop)
 - _bmad-output/implementation-artifacts/1-6-fe-mob-auth-error-standardization.md
 - _bmad-output/implementation-artifacts/sprint-status.yaml
 - docs/contracts/auth-error-standardization.json
+- docs/contracts/recovery-challenge-auth-errors.json
+- docs/contracts/recovery-challenge-fail-closed.json
 - FE/src/lib/auth-errors.ts
 - FE/tests/unit/lib/auth-errors.test.ts
 - MOB/src/auth/auth-errors.ts
@@ -204,14 +207,30 @@ GPT-5 Codex (Codex desktop)
 | `AUTH-014` | 429 | Forgot/challenge/reset rate limited; show retry-after guidance |
 | `AUTH-015` | 422 | New password equals current password; ask for different password |
 | `AUTH-016` | 401 | Session stale after password change; force re-authentication |
+| `AUTH-022` | 401 | Recovery challenge proof invalid/expired/mismatched/malformed; clear active challenge state and require a fresh challenge refresh |
+| `AUTH-023` | 503 | Recovery challenge bootstrap unavailable; keep submitted email, do not trap user, and offer retry-later guidance |
+| `AUTH-024` | 409 | Recovery challenge proof replayed/already consumed; clear stale challenge state and require a fresh challenge before retry |
+| `AUTH-025` | 503 | Recovery challenge verify unavailable after solve; clear current challenge, honor `Retry-After` only as advisory backoff when present, and restart challenge bootstrap rather than replaying the same proof |
 
 ### Cross-client UX rules
 
-- Forgot API `202` response always includes:
+- Forgot API `202` response includes:
   - `data.recovery.challengeEndpoint=/api/v1/auth/password/forgot/challenge`
-  - `data.recovery.challengeMayBeRequired=true`
+  - `data.recovery.challengeMayBeRequired=<boolean capability for the current request context>`
+  - `true` means the current request context may enter challenge bootstrap; `false` means FE/MOB preserve the legacy forgot lane for this response context.
+  - This flag is capability discovery only and must not be treated as proof that the current forgot submit is already challenge-gated.
 - On CSRF `403` for forgot/challenge/reset submit:
   - Re-fetch CSRF once
   - Retry once with identical payload
   - Second `403` => terminal error UX
+- For real recovery challenge follow-on (`1.16`~`1.19`):
+  - FE and MOB preserve the originally submitted email string verbatim between challenge bootstrap and challenged forgot submit.
+  - FE and MOB preserve protected-route redirect intent through challenge bootstrap, challenged forgot submit, reset success, and return-to-login completion.
+  - `AUTH-022` and `AUTH-024` must clear stale challenge state.
+  - `AUTH-022` default next action is `refresh-challenge`; do not branch this code into restart-only UX.
+  - `AUTH-023` means bootstrap unavailable before a fresh challenge is issued; if `Retry-After` is present, FE and MOB surface the countdown and suppress immediate retry until it elapses; if absent, default next action is retry later with no auto-retry.
+  - `AUTH-025` means verify unavailable after the user already solved work; default next action is clear the current challenge and restart challenge bootstrap.
+  - If `AUTH-025` includes `Retry-After`, FE and MOB surface it as advisory backoff before restart; it never authorizes replay of the same proof.
+  - Client-side fail-closed bundle rejection reasons are canonicalized in `docs/contracts/recovery-challenge-fail-closed.json` as `unknown-version`, `kind-mismatch`, `malformed-payload`, `mixed-shape`, `clock-skew`, and `validity-untrusted`.
+  - All pre-submit contract fail-closed bundle states use the canonical next action `refresh-challenge`; restart-only remains reserved for `AUTH-025`.
 - Unknown code fallback remains mandatory with visible correlation id.
