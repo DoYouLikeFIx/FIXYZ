@@ -8,6 +8,7 @@ _bmad-output/test-artifacts
 .claude
 .cursor
 .gemini
+.idea/
 .github/agents
 .github/prompts
 .github/copilot-instructions.md
