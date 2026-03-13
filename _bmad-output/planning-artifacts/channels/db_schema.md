@@ -4,8 +4,10 @@
 
 `channel_db`는 FIX 프로젝트의 **채널계(Channel System)** — 인증, 세션, 주문 오케스트레이션, 알림, 감사, 보안 이벤트의 **단일 진실 원천**이다.
 
+> **Historical auth note**: This schema document preserves some early JWT/refresh-token-era design fragments. The current canonical auth contract uses Spring Session + Redis with password-step login followed by separate MFA completion. For active auth implementation truth, use `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/channels/api-spec.md` and `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/channels/login_flow.md`.
+
 핵심 책임:
-- **인증/인가**: 회원 로그인, JWT Refresh Token 수명 주기, 계정 잠금
+- **인증/인가**: 회원 로그인, 계정 잠금, 그리고 역사적으로 보존된 JWT Refresh Token 설계 흔적
 - **주문 세션 관리**: OTP 인증 → 주문 실행 오케스트레이션 → 완료/실패 기록
 - **알림 내구성**: SSE 실패/재연결 시에도 DB 기록이 우선
 - **감사/보안**: 행위 트레일(Audit Logs), 보안 사건 워크플로(Security Events)
@@ -96,7 +98,7 @@ DB 레벨 목표:
 
 ---
 
-### 3.2 refresh_tokens (JWT Refresh Token 수명 주기)
+### 3.2 refresh_tokens (historical JWT reference, non-canonical)
 | 컬럼 | 타입 | NULL | 제약 | 설명 |
 | --- | --- | --- | --- | --- |
 | id | BIGINT UNSIGNED | N | PK(AUTO) | 내부 PK |

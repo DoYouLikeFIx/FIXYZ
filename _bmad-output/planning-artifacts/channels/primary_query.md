@@ -3,6 +3,8 @@
 이 문서는 채널계 핵심 기능을 수행하기 위한 **표준 SQL 쿼리**를 정의한다.
 Repository Layer 구현의 기준이 된다.
 
+> **Historical auth note**: This query catalog contains early JWT/refresh-token-era reference fragments. The current canonical auth contract uses Spring Session + Redis with password-step login followed by separate MFA completion. For active auth implementation truth, use `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/channels/api-spec.md` and `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/channels/login_flow.md`. In particular, `refresh_tokens`-based sections are not the active target contract.
+
 ---
 
 # 1) `members`
@@ -132,7 +134,8 @@ SET password_hash = ?,
 WHERE id = ?
   AND deleted_at IS NULL;
 
--- Step 2. 전체 Refresh Token 리보크 (2.5와 동일)
+-- Step 2. Historical JWT reference only:
+-- current canonical runtime invalidates Redis-backed Spring Sessions instead of `refresh_tokens`
 UPDATE refresh_tokens
 SET revoked_at = NOW(6)
 WHERE member_id = ?
@@ -149,6 +152,10 @@ COMMIT;
 ```
 - **Step 2 필수**: 비밀번호 변경 시 기존 세션 전체 무효화 — 탈취된 세션 차단
 - 3단계 모두 같은 트랜잭션으로 커밋
+
+## 2.x Historical JWT / Refresh Token Reference (non-canonical)
+
+> Current canonical auth/runtime does not issue refresh tokens. The SQL below is preserved only as discovery-era reference and must not be read as the active Spring Session target contract.
 
 ## 2.1 Refresh Token 발급 (저장)
 **용도**: 로그인 성공 후 Refresh Token 등록

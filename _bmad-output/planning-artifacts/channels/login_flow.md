@@ -11,11 +11,10 @@
 ## End-to-End Flow Summary
 
 ```
-[Register] -> [Login] -> [Session issued: SESSION cookie] -> [Protected API calls]
-                 |
-                 +-> [TOTP enrollment]
-                       -> [Secret stored in Vault]
-                       -> [QR scan + confirm]
+[Register] -> [Login(password)] -> [If enrolled: TOTP verify]
+                                 -> [If not enrolled: TOTP enroll + first confirm]
+                                 -> [Session issued: SESSION cookie]
+                                 -> [Protected API calls]
 
 [Session active: 30 minutes sliding TTL]
        -> [SSE expiry warning at 5 minutes remaining]
@@ -71,6 +70,7 @@ Client
      - internal call failure -> member rollback -> HTTP 503 { code: "ACCOUNT_CREATION_FAILED" }
   -> HTTP 201 { memberUuid, email, name, createdAt }
      - no session is issued during registration
+     - service use remains blocked until a later password step + TOTP verify (or first-time TOTP confirm) succeeds
 ```
 
 ### Security Rules
@@ -86,7 +86,7 @@ Client
 
 ## 2. Login (Story 1.2)
 
-### Endpoint
+### Password Phase Endpoint
 ```
 POST /api/v1/auth/login
 ```
@@ -118,26 +118,29 @@ Client
      - LOCKED -> HTTP 401 { code: "ACCOUNT_LOCKED" }
   -> BCrypt comparison
      - mismatch -> increment failure count and return HTTP 401 { code: "INVALID_CREDENTIALS" }
-  -> successful authentication
-  -> `sessionFixation().changeSessionId()`
-  -> persist Spring Session in Redis
-     - key: `spring:session:sessions:{sessionId}`
-     - TTL: 30 minutes sliding
-     - value: `{ memberUuid, email, roles, loginAt }`
-  -> update device fingerprint baseline
+  -> successful password verification
+  -> create short-lived pre-auth login token in Redis
+     - key: `ch:login-token:{loginToken}`
+     - TTL: 5 minutes
+     - value: `{ memberUuid, email, totpEnrolled, passwordVerifiedAt }`
+  -> if `totp_enabled=true`
+     - return `nextAction=VERIFY_TOTP`
+  -> if `totp_enabled=false`
+     - return `nextAction=ENROLL_TOTP`
+     - protected app access remains blocked
   -> HTTP 200
-     - body: `{ memberUuid, email, name }`
-     - no access token or refresh token in body
-     - cookie: `SESSION={sessionId}; HttpOnly; Secure; SameSite=Strict; Path=/`
+     - body: `{ loginToken, nextAction, totpEnrolled, expiresAt }`
+     - no authenticated session cookie yet
 ```
 
 ### Success Response
 
 ```json
 {
-  "memberUuid": "m-uuid-xxxx",
-  "email": "user@fix.com",
-  "name": "Hong Gil-dong"
+  "loginToken": "login-uuid-001",
+  "nextAction": "VERIFY_TOTP",
+  "totpEnrolled": true,
+  "expiresAt": "2026-03-01T10:05:00Z"
 }
 ```
 
@@ -152,6 +155,44 @@ Client
 | FDS blocked request | 403 | `FDS_BLOCKED` |
 
 > **Note**: Password reset is handled by the dedicated recovery flow in Story 1.7. Account unlock remains an admin flow outside this section.
+>
+> **On first login after registration:** if `totp_enabled=false`, this step still returns 200 with `nextAction=ENROLL_TOTP`, but no protected session is issued and the user cannot use the service until enrollment plus first code confirmation completes.
+
+### MFA Verify Endpoint
+
+```
+POST /api/v1/auth/otp/verify
+```
+
+```json
+{
+  "loginToken": "login-uuid-001",
+  "otpCode": "123456"
+}
+```
+
+```text
+Client
+  -> POST /api/v1/auth/otp/verify
+  -> validate `loginToken`
+     - missing / expired -> HTTP 410
+  -> verify current TOTP against Vault secret
+     - mismatch -> HTTP 401 { code: "AUTH-010" }
+     - replay in same window -> HTTP 401 { code: "AUTH-011" }
+     - threshold exceeded -> HTTP 429 { code: "RATE-001" }
+  -> `sessionFixation().changeSessionId()`
+  -> persist Spring Session in Redis
+     - key: `spring:session:sessions:{sessionId}`
+     - TTL: 30 minutes sliding
+     - value: `{ memberUuid, email, roles, loginAt, lastMfaVerifiedAt }`
+  -> update device fingerprint baseline
+  -> HTTP 200
+     - body: `{ memberUuid, email, name, accountId }`
+     - cookie: `SESSION={sessionId}; HttpOnly; Secure; SameSite=Strict; Path=/`
+```
+
+> If the password phase returned `nextAction=ENROLL_TOTP`, the client must not call this endpoint first. It must complete enrollment and the first TOTP confirmation before any authenticated session exists.
+
 ### Spring Session Configuration (`SecurityConfig`)
 
 ```java
@@ -208,7 +249,7 @@ public class SecurityConfig {
 > ```gherkin
 > Scenario: SESSION cookie rotates after login
 >   Given GET /api/v1/auth/csrf issued SESSION=A
->   When  POST /api/v1/auth/login succeeds
+>   When  POST /api/v1/auth/otp/verify succeeds
 >   Then  the response sets SESSION != A
 >   And   SESSION=A can no longer access protected APIs
 > ```
@@ -217,14 +258,14 @@ public class SecurityConfig {
 > ```gherkin
 > Scenario: A second login invalidates the first session
 >   Given session A is already logged in
->   When  the same account logs in again and receives session B
+>   When  the same account completes password step and MFA verify again and receives session B
 >   Then  session A receives HTTP 401 with code SESSION_EXPIRED_BY_NEW_LOGIN
 >   And   session B continues to work normally
 > ```
 
 ---
 
-## 3. Protected API Calls (Spring Session Automatic Handling)
+## 3. Protected API Calls (After MFA Completion)
 
 ```text
 Client
@@ -495,6 +536,9 @@ POST /api/v1/auth/login
   -> rate limit
   -> FDS analysis
   -> password verification
+  -> return loginToken + nextAction
+POST /api/v1/auth/otp/verify
+  -> verify loginToken + current TOTP
   -> changeSessionId()
   -> persist Spring Session in Redis
   -> HTTP 200 { memberUuid, email, name }
@@ -556,7 +600,7 @@ public ResponseEntity<Void> forceLogout(@PathVariable String memberUuid) {
 >
 > If `REDIS_PASSWORD` is missing, application startup must fail fast.
 >
-> Vault connectivity failure only blocks TOTP enrollment / verification paths. It must not block login itself.
+> Vault connectivity failure only blocks TOTP enrollment / verification completion and therefore blocks authenticated session issuance. It must not block the password-check phase of `POST /api/v1/auth/login`.
 
 ---
 
@@ -566,6 +610,7 @@ public ResponseEntity<Void> forceLogout(@PathVariable String memberUuid) {
 |------------|-----|---------|
 | `spring:session:sessions:{sessionId}` | 30 min sliding | Canonical Spring Session state |
 | `spring:session:index:...:{memberUuid}` | 30 min | Principal lookup for admin force logout |
+| `ch:login-token:{loginToken}` | 5 min | Password-step pre-auth state before MFA completion |
 | `ch:ratelimit:login:{IP}` | Bucket-managed | Login rate limiting |
 | `ch:totp-used:{memberUuid}:{window}:{code}` | 60s | TOTP replay guard |
 | `fds:ip-fail:{ip}` | 10 min | FDS failed-login tracking |
@@ -592,46 +637,52 @@ redis:
 
 > **Numbering note:** Canonical Epic 1 now reserves Story `1.8` and Story `1.9` for FE/MOB password recovery UX in `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/epics.md`. This TOTP enrollment section remains a supporting reference for step-up auth and must not be treated as the canonical owner of Epic 1 story numbering.
 
-> **Purpose:** TOTP is a prerequisite for order execution, not for basic login.
+> **Purpose:** TOTP is mandatory for every authenticated login and the resulting MFA proof freshness is later consumed by risk-based order authorization.
 
 ### Access Policy
 
 | Capability | TOTP not enrolled | TOTP enrolled |
 |-----------|-------------------|---------------|
-| Login and session issuance | Allowed | Allowed |
-| Account / portfolio reads | Allowed | Allowed |
-| Settings changes | Allowed | Allowed |
-| Order execution | Blocked with `AUTH-009` and `enrollUrl` | Allowed |
+| Login and session issuance | Blocked until enrollment is completed and current TOTP is supplied | Allowed only after password + current TOTP both pass |
+| Account / portfolio reads | Blocked because no authenticated session may be issued | Allowed after login MFA succeeds |
+| Settings changes | Blocked because no authenticated session may be issued | Allowed after login MFA succeeds |
+| Order execution | Blocked because no authenticated session may be issued | Allowed after login MFA succeeds, with additional step-up only when later risk policy requires it |
 
 ### Endpoints
 
 | Method | Path | Purpose |
 |-------|------|---------|
+| `POST` | `/api/v1/auth/otp/verify` | Complete login MFA for already-enrolled users and issue authenticated session |
 | `POST` | `/api/v1/members/me/totp/enroll` | Generate secret, store in Vault, return QR URI |
 | `POST` | `/api/v1/members/me/totp/confirm` | Confirm first TOTP code and finish enrollment |
-| `GET` | `/api/v1/members/me/totp/status` | Return enrollment status |
-| `DELETE` | `/api/v1/members/me/totp` | Disable TOTP after password confirmation |
 
-> Enrollment is idempotent while `totp_enabled=false`. Once TOTP is enabled, the user must delete it before re-enrolling.
+> `POST /api/v1/members/me/totp/enroll` and `POST /api/v1/members/me/totp/confirm` consume the short-lived `loginToken` from the password phase when the user is not yet enrolled. They do not require an already-authenticated service session.
 >
-> `DELETE /totp` requires `{ "password": "current-password" }` and must verify with `BCrypt.matches()`.
+> Enrollment is idempotent while `totp_enabled=false`. Recovery, reset, and rebind endpoints are handled in the dedicated MFA recovery/rebind scope, not in this core login-enrollment contract.
 
 ### Enrollment Summary
 
 ```text
-1. POST /totp/enroll
-   -> validate session
+1. POST /auth/login
+   -> validate email + password
+   -> return `loginToken`
+   -> if not enrolled, return `nextAction=ENROLL_TOTP`
+
+2. POST /totp/enroll
+   -> validate `loginToken`
    -> generate Base32 secret
    -> store `secret/fix/member/{memberUuid}/totp-secret` in Vault
-   -> return `otpauth://...` QR URI and expiry hint
+   -> return `otpauth://...` QR URI, `manualEntryKey`, `enrollmentToken`, and expiry hint
 
-2. User scans QR code in Google Authenticator
+3. User scans QR code in Google Authenticator
 
-3. POST /totp/confirm
+4. POST /totp/confirm
+   -> validate `loginToken` + `enrollmentToken`
    -> read secret from Vault
    -> verify RFC 6238 code
    -> set `totp_enabled=true`
-   -> redirect user back to the order flow or dashboard
+   -> mark enrollment complete
+   -> issue authenticated SESSION cookie if the originating password-step `loginToken` is still valid
 ```
 
 ### Error Cases
@@ -639,13 +690,64 @@ redis:
 | Scenario | HTTP | code |
 |---------|------|------|
 | Invalid confirm code | 401 | `AUTH-010` |
+| MFA verify attempted with expired `loginToken` | 410 | `AUTH-018` |
+| Login attempted without current TOTP after password verification | 401/429 | `AUTH-010` or `RATE-001` depending path |
 | Enroll requested after TOTP already enabled | 409 | domain conflict response |
-| Order attempted before enrollment | 403 | `AUTH-009` with `enrollUrl` |
+| Protected API attempted before enrollment completion | 401 | no authenticated session |
+| Residual order-auth path reached before enrollment | 403 | `ORD-011` with `enrollUrl` |
 
 ```sql
 ALTER TABLE member ADD COLUMN totp_enabled BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE member ADD COLUMN totp_enrolled_at TIMESTAMP NULL;
 ```
+
+---
+
+### MFA Recovery / Rebind Extension (Story 1.14 / 1.15)
+
+The lost-authenticator path is intentionally separated from first-time enrollment. It reuses the same Google Authenticator bootstrap shape, but it must first terminalize the old active secret.
+
+```text
+Entry A -> Authenticated member rebind
+  POST /api/v1/members/me/totp/rebind
+  -> requires authenticated session + CSRF + currentPassword
+  -> verify password
+  -> terminalize current active secret
+  -> issue { rebindToken, manualEntryKey, qrUri, enrollmentToken, expiresAt }
+
+Entry B -> Password-recovery proof path
+  POST /api/v1/auth/mfa-recovery/rebind
+  -> consumes single-use `recoveryProof`
+  -> proof source: successful password reset may emit `X-MFA-Recovery-Proof`
+  -> proof TTL: 600s
+  -> terminalize current active secret
+  -> issue same bootstrap contract as Entry A
+
+Confirm -> POST /api/v1/auth/mfa-recovery/rebind/confirm
+  -> validate `rebindToken` + `enrollmentToken` + current TOTP
+  -> promote only the freshly confirmed secret
+  -> invalidate all active sessions
+  -> clear `AUTH_LAST_MFA_VERIFIED_AT` and any future trusted-session marker namespace
+  -> force next interaction back through password + current TOTP login
+```
+
+#### Extension Error Cases
+
+| Scenario | HTTP | code |
+|---------|------|------|
+| Login MFA detects recovery-required state | 403 | `AUTH-021` with `recoveryUrl` |
+| Recovery proof invalid or expired | 401 | `AUTH-019` |
+| Recovery proof replayed or already consumed | 409 | `AUTH-020` |
+| Rebind token invalid or expired | 401 | `AUTH-019` |
+| Rebind token replayed or already consumed | 409 | `AUTH-020` |
+| Rebind confirm code mismatch | 401 | `AUTH-010` |
+| Rebind bootstrap or confirm rate limited | 429 | `RATE-001` |
+
+#### Security Notes
+
+- `X-MFA-Recovery-Proof` must remain volatile FE/MOB state only.
+- Old authenticator secret is terminalized before new bootstrap issuance; failed confirm must not reactivate it.
+- Successful rebind never preserves an already-authenticated session; client must clear local auth state and restart sign-in.
 
 ---
 
@@ -838,10 +940,12 @@ OrderSessionService.initiate() -> FdsService.analyze(ORDER_INITIATED)
 
 ### Flow B: Challenge Bootstrap (`POST /api/v1/auth/password/forgot/challenge`)
 
-1. For CSRF-valid, non-rate-limited requests, return fixed `200` contract regardless of account existence/status
-2. Issue signed challenge token (`ttl=300s`) with email-hash binding
-3. Persist nonce in Redis using atomic create (`SET NX EX 300`)
-4. Enforce challenge endpoint rate limits (`per-IP`, `per-email`, `endpoint-global`)
+1. Validate CSRF and challenge-bootstrap intent without disclosing account existence/status
+2. Enforce challenge endpoint rate limits (`per-IP`, `per-email`, `endpoint-global`) before issuing any fresh bundle
+3. For CSRF-valid, non-rate-limited requests, issue signed challenge token (`ttl=300s`) with `challengeContractVersion=2`, opaque `challengeId`, authoritative `challengeIssuedAtEpochMs` / `challengeExpiresAtEpochMs`, normalized-email-hash binding derived server-side, submitted-email digest derived server-side from the exact raw submitted email string, and discriminated proof-of-work bundle (`kind=proof-of-work`, `algorithm`, `seed`, `difficultyBits`, `answerFormat`, `inputTemplate={seed}:{nonce}`, `inputEncoding=utf-8`, `successCondition.type=leading-zero-bits`, `successCondition.minimum=difficultyBits`)
+4. Persist nonce in Redis using atomic create (`SET NX EX 300`) before the bundle is considered issued; if persistence fails, return bootstrap-unavailable rather than exposing a partially issued challenge
+5. Preserve anti-enumeration parity for known vs unknown emails at status, body shape, and timing envelope
+6. Within one recovery-flow scope (`csrf session` + normalized-email-hash binding derived server-side), terminalize earlier outstanding unconsumed challenges when a newer challenge is issued
 
 ### Flow C: Reset (`POST /api/v1/auth/password/reset`)
 
@@ -853,6 +957,7 @@ OrderSessionService.initiate() -> FdsService.analyze(ORDER_INITIATED)
    - mark reset token consumed
 4. Post-commit: invalidate active sessions; if delayed, auth filter blocks stale sessions via `AUTH-016`
 5. Token handoff into FE/MOB is owned by each channel's router or app shell; concrete web route names and mobile deep-link formats are intentionally non-canonical here
+6. If the client requests lost-authenticator continuation, include `X-MFA-Recovery-Proof` and `X-MFA-Recovery-Proof-Expires-In: 600`; clients must keep the proof only in volatile memory until `POST /api/v1/auth/mfa-recovery/rebind`
 
 ### Security Notes
 
@@ -861,4 +966,22 @@ OrderSessionService.initiate() -> FdsService.analyze(ORDER_INITIATED)
 - Rate-limit rejection returns `AUTH-014` with `429` and `Retry-After`.
 - CSRF retry policy for all password recovery submits: one re-fetch + one retry only.
 - Retry must preserve payload/idempotency fields exactly.
-- Challenge replay is blocked by Redis atomic nonce consume.
+- FE and MOB preserve the originally submitted email string verbatim between challenge bootstrap and challenged forgot submit; any normalization remains server-side.
+- For the proof-of-work MVP, the canonical solver equation is `sha256(utf8(seed + ":" + nonce))` and the answer is the unsigned base-10 `nonce`.
+- For the proof-of-work MVP, `challengeAnswer` is the only supported submit field and `challengeAnswerPayload` must be omitted. Future adapters may require `challengeAnswerPayload`, but exactly one answer field may be present for any challenged forgot submit; wrong-field or dual-field submissions are malformed and return `AUTH-022`.
+- For the current proof-of-work rollout, `POST /forgot` exposes exactly two valid shapes: `email` only for the non-challenge-gated path, or `email + challengeToken + scalar challengeAnswer` for the challenge-gated path. Half-populated challenge submits are malformed and return `AUTH-022`.
+- `difficultyBits` must come from a calibrated profile that satisfies the canonical baseline solve budgets defined in the UX spec for supported web and mobile baseline clients before rollout beyond QA or canary cohorts.
+- `challengeToken` cryptographically binds `challengeContractVersion`, `challengeId`, `challengeType`, the full `challengePayload`, `challengeIssuedAtEpochMs`, `challengeExpiresAtEpochMs`, replay-safe challenge identity, the normalized-email-hash binding derived server-side from the submitted email, and a submitted-email digest derived server-side from the exact raw submitted email string.
+- Token/body divergence or exact-email-string drift between bootstrap and challenged forgot submit is a server-detected tamper or corruption condition and must be rejected with `AUTH-022`; clients are not expected to introspect opaque-token bindings locally.
+- When challenge-gated forgot submit is required, `challengeToken` and scalar `challengeAnswer` must be supplied together with the same original `email`; if the lane is not challenge-gated, both challenge fields remain absent.
+- `challengeType` and `challengePayload.kind` MUST match. Unknown `challengeContractVersion` or discriminator mismatch is a fail-closed contract error and clients must clear state and request a fresh challenge. The only valid legacy v1 shape is `challengeToken + challengeType + challengeTtlSeconds` with all v2-only fields absent; a partial or mixed response is malformed and must fail closed.
+- `challengeId` is the opaque active-challenge identity surfaced to clients; FE/MOB key transient challenge state by `challengeId` and replace the active challenge only when a newer distinct `challengeId` arrives with a strictly greater authoritative `challengeIssuedAtEpochMs`. Distinct bundles with equal authoritative issue timestamps are malformed and must fail closed with refresh guidance rather than racing for active state.
+- Clients treat `challengeIssuedAtEpochMs` / `challengeExpiresAtEpochMs` as the authoritative validity window; `challengeTtlSeconds` is informational only and must match the epoch difference. Clients apply a `5s` expiry safety margin before starting or resuming solve work. If the estimated skew between local receipt time and `challengeIssuedAtEpochMs` exceeds `30s`, canonical fail-closed reason is `clock-skew`; if skew or validity can no longer be trusted after background or resume or once the safety window is entered, canonical fail-closed reason is `validity-untrusted`. In both cases the challenge must be discarded and refreshed.
+- Real challenge rollout must be protected by a staged feature flag plus an explicit server-side challenge-capable cohort rule so BE-first deployment can keep the legacy challenge behavior active until FE and MOB consumers are shipped. When the flag is off, or when the request does not qualify for the QA/canary cohort, `/forgot/challenge` returns the exact legacy v1 contract from Story `1.7` and omits all v2-only fields; upgraded FE and MOB clients continue to use Story `1.8` / Story `1.9` legacy behavior for that exact response shape.
+- When the exact legacy v1 shape is returned, server-side metrics and logs label the challenge contract version as `legacy-v1` even though the response body omits `challengeContractVersion`.
+- Challenge replay is blocked by Redis atomic nonce consume and returns terminal code `AUTH-024`.
+- Invalid, expired, mismatched, or malformed challenge proof returns `AUTH-022`.
+- For the proof-of-work MVP, local challenge bootstrap dependency failure (for example nonce-store, signer, verifier init, or work-parameter source) returns `AUTH-023` and should emit `Retry-After` when degraded mode is expected to persist. If `Retry-After` is present, clients surface the countdown and suppress immediate retry until it elapses; if absent, they show generic retry-later guidance without auto-retry.
+- For the proof-of-work MVP, verify-path dependency failure after the user already solved work returns `AUTH-025`; clients must clear the active challenge, require a fresh challenge bootstrap before retry, and may use `Retry-After` only as advisory backoff for the restart path rather than replaying the same proof.
+- Canonical client fail-closed bundle rejection reasons are `unknown-version`, `kind-mismatch`, `malformed-payload`, `mixed-shape`, `clock-skew`, and `validity-untrusted` as defined in the shared auth-error contract JSON; all of these pre-submit bundle-trust failures use canonical next action `refresh-challenge`.
+- Anti-enumeration timing parity for known, unknown, and challenge-gated forgot paths remains subject to the Story `1.7` benchmark target of p95 delta `<= 80ms`.

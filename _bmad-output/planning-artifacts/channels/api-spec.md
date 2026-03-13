@@ -46,9 +46,9 @@
 ### 1.1 CSRF 토큰 조회
 
 로그인 폼 제출 전, 모든 non-GET 요청 전에 반드시 획득해야 한다.  
-`changeSessionId()` 이후(로그인 완료 후) 재조회 필수.
+`changeSessionId()` 이후(인증 로그인 완료 후) 재조회 필수.
 
-> **구 토큰 무효화**: 로그인 성공(`changeSessionId()` 실행) 시 이전 세션의 CSRF 토큰이 서버 측에서 즉시 무효화된다. 구 토큰으로 non-GET 요청 시 Spring Security가 `403 Forbidden`을 반환한다. 클라이언트는 로그인 응답 수신 직후 반드시 `/auth/csrf`를 재조회해야 한다.
+> **구 토큰 무효화**: 인증 로그인 완료(`POST /api/v1/auth/otp/verify` 또는 최초 등록 완료를 겸하는 `POST /api/v1/members/me/totp/confirm`에서 `changeSessionId()` 실행) 시 이전 세션의 CSRF 토큰이 서버 측에서 즉시 무효화된다. 구 토큰으로 non-GET 요청 시 Spring Security가 `403 Forbidden`을 반환한다. 클라이언트는 세션 발급 응답 수신 직후 반드시 `/auth/csrf`를 재조회해야 한다.
 
 ```
 GET /api/v1/auth/csrf
@@ -109,7 +109,7 @@ POST /api/v1/auth/register
 }
 ```
 
-> 등록 응답은 생성 결과만 반환하고, 가입 직후 세션 진입은 후속 로그인(`POST /api/v1/auth/login`) 또는 `GET /api/v1/auth/session` 재조회로 확인한다. 이메일 중복 등록은 `AUTH-017`로 반환한다.
+> 등록 응답은 생성 결과만 반환하고 세션을 발급하지 않는다. 가입 직후 사용자는 후속 비밀번호 단계 로그인(`POST /api/v1/auth/login`)을 시작해야 하며, TOTP 미등록 상태라면 등록 및 첫 코드 확인이 완료되기 전까지 보호된 서비스 사용이 금지된다. 이메일 중복 등록은 `AUTH-017`로 반환한다.
 
 **오류 코드**
 | 코드 | HTTP | 설명 |
@@ -126,7 +126,7 @@ POST /api/v1/auth/register
 
 ---
 
-### 1.3 로그인
+### 1.3 로그인 (1차 비밀번호 검증)
 
 ```
 POST /api/v1/auth/login
@@ -148,23 +148,23 @@ POST /api/v1/auth/login
 {
   "success": true,
   "data": {
-    "memberId": 1,
-    "email": "user01@fix.com",
-    "name": "홍길동",
-    "createdAt": "2026-03-01T10:00:00Z"
+    "loginToken": "login-uuid-001",
+    "nextAction": "VERIFY_TOTP",
+    "totpEnrolled": true,
+    "expiresAt": "2026-03-01T10:05:00Z"
   },
   "error": null,
   "traceId": "trace-003"
 }
 ```
 
-> 세션 쿠키 `SESSION`이 `Set-Cookie` 헤더에 자동 발급된다.  
-> 로그인 성공 후 CSRF 토큰 **반드시 재조회** (`changeSessionId()` 후 토큰 재발급).
+> 이 단계는 **email/password 1차 검증만 수행**한다. 이 응답에서는 보호된 `SESSION` 쿠키나 인증된 세션이 발급되지 않는다.  
+> `loginToken`은 짧은 TTL의 pre-auth 토큰이며, 이후 `POST /api/v1/auth/otp/verify` 또는 TOTP 미등록 사용자의 등록 플로우에서만 사용할 수 있다.
 
-> **`totpEnrolled: false` 사용자**: TOTP 미등록 사용자는 주문 세션 OTP 검증(Step B)를 수행할 수 없으므로 주문 기능이 비활성화된다. 로그인 응답에서 `totpEnrolled: false` 수신 시 클라이언트는 TOTP 등록 플로우(`POST /api/v1/members/me/totp/enroll`)로 사용자를 유도해야 한다. 미등록 상태로 OTP 검증 엔드포인트 호출 시 `ORD-011 403 (TOTP_NOT_ENROLLED)`이 반환되며 응답 body에 `"enrollUrl": "/settings/totp/enroll"` 필드가 포함된다.  
+> **`totpEnrolled: false` 응답 정책**: `member.totp_enabled = false` 인 사용자는 이 단계에서 `200 OK`와 함께 `nextAction = "ENROLL_TOTP"`, `totpEnrolled = false`, `loginToken`을 받는다. 이는 보호된 앱 진입이 허용된 정상 세션이 아니라 **pre-auth MFA 등록 온보딩 상태**다. 클라이언트는 사용자를 즉시 TOTP 등록 플로우(`POST /api/v1/members/me/totp/enroll` -> `POST /api/v1/members/me/totp/confirm`)로 유도해야 하며, 등록 확인이 완료되기 전까지 보호 라우트나 주문 세션 생성 UX를 허용하면 안 된다. 방어적 서버 검증으로 미등록 상태 사용자가 주문/OTP 검증 경로에 진입하면 `ORD-011 403 (TOTP_NOT_ENROLLED)`와 `"enrollUrl": "/settings/totp/enroll"`를 반환할 수 있다.  
 > `enrollUrl`은 **프론트엔드 React 라우터 경로(코드: `navigate(error.enrollUrl)`)** 이며 백엔드 API 경로가 아니다. 클라이언트는 이를 API URL로 직접 호출하지 않고 `react-router-dom`의 `navigate()`로 클라이언트 라우팅(페이지 이동)에 사용한다.
 
-> **TOTP 등록 API 요약** (`POST /api/v1/members/me/totp/enroll`): 유효 세션 필요, 응답 `{secret, qrUri}`, idempotent(미확인 상태에서 재호출 가능). 확인은 `POST /api/v1/members/me/totp/confirm {otpCode}` 호출로 완료된다. 상세 명세는 TOTP 등록 플로우 문서(채널계 login_flow.md)를 참조한다.
+> **TOTP 등록 API 요약** (`POST /api/v1/members/me/totp/enroll`): 인증된 서비스 세션이 아니라, 직전 비밀번호 단계에서 발급된 유효한 `loginToken`이 필요하다. 응답은 `{manualEntryKey, qrUri, enrollmentToken, expiresAt}` 이며, 미확인 상태에서 idempotent 하게 재호출 가능하다. 확인은 `POST /api/v1/members/me/totp/confirm {loginToken, enrollmentToken, otpCode}` 로 완료되며, 성공 시 `totp_enabled=true` 와 함께 최초 인증 세션 발급까지 완료할 수 있다. 상세 명세는 TOTP 등록 플로우 문서(채널계 `login_flow.md`)를 참조한다.
 
 **오류 코드**
 | 코드 | HTTP | 설명 |
@@ -174,11 +174,65 @@ POST /api/v1/auth/login
 | `AUTH-004` | 401 | 탈퇴한 계정 |
 | `RATE-001` | 429 | 로그인 시도 초과 |
 | `VALIDATION-001` | 422 | 요청 필드 유효성 실패 (`email`/`password` 누락 또는 빈 값) |
-| `SYS-001` | 500 | 내부 서버 오류 (Redis 세션 생성 실패 등) |
+| `SYS-001` | 500 | 내부 서버 오류 (pre-auth loginToken 저장 실패 등) |
 
 ---
 
-### 1.4 로그아웃
+### 1.4 로그인 MFA 검증
+
+```
+POST /api/v1/auth/otp/verify
+```
+
+**Rate Limit**: 3 req/loginToken (application counter)  
+**인증 불필요** (`permitAll`) - 단, 유효한 `loginToken` 필요
+
+**요청 바디**
+```json
+{
+  "loginToken": "login-uuid-001",
+  "otpCode": "123456"
+}
+```
+
+**응답 200 OK**
+```json
+{
+  "success": true,
+  "data": {
+    "memberUuid": "m-uuid-xxxx",
+    "email": "user01@fix.com",
+    "name": "홍길동",
+    "role": "ROLE_USER",
+    "totpEnrolled": true,
+    "accountId": "ACC-001",
+    "mfaVerifiedAt": "2026-03-01T10:00:15Z"
+  },
+  "error": null,
+  "traceId": "trace-004"
+}
+```
+
+> 보호된 `SESSION` 쿠키는 **이 단계가 성공할 때만** `Set-Cookie` 헤더로 발급된다.  
+> 인증 로그인 완료 후 CSRF 토큰을 **반드시 재조회**해야 한다 (`changeSessionId()` 후 토큰 재발급).
+>
+> 직전 비밀번호 단계에서 `nextAction = "ENROLL_TOTP"` 를 받은 사용자는 이 엔드포인트를 먼저 호출하면 안 된다. 해당 경우에는 `POST /api/v1/members/me/totp/enroll` 과 `POST /api/v1/members/me/totp/confirm` 으로 최초 등록과 첫 MFA 확인을 끝내야 하며, 그 전까지 보호된 서비스 사용은 금지된다.
+
+**오류 코드**
+| 코드 | HTTP | 설명 |
+|---|---|---|
+| `AUTH-009` | 403 | TOTP 미등록 (`enrollUrl` 포함) |
+| `AUTH-010` | 401 | TOTP 코드 불일치 |
+| `AUTH-011` | 401 | 동일 시간창 TOTP 재사용 감지 |
+| `RATE-001` | 429 | MFA 검증 시도 초과 또는 일시 차단 |
+| `AUTH-018` | 410 | `loginToken` 만료 또는 이미 소비됨 |
+| `AUTH-021` | 403 | MFA recovery / rebind 필요 (`recoveryUrl` 포함) |
+| `VALIDATION-001` | 422 | 요청 필드 유효성 실패 (`loginToken`/`otpCode` 누락 또는 빈 값) |
+| `SYS-001` | 500 | 내부 서버 오류 |
+
+---
+
+### 1.5 로그아웃
 
 ```
 POST /api/v1/auth/logout
@@ -194,7 +248,7 @@ POST /api/v1/auth/logout
   "success": true,
   "data": { "message": "로그아웃 되었습니다." },
   "error": null,
-  "traceId": "trace-004"
+  "traceId": "trace-005"
 }
 ```
 
@@ -213,7 +267,7 @@ POST /api/v1/auth/logout
 
 ---
 
-### 1.5 세션 상태 조회 (내 정보)
+### 1.6 세션 상태 조회 (내 정보)
 
 ```
 GET /api/v1/auth/session
@@ -234,11 +288,11 @@ GET /api/v1/auth/session
     "accountId": "ACC-001"
   },
   "error": null,
-  "traceId": "trace-005"
+  "traceId": "trace-006"
 }
 ```
 
-> **`accountId` 클라이언트 활용 정책**: 클라이언트는 로그인 응답(`POST /auth/login`) 또는 이 세션 조회에서 `accountId`를 수신하여 클라이언트 상태에 캐시해두어야 한다. Step A(`POST /orders/sessions`) 요청 바디의 `accountId` 필드는 이 값을 사용한다. 추가 API 호출 없이도 안전하게 사용하려면 로그인 응답과 이 세션 조회 응답 모두에서 `accountId`가 동일하게 포함되므로 어느 시점에 조회해도 안전하다.
+> **`accountId` 클라이언트 활용 정책**: 클라이언트는 인증 세션이 실제 발급되는 응답(`POST /api/v1/auth/otp/verify` 또는 최초 등록을 겸한 `POST /api/v1/members/me/totp/confirm`)이나 이 세션 조회에서 `accountId`를 수신하여 클라이언트 상태에 캐시해두어야 한다. Step A(`POST /orders/sessions`) 요청 바디의 `accountId` 필드는 이 값을 사용한다.
 
 **오류 코드**
 | 코드 | HTTP | 설명 |
@@ -330,11 +384,11 @@ POST /api/v1/orders/sessions
 | `accountId` | String | ✅ | 본인 소유 계좌 |
 | `symbol` | String | ✅ | 국내주식/ETN 종목코드 (`^\d{6}$` 또는 `^Q\d{6}$`). `channel-service`가 내부 종목 매핑 테이블(`symbol_exchange_map`)로 `securityExchange`를 자동 결정한다 (미매핑 종목 코드 요청 시 `ORD-004 422`). 클라이언트는 `securityExchange`를 직접 지정하지 않는다. |
 | `side` | Enum | ✅ | `BUY` \| `SELL` |
-
-> **Step A에서의 TOTP 등록 여부 검증 정책**: `POST /orders/sessions` (Step A)는 TOTP 등록 여부를 서버 측에서 검증하지 않는다. TOTP 미등록 사용자도 주문 세션 **생성은 가능**하다. TOTP 검증(`ORD-011`)은 Step B(OTP 검증 엔드포인트) 호출 시점에만 발생한다. 클라이언트는 서버 차단을 기다리지 않고, 로그인 응답(`totpEnrolled: false`) 수신 즉시 UX 레이어에서 Step A 버튼을 비활성화하여 불필요한 세션 생성을 방지해야 한다.
 | `orderType` | Enum | ✅ | `LIMIT` \| `MARKET` |
 | `qty` | Integer | ✅ | 1 이상, 보유수량/잔액 이내 |
 | `price` | Long | LIMIT 시 ✅ | 양수. `MARKET` 주문 시 포함하면 `VALIDATION-001 422` 반환. 클라이언트는 `MARKET` 선택 시 `price` 필드를 요청에서 제거해야 한다. |
+
+> **Step A에서의 TOTP 정책 정정**: 정본 정책은 모든 로그인에서 TOTP를 요구하므로 `POST /orders/sessions` (Step A)는 이미 password+TOTP 로그인 MFA를 마친 세션만 사용한다고 가정한다. 따라서 TOTP 미등록 또는 미검증 사용자를 Step A까지 진입시키는 것은 정상 경로가 아니며, 클라이언트는 등록/로그인 MFA 완료 전 주문 세션 생성 UX를 노출하면 안 된다. 서버 측 `ORD-011`은 잔여 레거시/방어 경로에 대한 안전망으로만 남는다.
 
 > **`MARKET` 주문 잔액 검증/체결 기준**: `MARKET` 주문 시 사전 검증은 `corebank-service`가 quote snapshot(`quoteSnapshotId`, `quoteAsOf`, `quoteSourceMode`) 기준으로 수행한다. Snapshot age가 `maxQuoteAgeMs`를 초과하면 stale quote로 거절한다. 체결은 반대편 오더북 레벨을 최우선 가격부터 순차 소진(sweep)하며, 유동성이 없으면 deterministic no-liquidity reject contract로 거절한다. 슬리피지로 인해 실제 체결 금액이 검증 기준을 초과할 수 있으며, 이 경우 거래소/시뮬레이터 측에서 `ORDER_REJECTED(FEP-003)`이 반환된다. 사전 검증은 best-effort임을 UX에 안내해야 한다.
 
@@ -1876,12 +1930,19 @@ flowchart LR
 
 1. `POST /api/v1/auth/password/forgot`
 
-- Request
+- Non-challenge-gated request shape
+```json
+{
+  "email": "user01@fix.com"
+}
+```
+
+- Challenge-gated request shape
 ```json
 {
   "email": "user01@fix.com",
-  "challengeToken": "<optional>",
-  "challengeAnswer": "<optional>"
+  "challengeToken": "<signed blob>",
+  "challengeAnswer": "481516"
 }
 ```
 
@@ -1902,7 +1963,29 @@ flowchart LR
 }
 ```
 
+- Alternate `202 Accepted` example when the current request context is not challenge-capable
+```json
+{
+  "success": true,
+  "data": {
+    "accepted": true,
+    "message": "If the account is eligible, a reset email will be sent.",
+    "recovery": {
+      "challengeEndpoint": "/api/v1/auth/password/forgot/challenge",
+      "challengeMayBeRequired": false
+    }
+  },
+  "error": null,
+  "traceId": "trace-001"
+}
+```
+
 > Contract note: if recovery rate limits trip, return `AUTH-014` with `429` and `Retry-After`. If CSRF validation fails, Spring Security returns raw `403 Forbidden` before the application envelope.
+> Submit-shape note: the current proof-of-work rollout exposes exactly two valid `POST /api/v1/auth/password/forgot` request shapes: `(1)` a non-challenge-gated shape with `email` only and `(2)` a challenge-gated shape with `email + challengeToken + challengeAnswer`. `challengeAnswer` is the only supported answer field for the current rollout and `challengeAnswerPayload` MUST be omitted. Future adapters may require `challengeAnswerPayload`, but for any one challenged forgot submit exactly one answer field may be present. Supplying both fields, supplying the wrong field for the active challenge kind, or sending a half-populated challenge submit is malformed and MUST be rejected with `AUTH-022`.
+> Challenge-gated submit note: the forgot lane becomes challenge-gated only after the client has successfully obtained an active challenge bundle from `POST /api/v1/auth/password/forgot/challenge` for the same original `email` and that bundle remains unexpired and unconsumed. When the lane is challenge-gated, `challengeToken` and `challengeAnswer` MUST be supplied together with the same original `email`; when the request is not challenge-gated, both challenge fields MUST be absent.
+> Capability note: `data.recovery.challengeMayBeRequired` reflects whether the current request context is allowed to enter recovery challenge bootstrap under the active rollout flag plus challenge-capable cohort rules. `true` means the client may show the challenge-bootstrap CTA for the current lane; `false` means the client must preserve the legacy forgot flow without offering challenge bootstrap from this response context. This flag does not by itself mean the current forgot submit is challenge-gated, and clients must not infer active gating state from this flag alone.
+
+> Follow-on contract note: when the real recovery challenge provider rollout lands in Epic 1 follow-on scope, invalid, expired, mismatched, or malformed challenge proof returns `AUTH-022`; replayed or already consumed proof returns `AUTH-024`; bootstrap unavailability returns `AUTH-023`; verify-path unavailability after solve returns `AUTH-025`.
 
 2. `POST /api/v1/auth/password/forgot/challenge`
 
@@ -1918,9 +2001,28 @@ flowchart LR
 {
   "success": true,
   "data": {
+    "challengeContractVersion": 2,
+    "challengeId": "rch_01HV7M6P5W2T8K9Q1Z3C4D5E6F",
     "challengeToken": "<signed blob>",
-    "challengeType": "proof-of-work|captcha",
-    "challengeTtlSeconds": 300
+    "challengeType": "proof-of-work",
+    "challengeTtlSeconds": 300,
+    "challengeIssuedAtEpochMs": 1773398100000,
+    "challengeExpiresAtEpochMs": 1773398400000,
+    "challengePayload": {
+      "kind": "proof-of-work",
+      "proofOfWork": {
+        "algorithm": "SHA-256",
+        "seed": "<opaque work seed>",
+        "difficultyBits": 18,
+        "answerFormat": "nonce-decimal",
+        "inputTemplate": "{seed}:{nonce}",
+        "inputEncoding": "utf-8",
+        "successCondition": {
+          "type": "leading-zero-bits",
+          "minimum": 18
+        }
+      }
+    }
   },
   "error": null,
   "traceId": "trace-001"
@@ -1928,6 +2030,32 @@ flowchart LR
 ```
 
 > Contract note: if recovery rate limits trip, return `AUTH-014` with `429` and `Retry-After`. If CSRF validation fails, Spring Security returns raw `403 Forbidden` before the application envelope.
+> Proof-of-work note: the canonical solver equation is `sha256(utf8(seed + ":" + nonce))`; the proof is valid only when the resulting digest has at least `difficultyBits` leading zero bits. `nonce` is serialized as an unsigned base-10 string with no separators or sign. `difficultyBits` MUST come from a calibrated profile that satisfies the canonical baseline solve budgets defined in the UX spec for supported web and mobile baseline clients before rollout beyond QA or canary cohorts.
+> Token-binding note: `challengeToken` MUST cryptographically bind `challengeContractVersion`, `challengeId`, `challengeType`, `challengeIssuedAtEpochMs`, `challengeExpiresAtEpochMs`, the full `challengePayload`, replay-safe challenge identity, the normalized-email-hash binding derived server-side from the submitted email, and a submitted-email digest derived server-side from the exact raw submitted email string. If any returned field diverges from what the token binds, or if the challenged forgot submit changes the exact email string that was originally challenge-bootstrapped, the backend MUST reject the request with `AUTH-022`. Clients are not expected to detect opaque-token mismatches locally.
+> Client-state note: FE/MOB must preserve the originally submitted email string verbatim between challenge bootstrap and challenged forgot submit. Any email normalization remains server-side.
+> Versioning note: `challengeType` and `challengePayload.kind` MUST match. If they do not, or if `challengeContractVersion` is unknown to the client, the client must fail closed, clear active challenge state, and request a fresh challenge rather than attempting a solve. The only valid legacy v1 shape is `challengeToken + challengeType + challengeTtlSeconds` with all v2-only fields absent; a partial or mixed response is malformed and must fail closed. Absence of `challengeContractVersion` by itself is not sufficient to assume legacy behavior.
+> TTL note: `challengeIssuedAtEpochMs` and `challengeExpiresAtEpochMs` are the authoritative validity window. `challengeTtlSeconds` is informational and MUST equal `ceil((challengeExpiresAtEpochMs - challengeIssuedAtEpochMs)/1000)`. Clients must apply a `5s` expiry safety margin for solve or resume decisions and request a fresh challenge instead of continuing once local time enters that safety window. Entering that safety window, or losing trust in validity after background/resume, is a canonical fail-closed `validity-untrusted` condition. Clients estimate clock skew by comparing local receipt time with `challengeIssuedAtEpochMs`; if estimated skew exceeds `30s`, the challenge must be discarded as canonical fail-closed reason `clock-skew`.
+> Rotation note: within one recovery-flow scope (`csrf session` + normalized-email-hash binding derived server-side), only the most recently issued unconsumed challenge remains valid. Issuing a fresh challenge terminalizes earlier outstanding challenges in the same scope, even if the newly submitted email differs only by case or whitespace but normalizes to the same account key. Every fresh issue attempt that succeeds MUST mint a fresh unique `challengeId`; the server MUST NOT reuse a prior `challengeId` for a distinct bundle in the same scope.
+> Challenge identity note: `challengeId` is an opaque client-visible identity for the active challenge instance. FE/MOB use it only to key transient challenge state and deterministic replacement when a newer bundle arrives; identical `challengeId` means the same bundle instance, while a newer distinct `challengeId` replaces the prior active challenge. “Newer” is determined by strictly greater `challengeIssuedAtEpochMs`; the server MUST ensure that fresh issued bundles in one scope have strictly increasing `challengeIssuedAtEpochMs`. If clients ever observe distinct bundles with equal timestamps but different `challengeId`, they must fail closed and refresh.
+> Rollout note: Epic 1 follow-on real challenge rollout is intentionally `proof-of-work` first and MUST be protected by a staged rollout flag plus an explicit server-side challenge-capable cohort rule. `/api/v1/auth/password/forgot/challenge` may return v2 only when both the rollout flag is enabled and the request qualifies for the configured QA/canary cohort (for example: allowlisted web build, mobile app version, or session label). All out-of-cohort or flag-disabled requests MUST receive the exact legacy v1 contract from Story `1.7` (`challengeToken`, `challengeType`, `challengeTtlSeconds` only, with no v2-only fields). Upgraded FE and MOB clients MUST preserve Story `1.8` / Story `1.9` legacy behavior for that exact response shape. Non-production QA evidence MUST use a deterministic server-owned cohort selector or test harness override so in-cohort and out-of-cohort paths can be reproduced on demand without changing client code.
+> Observability note: when the exact legacy v1 shape is returned, server-side metrics and logs MUST label the challenge contract version as `legacy-v1` even though the response body omits `challengeContractVersion`.
+> Fail-closed reason note: client-side fail-closed bundle rejection reasons are canonicalized in `docs/contracts/recovery-challenge-fail-closed.json` as `unknown-version`, `kind-mismatch`, `malformed-payload`, `mixed-shape`, `clock-skew`, and `validity-untrusted`. All of these pre-submit bundle-trust failures use canonical next action `refresh-challenge`.
+> Future-adapter note: `challengePayload` is a discriminated union keyed by `kind`. Future adapters may add `kind=captcha` with a `captcha` object rather than reusing proof-of-work-only fields. `POST /api/v1/auth/password/forgot` keeps the same endpoint path; proof-of-work continues to use the scalar `challengeAnswer`, while future adapters may submit a discriminated `challengeAnswerPayload`. The current request example intentionally shows only the active proof-of-work submit shape.
+> Availability note: for the local proof-of-work adapter, `AUTH-023` means challenge bootstrap infrastructure is unavailable, such as nonce-store, signing, verifier initialization, or work-parameter source failure before a fresh bundle is issued; bootstrap-unavailable responses SHOULD include `Retry-After` when degraded mode is expected to persist. If `Retry-After` is present, clients should surface the backoff window and suppress immediate retry until it elapses; if absent, clients should show generic retry-later guidance without auto-retry. `AUTH-025` means the verify path became unavailable after the user already solved work; clients MUST clear the active challenge, require a fresh challenge bootstrap before retry, and treat any `Retry-After` header only as advisory backoff for the restart path, never as permission to replay the same proof.
+
+- Legacy v1 response shape example
+```json
+{
+  "success": true,
+  "data": {
+    "challengeToken": "<signed blob>",
+    "challengeType": "proof-of-work",
+    "challengeTtlSeconds": 300
+  },
+  "error": null,
+  "traceId": "trace-001"
+}
+```
 
 3. `POST /api/v1/auth/password/reset`
 
@@ -1952,6 +2080,10 @@ flowchart LR
 | `AUTH-014` | 429 | forgot/challenge/reset rate limit exceeded (`Retry-After` required) |
 | `AUTH-015` | 422 | new password equals current password |
 | `AUTH-016` | 401 | stale session after password change |
+| `AUTH-022` | 401 | recovery challenge proof invalid, expired, mismatched, or malformed |
+| `AUTH-023` | 503 | recovery challenge bootstrap unavailable |
+| `AUTH-024` | 409 | recovery challenge proof replayed or already consumed |
+| `AUTH-025` | 503 | recovery challenge verify unavailable after solve |
 
 ### 7.3 CSRF and Retry Rules
 
@@ -1979,3 +2111,114 @@ flowchart LR
   - `CONSUMED` rows set both `consumed_at` and `terminalized_at`; `SUPERSEDED` / `EXPIRED` rows keep `consumed_at = NULL`
   - Single-instance cleanup scheduler runs every `15 minutes` with bounded loop policy (`batchSize=500`, `maxBatchesPerRun=8`, `maxRunSeconds=20`) and purges terminal rows `30 days` after `terminalized_at`
 - Successful reset MUST update `members.password_changed_at` in same DB transaction as password hash update and token consume.
+- Successful reset MAY additionally emit the single-use response headers `X-MFA-Recovery-Proof` and `X-MFA-Recovery-Proof-Expires-In: 600` when the client needs to continue into the lost-authenticator recovery flow. FE/MOB must keep that proof in volatile memory only.
+
+### 7.6 MFA Recovery & Rebind Contract (Story 1.14 / 1.15)
+
+This contract closes the lost-authenticator path without redefining the already-canonical login MFA contract.
+
+#### 7.6.1 Entry Modes
+
+1. Authenticated member path
+   - `POST /api/v1/members/me/totp/rebind`
+   - Requires authenticated session + valid `X-CSRF-TOKEN`
+   - Request:
+   ```json
+   {
+     "currentPassword": "Abcd1234!"
+   }
+   ```
+   - Behavior:
+     - verifies authenticated principal ownership
+     - verifies current password
+     - terminalizes the currently active authenticator secret before issuing a new bootstrap contract
+
+2. Recovery-proof path
+   - `POST /api/v1/auth/mfa-recovery/rebind`
+   - CSRF-protected public endpoint
+   - Request:
+   ```json
+   {
+     "recoveryProof": "<signed single-use proof>"
+   }
+   ```
+   - `recoveryProof` source:
+     - issued as `X-MFA-Recovery-Proof` after successful password reset when the client chooses MFA recovery continuation
+     - single-use
+     - TTL `600s`
+     - FE/MOB must not persist it to disk, secure storage, localStorage, or URL query
+
+#### 7.6.2 Shared Bootstrap Response
+
+Both bootstrap endpoints return the same contract:
+
+```json
+{
+  "success": true,
+  "data": {
+    "rebindToken": "<signed blob>",
+    "manualEntryKey": "JBSWY3DPEHPK3PXP",
+    "qrUri": "otpauth://totp/...",
+    "enrollmentToken": "<opaque token>",
+    "expiresAt": "2026-03-13T14:10:00Z"
+  },
+  "error": null,
+  "traceId": "trace-001"
+}
+```
+
+- `rebindToken` TTL: `600s`
+- Old authenticator secret is terminalized before this response is returned.
+- A member may have at most one active rebind bootstrap at a time; reissue invalidates the previous bootstrap token.
+
+#### 7.6.3 Rebind Confirmation
+
+- `POST /api/v1/auth/mfa-recovery/rebind/confirm`
+- CSRF-protected public endpoint
+- Request:
+```json
+{
+  "rebindToken": "<signed blob>",
+  "enrollmentToken": "<opaque token>",
+  "otpCode": "123456"
+}
+```
+
+- Response `200 OK`
+```json
+{
+  "success": true,
+  "data": {
+    "rebindCompleted": true,
+    "reauthRequired": true
+  },
+  "error": null,
+  "traceId": "trace-001"
+}
+```
+
+#### 7.6.4 Post-Confirm Security Effects
+
+- All active Spring Session records for the member are invalidated.
+- Stale-session markers are written so follow-up requests from deleted sessions are rejected deterministically.
+- `AUTH_LAST_MFA_VERIFIED_AT` and any future trusted-session marker namespace used by risk-based order authorization must be cleared.
+- Only the newly confirmed authenticator secret remains active.
+- FE/MOB must clear all local authenticated state and return the user to the sign-in flow immediately after success.
+
+#### 7.6.5 Error Codes
+
+| Code | HTTP | Meaning |
+|---|---|---|
+| `AUTH-019` | 401 | MFA recovery proof or rebind token invalid / expired |
+| `AUTH-020` | 409 | MFA recovery proof or rebind token already consumed / replayed |
+| `AUTH-021` | 403 | MFA recovery required before login can continue (`recoveryUrl` included) |
+| `AUTH-010` | 401 | Rebind confirm TOTP code mismatch |
+| `RATE-001` | 429 | Rebind bootstrap / confirm throttled (`Retry-After` required) |
+
+#### 7.6.6 UX Hints in Error Payload
+
+- `AUTH-021` includes `recoveryUrl`.
+- Canonical `recoveryUrl` values:
+  - Web: `/mfa-recovery`
+  - Mobile auth stack route key: `mfaRecovery`
+- `AUTH-009` continues to use `enrollUrl` for first-time enrollment only.
