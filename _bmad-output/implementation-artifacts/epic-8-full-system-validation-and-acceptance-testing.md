@@ -17,7 +17,7 @@ Verify that all features implemented in Epics 0~7 work correctly in an integrate
 **Validation Scope:**
 - Scenario #1: Standard order E2E → OrderControllerIntegrationTest
 - Scenario #2: 10-thread Concurrent Sell (500-share position) → PositionConcurrencyIntegrationTest @Timeout(20)
-- Scenario #3: OTP Failure → OrderSessionServiceTest
+- Scenario #3: Required Step-Up Failure → OrderSessionServiceTest
 - Scenario #4: duplicate clOrdID → IdempotencyIntegrationTest
 - Scenario #5: FEP timeout → CB OPEN → FepCircuitBreakerIntegrationTest
 - Scenario #6: Session Refusal after Logout → AuthControllerIntegrationTest
@@ -37,13 +37,13 @@ So that the system's correctness claims are continuously verified.
 ### Acceptance Criteria
 
 **Given** Scenario #1 (Standard order E2E happy path) — `OrderControllerIntegrationTest`  
-**When** `POST /api/v1/orders/sessions` → `POST /api/v1/orders/sessions/{sessionId}/otp` → `POST /api/v1/orders/sessions/{sessionId}/execute` full flow (TOTP 3-phase protocol)
+**When** `POST /api/v1/orders/sessions` → optional `POST /api/v1/orders/sessions/{sessionId}/otp` → `POST /api/v1/orders/sessions/{sessionId}/execute` full flow (risk-based authorization protocol)
 **Then** `ChannelIntegrationTestBase @BeforeEach` performs login + obtains JSESSIONID cookie  
 **And** HTTP 200 COMPLETED, returns `orderId`, verifies DB `executions` record (`executed_qty`, `executed_price`) + `positions.quantity` updated (NFR-R1)
 
-**Given** Scenario #3 (OTP failure blocks order) — `OrderSessionOtpIntegrationTest`  
-**When** Incorrect OTP entered 3 times  
-**Then** Include `@DisplayName("Scenario #3: OTP failure blocks order")` annotation  
+**Given** Scenario #3 (required step-up failure blocks order) — `OrderSessionOtpIntegrationTest`  
+**When** a challenge-required session receives incorrect OTP entered 3 times  
+**Then** Include `@DisplayName("Scenario #3: required step-up failure blocks order")` annotation  
 **And** Session status `FAILED`, execute call returns HTTP 409 `ORD-006`  
 **And** Verify no position change
 

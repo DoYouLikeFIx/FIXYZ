@@ -1,254 +1,237 @@
-# Epic 4: Order Execution & Position Integrity
+# Epic 4: Channel Order Authorization & Session FSM
 
-> Historical artifact. This document preserves prior implementation context and may diverge from the current canonical target contract. For active design truth, refer to `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/prd.md`, `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/channels/api-spec.md`, and Epic 12 documentation for scaffold-divergence handling.
-
-> **⚠️ Epic Numbering Note**: This supplemental file was numbered from the securities-order domain and corresponds to **Epic 5 in epics.md: Account Ledger, Limits, Idempotency, Concurrency**. The canonical story authority is always `_bmad-output/planning-artifacts/epics.md`.
-
+> **Legacy filename note:** This file keeps the historical filename `epic-4-order-execution-and-position-integrity.md` for continuity, but its active canonical scope is **Epic 4** in `_bmad-output/planning-artifacts/epics.md`: **Channel Order Authorization & Session FSM**.
+>
+> Standalone story files `4.1` through `4.8` are restored as the primary implementation units. This document remains the epic-level companion contract for those story slices.
 
 ## Summary
 
-An AUTHED order session executes via Order Book matching, atomically producing `executions` records and mutating `positions` within a single `@Transactional` boundary. Under 10-thread concurrent sell pressure on a 500-share position, exactly 5 FILLED and 5 OrderSession FAILED (ORD-003 — SELL qty validation before INSERT; no order inserted for failures). Duplicate requests are handled idempotently via `clOrdID`. On FEP post-commit failure, canonical fill is preserved and external sync status is escalated for replay/requery. Scenarios #1, #2, #4, #7 pass.
+Epic 4 owns the channel-side order session before execution begins.
+Its job is to decide whether a drafted order may proceed immediately on the strength of recent login MFA context, or whether an additional TOTP step-up challenge must be completed first.
 
-**FRs covered:** FR-19, FR-20, FR-21, FR-22, FR-23, FR-24, FR-25, FR-43, FR-44, FR-48, FR-54  
-**Architecture requirements:** OrderService.execute() (@Lock PESSIMISTIC_WRITE on positions row, Order Book matching, executions + positions atomic update), clOrdID (UNIQUE INDEX), OrderSessionRecoveryService (@Scheduled), PositionRepositoryImpl (QueryDSL daily sell limit re-validation)  
-**Frontend:** OrderConfirm.tsx, OrderProcessing.tsx, OrderResult.tsx
+**Primary outcome:** order initiation, authorization decision, conditional step-up, and FE/MOB session flow all converge on one deterministic FSM before execution starts.
 
----
+**Implementation focus:**
 
-## Story 4.1: Order Execution & Position Integrity
+- Order-session creation, ownership, TTL, and status-query contract
+- Risk-based authorization policy using fresh-login MFA context
+- Conditional TOTP step-up only for elevated-risk orders
+- Explicit FSM transition governance and status-specific response contracts
+- Web and mobile multi-step flow parity through authorization and confirmation
+- Cross-client validation so FE and MOB do not diverge from the same order rules
 
-As a **system**,  
-I want order execution to atomically place orders into the Order Book, produce `executions` records, and update `positions` within a single transaction,  
-So that position integrity is always maintained and no order results in an over-sell.
+## Current Delivery Status
 
-**Depends On:** Story 2.2 (AUTHED session), Story 3.1 (FEP integration)
+As of `2026-03-12`, canonical Epic 4 is tracked as `in-progress` in `_bmad-output/implementation-artifacts/sprint-status.yaml`.
 
-### Acceptance Criteria
+Current execution posture:
 
-**Given** `POST /api/v1/orders/sessions/{sessionId}/execute` (session status: `AUTHED`)  
-**When** `OrderSessionService.execute()` called  
-**Then** Redis `SET ch:txn-lock:{sessionId} NX EX 30` executed atomically  
-**And** lock acquisition failure (concurrent request) → HTTP 409 `{ code: "CORE-003", message: "Order already being processed." }`  
-**And** session status changed to `EXECUTING`
-
-**Given** `OrderService.execute()` execution path  
-**When** `@Transactional(timeout=25)` transaction starts  
-**Then** `positionRepository.findByAccountAndSymbolWithLock(accountId, symbol)` → InnoDB `SELECT FOR UPDATE` on `positions` row for the symbol (ADR-001)  
-**And** BUY: real-time cash re-validated — `cash < qty × price` → `OrderSession FAILED` + HTTP 422 `{ code: "ORD-001", message: "Insufficient cash." }`  
-**And** SELL: `available_qty < qty` → `OrderSession FAILED` + HTTP 422 `{ code: "ORD-003", message: "Insufficient position qty." }`  
-**And** SELL: daily sell limit re-validated after lock acquired (TOCTOU defense):
-  - QueryDSL re-query: `SELECT SUM(executed_qty) FROM executions WHERE account_id=X AND symbol=Y AND side=SELL AND created_at >= today`
-  - `todaySold + qty > Account.dailySellLimit` → `OrderSession FAILED` + HTTP 422 `{ code: "ORD-002", remainingQty: N }` (FR-47)
-  - No position changes or executions recorded (no additional reversal transaction needed)
-
-**Given** validation passes within `@Transactional`  
-**When** Order Book matching runs  
-**Then** `INSERT orders (status=NEW, symbol, side, qty, price, clOrdID, accountId, createdAt)`  
-**And** Order Book matching runs synchronously — buy orders matched against lowest available ask; sell orders matched against highest available bid (price-time priority)  
-**And** Match found → `INSERT executions (order_id, executed_qty, executed_price, side, symbol, account_id, created_at)` (FR-21)  
-**And** `UPDATE positions SET quantity = quantity + executedQty` (BUY) or `quantity = quantity - executedQty` (SELL), `avg_price` recalculated  
-**And** `UPDATE orders SET status = FILLED` (full fill) or `PARTIALLY_FILLED` (partial fill)  
-**And** No match found → order remains `NEW`, sits in Order Book (no execution record yet)
-
-**Given** matched order ready for FEP  
-**When** FEP Gateway called after local DB commit  
-**Then** `POST /fep/v1/orders` with FIX 4.2 `NewOrderSingle(35=D)` fields: `ClOrdID=clOrdID`, `Symbol=symbol`, `Side=side`, `OrderQty=qty`, `Price=price`  
-**And** FEP **HTTP 200 + `status: "ACCEPTED"`** → `OrderSession COMPLETED`, `orderId` generated  
-**And** HTTP 200: `{ sessionId, status: "COMPLETED", orderId, executedQty, executedPrice, positionQty }` (FR-48, FR-25)
-
-**Given** FEP failure path (timeout / HTTP 5xx — Circuit Breaker not yet OPEN)
-**When** FEP **HTTP 5xx / read timeout**
-**Then** no automatic position reversal is executed (canonical `executions` + `positions` 유지)
-**And** `UPDATE orders SET status = FILLED|PARTIALLY_FILLED, external_sync_status = FAILED`
-**And** `OrderSession ESCALATED` (manual replay/requery 대상)
-**And** HTTP 504 `{ code: "FEP-002", reason: "TIMEOUT" }` (FR-54)
-
-**Given** FEP Circuit Breaker OPEN (RC=9098)
-**When** CB state = OPEN — fallback fires immediately (no FEP call made)
-**Then** HTTP 503 `{ code: "FEP-001", reason: "CIRCUIT_OPEN" }` (FR-54)
-**And** No position change (order was never submitted to FEP)
-**And** `OrderSession FAILED`
-
-**Given** FEP `REJECTED` response (`MsgType=j`)  
-**When** FEP **HTTP 200 + `status: "REJECTED"`**  
-**Then** no automatic position reversal is executed  
-**And** `UPDATE orders SET status = FILLED|PARTIALLY_FILLED, external_sync_status = FAILED`  
-**And** `OrderSession ESCALATED` + HTTP 400 `{ code: "FEP-003", reason: "REJECTED_BY_FEP" }`
-
-**Given** DB error during execution (transaction rollback)
-**When** exception occurs inside `@Transactional`
-**Then** `executions` insert and `positions` update both rolled back atomically (FR-44)
-**And** `OrderSession FAILED`
-**And** HTTP 500 `{ code: "CORE-004", reason: "TRANSACTION_ROLLBACK" }` (FR-54)
-
-**Given** position integrity verification (`PositionIntegrityIntegrationTest` — Scenario #7)  
-**When** N orders executed and verified  
-**Then** `SUM(executions.executed_qty WHERE side='BUY') − SUM(executions.executed_qty WHERE side='SELL') == positions.quantity` per symbol (NFR-D1)
-
-**Given** `SELECT FOR UPDATE` lock time measurement  
-**When** single order executed  
-**Then** lock hold time ≤ 100ms (NFR-P5)
-
-**Given** `PositionConcurrencyIntegrationTest` (Testcontainers MySQL — Scenario #2)
-**When** 10 threads simultaneous sell via `CountDownLatch` (500-share position for symbol 005930, each thread sells 100qty)
-**Then** exactly 5 FILLED, 5 OrderSession FAILED (HTTP 422 ORD-003 Insufficient position qty — validation before INSERT; no order record created)
-**And** `positions.quantity == 0` after all threads complete (no over-sell)
-**And** Real InnoDB via `MySQLContainer("mysql:8.0")` — H2 does not implement `SELECT FOR UPDATE` equivalently
-**And** Apply `@Timeout(20)` JUnit 5 annotation on the test method (NFR-T6 CI deadline; 20s accounts for 2-core CI runner overhead)
-
-**Given** `DailyLimitConcurrencyIntegrationTest` (Testcontainers MySQL)
-**When** 2 threads execute SELL concurrently via `CountDownLatch` (each 300qty, daily limit 500qty)
-**Then** exactly 1 succeeds (COMPLETED) + 1 fails (ORD-002 Daily sell limit exceeded, HTTP 422)
-**And** position of failed session remains unchanged
+- Standalone Story `4.1` through Story `4.8` exist as primary implementation artifacts
+- This file is the shared companion contract for Epic 4
+- Shared downstream execution dependency remains Story `5.2` and later integrated orchestration stories
 
 ---
 
-## Story 4.2: Idempotency & Duplicate Order Protection
+## Session Model
 
-As a **system**,  
-I want duplicate execute requests to return the original result without re-executing the order,  
-So that network retries and double-submission never cause duplicate fills.
+### Backend States
 
-**Depends On:** Story 4.1
+- `PENDING_NEW`: order session exists and authorization is still pending
+- `AUTHED`: order session is fully authorized for execution
+- `EXECUTING`: execution handoff has started
+- `REQUERYING`, `ESCALATED`, `COMPLETED`, `FAILED`, `CANCELED`, `EXPIRED`: downstream lifecycle states preserved from the broader order domain
 
-### Acceptance Criteria
+`PENDING_NEW -> AUTHED` may happen in two ways:
 
-**Given** re-request `POST /api/v1/orders/sessions/{sessionId}/execute` with `COMPLETED` session ID  
-**When** session status check  
-**Then** HTTP 409 `{ code: "ORD-006", message: "Order session already completed.", orderId: "<original>", executedQty: N, executedPrice: N, positionQty: N }` (execution snapshot included in body for UX context; no re-execution, FR-22, TC-ORD-05)  
-**And** `executedQty`, `executedPrice`, `positionQty` retrieved from `OrderSession.executionSnapshot` column — not re-queried from live positions
+- automatic authorization because the current risk profile is acceptable
+- successful conditional TOTP step-up verification
 
-**Given** re-request with `FAILED` session ID  
-**When** session status check  
-**Then** HTTP 409 `{ code: "ORD-006", message: "Order session failed. Please start a new order." }`
+### Client Flow
 
-**Given** re-request with `EXECUTING` session ID (concurrent request)  
-**When** `ch:txn-lock:{sessionId}` NX failure  
-**Then** HTTP 409 `{ code: "CORE-003" }` (prevent duplicate execution)
-
-**Given** execute request with `EXECUTING` session where `ch:txn-lock:{sessionId}` has expired (NX EX 30 elapsed, Recovery not yet run)
-**When** lock key absent but session still shows `EXECUTING` in DB
-**Then** HTTP 409 `{ code: "ORD-005", message: "Order execution in progress. Please wait for recovery resolution." }`
-
-**Given** execute request with `PENDING_NEW` session (OTP step not yet completed)
-**When** session status check
-**Then** HTTP 409 `{ code: "ORD-005", message: "OTP step not completed. Please verify your TOTP code first." }` (TC-ORD-04)
-
-**Given** execute request with session TTL expired (`EXPIRED` or Redis key missing)
-**When** session lookup returns no key
-**Then** HTTP 404 `{ code: "ORD-005", message: "Order session not found." }` (TC-ORD-06)
-
-**Given** `IdempotencyIntegrationTest` (Testcontainers MySQL — Scenario #4)  
-**When** execute called simultaneously 2 times for same session (using `CountDownLatch`)  
-**Then** exactly 1 actual order execution, position change reflected only once  
-**And** both responses return identical `orderId`
+- `INPUT`
+- `AUTH_DECISION`
+- `STEP_UP` only when `challengeRequired=true`
+- `CONFIRM`
+- `PROCESSING`
+- `COMPLETED | FAILED | AUTH_EXPIRED`
 
 ---
 
-## Story 4.3: Order Session Recovery Service
+## Story Inventory
 
-As a **system**,  
-I want stuck `EXECUTING` sessions to be automatically recovered after timeout,  
-So that transient failures during execution never leave positions in an inconsistent state.
+### Story 4.1: [BE][CH] Order Session Create/Status + Ownership
 
-**Depends On:** Story 4.1
+As a **channel API owner**,
+I want order session creation and status queries with ownership checks,
+So that unauthorized access and invalid session usage are blocked.
 
-### Acceptance Criteria
+**Depends On:** Story 1.2, Story 2.2
 
-**Given** `OrderSessionRecoveryService` (`@Scheduled(fixedDelay = 60000)`)
-**When** scheduler runs
-**Then** finds sessions in `EXECUTING` status with `executingStartedAt` older than 30 seconds
-**And** also finds sessions in `PENDING_NEW` or `AUTHED` status with `createdAt` older than 600 seconds
-  - for each: verify Redis key `ch:order-session:{sessionId}` missing → update DB status to `EXPIRED` (no position change — position was never touched before AUTHED)
-**And** for each session, retrieve the associated `orders` record by `clOrdID`  
-**And** `orders` record not found → order was never inserted → session `FAILED` (no position change needed)  
-**And** `orders.status == NEW` (inserted but Order Book not matched, FEP not called) → session `FAILED`, cancel order (no position was touched)  
-**And** `orders.status == FILLED` (executions + positions already updated atomically) → **Re-query FEP status** `GET /fep/v1/orders/{clOrdID}/status`:  
-  - FEP `ACCEPTED` → session `COMPLETED`, `external_sync_status=CONFIRMED` (positions already correct — no additional update needed)  
-  - FEP `REJECTED` / `UNKNOWN` / HTTP 5xx → `external_sync_status=FAILED`, session `ESCALATED` (FR-23, 수동 replay/requery 대상)  
-**When** recovery scheduler re-queries FEP status  
-**Then** FEP Gateway `GET /fep/v1/orders/{clOrdID}/status` → returns original processing result
-**And** if `clOrdID` not in FEP Gateway → returns `UNKNOWN` → keep canonical fill + session `ESCALATED`
-**Given** Recovery scheduler idempotency guarantee  
-**When** scheduler runs twice for same EXECUTING session  
-**Then** acquire Redis `SET ch:recovery-lock:{sessionId} NX EX 120` before processing — skip if already processing  
-**And** delete lock key after recovery completion
+**Acceptance Highlights:**
 
-**Given** `PENDING_NEW` session expired (TTL 600s passed, Redis key expired)  
-**When** scheduler runs  
-**Then** update DB status to `EXPIRED` (no position change — position was never touched before AUTHED)
+- Order-session create API persists TTL, ownership metadata, and authorization-decision payload
+- Low-risk orders may return immediately as `AUTHED`
+- Status query returns the current state for the owning member only
+- Non-owner access fails with deterministic forbidden semantics
+- Expired sessions return the documented expired or not-found contract
 
-**Given** `OrderSessionRecoveryServiceTest` (Unit test + WireMock FEP stub)  
-**When** mock injection of EXECUTING session > 30s  
-**Then** Case A: WireMock FEP Gateway stub → `ACCEPTED` → verify positions unchanged (already atomically committed before FEP call) + verify `COMPLETED`
-**And** Case B: WireMock FEP Gateway stub → `REJECTED` → no reversal + verify `ESCALATED`
-**And** Case C: WireMock FEP Gateway stub → HTTP 500 → no reversal + verify `ESCALATED`
-**And** strict idempotency: second scheduler call verifies FEP stub not called again
+### Story 4.2: [BE][CH] Risk-Based Order Authorization Policy
+
+As an **authenticated order initiator**,
+I want the system to require extra verification only when order risk warrants it,
+So that UX friction is reduced without weakening high-risk order protection.
+
+**Depends On:** Story 4.1, Story 1.2
+
+**Acceptance Highlights:**
+
+- Low-risk contexts auto-advance to `AUTHED` without additional per-order verification
+- Elevated-risk contexts require TOTP step-up before execution may proceed
+- Verify endpoint succeeds only inside the allowed time and attempt window
+- Debounce prevents rapid duplicate verification from consuming attempts incorrectly
+- Same-window TOTP replay is rejected deterministically
+- Max-attempt exhaustion fails the session and blocks execution
+
+### Story 4.3: [BE][CH] FSM Transition Governance
+
+As a **domain owner**,
+I want explicit order-session transition rules,
+So that invalid state progression cannot occur.
+
+**Depends On:** Story 4.2
+
+**Acceptance Highlights:**
+
+- Only documented transitions are accepted by the domain model
+- Invalid transitions fail with deterministic conflict or validation semantics
+- Status and timestamps are persisted consistently on valid transition
+- Serialized status responses honor status-specific optional-field contracts
+
+### Story 4.4: [FE] Web Order Step A/B
+
+As a **web user**,
+I want step-based order input and clear authorization guidance,
+So that order setup is clear and only risky orders interrupt me with extra verification.
+
+**Depends On:** Story 4.1, Story 2.4
+
+**Acceptance Highlights:**
+
+- Web step A submits symbol and quantity through the order-session initiation API
+- Client-side and server-side validation errors remain visible and actionable
+- `challengeRequired=true` activates step-up guidance with clear reason text
+- `challengeRequired=false` with `status=AUTHED` skips directly to confirmation
+- API and network failures preserve retry guidance instead of dead-end states
+
+### Story 4.5: [FE] Web Conditional Step-Up + Step C
+
+As a **web user**,
+I want conditional additional verification and order execution result screens,
+So that I can complete order execution with clear status feedback.
+
+**Depends On:** Story 4.2, Story 4.3, Story 4.4
+
+**Acceptance Highlights:**
+
+- Required web step-up transitions to confirmation only after valid TOTP succeeds
+- Low-risk orders already in `AUTHED` bypass the extra verification step cleanly
+- Invalid, expired, or replayed codes map to deterministic error guidance
+- Execution-in-progress state reflects updates through polling or SSE
+- Final states render ClOrdID and failure reason conditionally
+
+### Story 4.6: [MOB] Mobile Order Step A/B
+
+As a **mobile user**,
+I want order input and authorization guidance on mobile,
+So that I can initiate orders with the same risk-aware behavior as web.
+
+**Depends On:** Story 4.1, Story 2.5
+
+**Acceptance Highlights:**
+
+- Mobile step A creates the order session and advances into the authorization flow
+- Invalid symbol and quantity input show contextual error indicators
+- Challenge-required sessions preserve remaining-session context when navigating to step-up
+- Auto-authorized sessions skip directly to confirmation
+- Flow state restores predictably after interruption or return
+
+### Story 4.7: [MOB] Mobile Conditional Step-Up + Step C
+
+As a **mobile user**,
+I want conditional additional verification and order execution result flow on mobile,
+So that complete order execution experience is parity with web.
+
+**Depends On:** Story 4.2, Story 4.3, Story 4.6
+
+**Acceptance Highlights:**
+
+- Required mobile step-up advances only after valid TOTP succeeds
+- Already authorized low-risk sessions move directly to confirmation
+- Step-up and execution errors preserve mapped action guidance
+- Final result states render ClOrdID and failure reasons consistently
+- App background or foreground recovery restores the current order-session state
+
+### Story 4.8: [FE/MOB] Cross-Client Authorization FSM Parity Validation
+
+As a **product quality owner**,
+I want FE and MOB FSM behavior parity,
+So that one client does not diverge from core order rules.
+
+**Depends On:** Story 4.5, Story 4.7
+
+**Acceptance Highlights:**
+
+- The same scenario sequence yields equivalent FE and MOB state transitions
+- The same backend error codes preserve aligned severity and action semantics
+- Regression validation protects parity continuously in CI
 
 ---
 
-## Story 4.4: Frontend — Order Confirm, Processing & Result (Step C)
+## Shared Contracts
 
-As an **authenticated user who passed OTP verification**,  
-I want to review order details before final confirmation and see the execution result immediately,  
-So that I can verify accuracy and receive proof of order execution.
+### Risk Signals
 
-**Depends On:** Story 2.3 (Step B 완료 → AUTHED), Story 4.1
+The order-authorization policy may consider:
 
-### Acceptance Criteria
+- `lastMfaVerifiedAt` age from the authenticated session
+- trusted device or browser continuity
+- IP or network change since login
+- recent password change or MFA recovery event
+- order notional amount, quantity, or unusual behavioral burst
 
-**Given** FSM step `'CONFIRM'` after OTP verification success  
-**When** Step C renders  
-**Then** order summary card displayed: symbol (종목코드), side (매수/매도), qty (수량), price (단가, ₩ format), estimated total (qty × price, ₩ format), "Would you like to execute the order?" message  
-**And** `data-testid="order-confirm-btn"` (Execute) + `data-testid="order-cancel-btn"` (Cancel)
+### Redis Keys
 
-**Given** "Execute Order" button clicked  
-**When** `POST /api/v1/orders/sessions/{sessionId}/execute` calling  
-**Then** FSM `{ type: 'EXECUTING' }` → `data-testid="order-processing-msg"`: "Processing your order. Please wait."  
-**And** buttons completely disabled (prevent double-click)
+- `ch:order-session:{sessionId}`: order-session TTL, default `600s`
+- `ch:otp-attempts:{sessionId}`: bounded conditional step-up attempts
+- `ch:otp-attempt-ts:{sessionId}`: debounce guard for rapid verify submit
+- `ch:totp-used:{memberId}:{windowIndex}:{code}`: same-window replay prevention
 
-**Given** success response (HTTP 200 COMPLETED)  
-**When** response received  
-**Then** FSM `{ type: 'COMPLETED', result }` → Result screen displayed  
-**And** `data-testid="order-ref"`: order reference ID (`orderId`) displayed (FR-25)  
-**And** `data-testid="executed-qty"`: executed quantity (e.g., "60주 체결") displayed  
-**And** `data-testid="executed-price"`: executed unit price (₩ format) displayed  
-**And** `data-testid="position-qty"`: current position quantity after execution displayed (FR-48)  
-**And** `data-testid="position-qty"` value ≥ 0 (NFR-D1: over-sell impossible)
+### API Notes
 
-**Given** BUY: insufficient cash (re-validation on execute, HTTP 422 ORD-001)  
-**When** error response  
-**Then** `data-testid="order-error-msg"`: "주문 가능한 현금이 부족합니다." + [처음으로] button
+- `POST /api/v1/orders/sessions` creates the session and returns authorization-decision metadata
+- `GET /api/v1/orders/sessions/{sessionId}` exposes current state to the owner only
+- `POST /api/v1/orders/sessions/{sessionId}/otp/verify` exists only when `challengeRequired=true`
+- `POST /api/v1/orders/sessions/{sessionId}/execute` remains downstream and requires `status=AUTHED`
 
-**Given** SELL: insufficient position qty (re-validation on execute, HTTP 422 ORD-003)  
-**When** error response  
-**Then** `data-testid="order-error-msg"`: "보유 수량이 부족합니다." + [처음으로] button
+### UX Contract
 
-**Given** FEP timeout (HTTP 504, code: "FEP-002")
-**When** error response
-**Then** `data-testid="fep-timeout-msg"`: "거래소 응답 확인이 지연되고 있습니다. 주문 상태 화면에서 최종 결과를 확인해 주세요."
+- FE and MOB both preserve the same meaning for `challengeRequired`
+- Extra verification is conditional, not universal
+- Low-risk auto-authorized users should not see misleading “OTP completed” messaging
+- Refresh, resume, and background return paths must restore the correct FSM state rather than restarting the flow blindly
 
-**Given** FEP order rejected by exchange (HTTP 400, code: "FEP-003")
-**When** error response
-**Then** `data-testid="fep-reject-msg"`: "거래소 확인 결과가 불확실하여 수동 확인이 필요합니다. 주문 상태 화면에서 최종 결과를 확인해 주세요."
+---
 
-**Given** FEP Circuit Breaker OPEN (HTTP 503, code: "FEP-001")
-**When** error response
-**Then** `data-testid="cb-fallback-msg"`: "현재 거래소 연결이 원활하지 않습니다. (서킷 브레이커 작동 중) 보유 수량은 변동되지 않았습니다."
+## Cross-Epic Handoffs
 
-**Given** order result screen  
-**When** "Confirm" button clicked  
-**Then** close Modal + refresh DashboardPage positions (`GET /api/v1/accounts/{accountId}/positions`)
+- **Epic 1 -> Epic 4:** Epic 1 provides login MFA context, recovery signals, and session-security guarantees consumed by risk evaluation
+- **Epic 2 -> Epic 4:** Epic 2 provides account and position inquiry context used during order initiation
+- **Epic 4 -> Epic 5:** Epic 5 consumes `AUTHED` as the execution precondition and must not re-own authorization logic
+- **Epic 4 -> Epic 8:** Validation must cover both low-risk bypass and elevated-risk step-up paths
+- **Epic 4 -> Epic 10:** Release gates must prove required step-up failure blocks execution deterministically
 
-**Given** Step B (OTP Input) entry saving session  
-**When** immediately after FSM `SESSION_CREATED` dispatch  
-**Then** `sessionStorage.setItem('lastOrderSessionId', sessionId)` stored
+## Working Rule
 
-**Given** browser tab closed and reopened (session recovery, FR-18)  
-**When** `DashboardPage` mounts (`useEffect`)  
-**Then** `sessionStorage.getItem('lastOrderSessionId')` checked  
-**And** if key exists, call `GET /api/v1/orders/sessions/{sessionId}`
-**And** Status `COMPLETED` → Auto-show result Modal + delete key  
-**And** Status `FAILED` → Show failure Modal  
-**And** Status `PENDING_NEW` + `remainingSeconds > 0` → "Previous order is pending. Continue?" popup  
-**And** Status 404 (Expired) or 403 → Delete key, no UI shown
+Use the `4.x` story files as the primary delivery units for Epic 4.
+Use this document for shared session-model, FSM, and cross-epic contract alignment.
+If `epic-2-order-session-and-otp.md` still appears in historical context, treat it as overlapping legacy narrative rather than the primary Epic 4 execution source.

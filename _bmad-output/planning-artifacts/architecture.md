@@ -34,7 +34,7 @@ Six capability domains, all implemented in `channel-service` unless noted:
 | ------------- | --------------------------------------------------------------------------------------------------------------------- |
 | Auth          | Login/logout, Redis session externalization, forced session invalidation (admin), session TTL enforcement             |
 | Portfolio     | Authenticated position list with masked account numbers, available cash, position detail per symbol                   |
-| Orders        | 3-phase state machine: Prepare → OTP Verify → Execute; Order Book matching (CoreBanking); FEP Gateway routing (FIX 4.2) |
+| Orders        | 3-phase state machine: Prepare → Authorization Decision / Conditional Step-Up → Execute; Order Book matching (CoreBanking); FEP Gateway routing (FIX 4.2) |
 | Notification  | SSE `EventSource` stream — order execution results, position updates, security alerts; session-expiry push event      |
 | Admin         | Force-logout (Redis bulk purge), audit log query (`ROLE_ADMIN` only)                                                  |
 | Observability | Structured JSON logs, W3C `traceparent` propagation, Prometheus scrape + Grafana dashboards, Actuator health/circuit breaker exposure |
@@ -43,7 +43,7 @@ Six capability domains, all implemented in `channel-service` unless noted:
 
 1. Stock order E2E happy path (Buy → Order Book → FEP FILLED)
 2. Concurrent sell (10 threads × 100 shares on 500-share position) → exactly 5 FILLED, available_qty = 0
-3. OTP failure blocks order execution
+3. Required step-up failure blocks order execution
 4. Duplicate `ClOrdID` → idempotent result
 5. FEP timeout → circuit breaker OPEN after 3 failures
 6. Session invalidated after logout → 401 on next call
@@ -55,7 +55,7 @@ Six capability domains, all implemented in `channel-service` unless noted:
 | ------------------------------------- | ----------------------------------------------------- | ------------------------------------------------------- |
 | #1 E2E happy path                     | `@SpringBootTest` + MockMvc + Testcontainers          | Full channel→core→fep-gateway→fep-simulator wiring required |
 | #2 Concurrent sell (10 threads)       | Testcontainers + `ExecutorService` + `CountDownLatch` | Real InnoDB `select ... for update` on position row     |
-| #3 OTP failure blocks                 | Unit test, `OrderSessionService`                      | Pure state machine logic, no I/O                        |
+| #3 Required step-up failure blocks    | Unit test, `OrderSessionService`                      | Pure state machine and policy logic, no I/O             |
 | #4 ClOrdID idempotency                | Integration, real MySQL                               | `UNIQUE INDEX` behavior requires real engine            |
 | #5 Circuit breaker OPEN               | Integration + WireMock/FEP stub                       | Resilience4j sliding window config validation           |
 | #6 Session invalidated                | Integration, real Redis                               | Key deletion + `SETNX` behaviour requires real Redis    |
@@ -67,13 +67,13 @@ Six capability domains, all implemented in `channel-service` unless noted:
 | --------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | Concurrency                 | `SELECT FOR UPDATE` on `(account_id, symbol)` position writes                            | Pessimistic lock on position entity (EAGER mode); cross-symbol isolation must hold (005930 and 000660 can execute in parallel) |
 | Concurrent session race     | `AUTHED→EXECUTING` state transition must be atomic                                       | Redis `SET ch:txn-lock:{sessionId} NX EX 30` before CoreBanking call; `NX` failure → `ORD-010`      |
-| Security                    | HttpOnly + Secure + SameSite cookie, CSRF Synchronizer Token, PII masking, step-up OTP | Spring Security + `HttpSessionCsrfTokenRepository` + CSRF bootstrap `GET /api/v1/auth/csrf` + non-GET `X-CSRF-TOKEN` + `AccountNumber.masked()` in `channel-common` |
+| Security                    | HttpOnly + Secure + SameSite cookie, CSRF Synchronizer Token, PII masking, mandatory login MFA + risk-based order step-up | Spring Security + `HttpSessionCsrfTokenRepository` + `AuthenticationProvider` for password + TOTP login, CSRF bootstrap `GET /api/v1/auth/csrf` + non-GET `X-CSRF-TOKEN` + `AccountNumber.masked()` in `channel-common` |
 | Resilience                  | Circuit breaker OPEN after 3 FEP timeouts (Resilience4j `slidingWindowSize=3`); post-commit failure escalates external sync state | **단일 CB 레이어**: Resilience4j `@CircuitBreaker(name="fep")` on `FepClient` in **corebank-service** — `slidingWindowSize=3`, `failureRateThreshold=100`, `waitDurationInOpenState=10s`. CB OPEN preemptive: no `@Transactional`, no order record, no position change. Post-commit FEP failure: canonical fill 유지 + `external_sync_status=FAILED/ESCALATED`, `OrderSession=ESCALATED` for replay/requery recovery. CB state: `localhost:8081/actuator/circuitbreakers` |
 | Idempotency                 | `ClOrdID` UNIQUE at DB level                                                             | `UNIQUE INDEX idx_clordid (cl_ord_id)` in `core_db.orders`                                          |
 | Execution source of truth   | Local CoreBanking Order Book match is canonical in simulator mode                        | `executions`/`positions` are committed from local matcher; FEP `ExecutionReport` used for confirmation/recovery only |
 | Market Data                 | `LIVE` / `DELAYED` / `REPLAY` source modes with quote freshness bound                    | `quoteSnapshotId` + `quoteAsOf` + `quoteSourceMode` required for MARKET pre-check and valuation; stale snapshots are rejected deterministically |
 | Observability (Demo)        | Grafana dashboard + selected Actuator endpoints for drill/demo                            | Grafana panels (execution/pending/latency) are primary; `circuitbreakers` + `health` remain accessible for targeted drill evidence |
-| Rate Limiting               | Login: 5 req/min/IP; OTP: 3/session; Order Prepare: 10 req/min/userId                   | Bucket4j + Redis-backed `Filter` on 3 endpoints only                                                |
+| Rate Limiting               | Login: 5 req/min/IP; Login MFA: 5/account; Order Step-Up Verify: 3/session; Order Prepare: 10 req/min/userId | Bucket4j + Redis-backed `Filter` on auth and order-authorization endpoints only                     |
 | Test Coverage               | CoreBanking ≥ 80%, Channel ≥ 70%, FEP Gateway ≥ 60%, FEP Simulator ≥ 60%                 | JaCoCo in Gradle; real MySQL + Redis via Testcontainers (H2 disqualified for runtime/integration, OpenAPI generation-only profile exception) |
 | Cold Start (Demo Guarantee) | `docker compose up` → first API call ≤ 120s (Vault + vault-init initialization accounts for extended window vs. non-Vault baseline) | `depends_on: condition: service_healthy` mandatory; Flyway DDL targeting < 3s total migration time  |
 
@@ -118,7 +118,7 @@ Six capability domains, all implemented in `channel-service` unless noted:
 | Internal API secret      | Service-to-service                   | `X-Internal-Secret` header validated by `OncePerRequestFilter` (copy-paste MVP); `INTERNAL_API_SECRET` env var                                                                                                                                                                                                                                                                              |
 | Saga ownership           | Channel ↔ CoreBanking                | **Channel-service is the saga orchestrator** — owns `OrderExecutionService`, calls CoreBanking execute, and on FEP failure drives `ESCALATED` replay/requery workflow; CoreBanking executes Order Book + position mutation atomically                                                                                                                                                                |
 | Audit logging            | Channel layer                        | `audit_logs` + `security_events` tables; scheduled purge (90/180 days)                                                                                                                                                                                                                                                                                                                      |
-| Rate limiting            | Channel layer                        | Bucket4j Filter on 3 endpoints only (login, OTP verify, order prepare)                                                                                                                                                                                                                                                                                                                   |
+| Rate limiting            | Channel layer                        | Bucket4j Filter on auth and order-authorization endpoints only (login, login MFA verify, order prepare, conditional order step-up verify)                                                                                                                                                                                                                                               |
 | CSRF                     | Channel ↔ React/Mobile               | Synchronizer Token (`HttpSessionCsrfTokenRepository`); bootstrap endpoint `GET /api/v1/auth/csrf`에서 토큰 수령 후 모든 non-GET 요청에 `X-CSRF-TOKEN` 주입; 로그인 성공 후 `changeSessionId()` 이후 CSRF 토큰 재조회 필수 |
 | SSE lifecycle            | Channel ↔ Frontend                   | SSE endpoint is session-aware push channel; backend must push session-expiry event proactively before TTL expires; CORS `allowCredentials=true` must explicitly cover `/api/v1/notifications/stream`; production (cross-origin Vercel→EC2): `allowCredentials=true` + exact origins required (`fix-xxx.vercel.app`, `localhost:5173`); `EventSource({ withCredentials: true })` on frontend |
 | Demo infrastructure      | Actuator + FEP chaos                 | `circuitbreakers` + `health` accessible without auth for screenshare; `PUT /fep-internal/rules` robustly designed (chaos endpoint is a demo use case, not test-only)                                                                                                                                                                                                                       |
@@ -142,7 +142,7 @@ _Decisions that look like shortcuts but are deliberate, with the production path
 | ------------------------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
 | `X-Internal-Secret` copy-pasted across 3 internal services | ~60 lines total; shared library adds Gradle publishing complexity with zero callers | Extract to `core-common` library post-MVP; `// TODO` comment marks each copy           |
 | No `NotificationPublisher` interface abstraction  | Kafka is vision-phase; pre-building the interface adds speculative code with no caller | Add interface when Kafka is scoped; `NotificationService` → refactor boundary is clean |
-| TOTP (Google Authenticator RFC 6238) instead of SMS OTP | Real-world 2FA UX; no telephony costs; TOTP secret in Vault (NFR-grade key management); `OtpService` interface preserved for replaceability | Replace `TotpOtpService` with HSM-backed TOTP provider; Vault integration unchanged |
+| TOTP (Google Authenticator RFC 6238) instead of SMS OTP | Real-world 2FA UX; no telephony costs; mandatory login MFA plus conditional order step-up; TOTP secret in Vault (NFR-grade key management); `OtpService` interface preserved for replaceability | Replace `TotpOtpService` with HSM-backed TOTP provider; Vault integration unchanged |
 | Synchronous REST between services                 | No Kafka needed for 4-backend-service MVP; simpler to reason about and debug during demo | Add Outbox pattern + Kafka when event streaming is scoped                              |
 | TLS Credential management (TLS_CERT/LOGON_PASSWORD/ADMIN_TOKEN) in `fep-gateway` | Real PKI/CA infrastructure adds external dependency; DB-managed credential store demonstrates the FIX 4.2 session security pattern (자격증명 생성·갱신·만료 관리) without external CA; `CredentialService` interface preserved for replaceability | Swap `LocalCredentialService` with real PKI/CA integration; `fep_security_keys` 테이블 구조 유지 |
 | `fep-simulator` `simulator_rules` 5-action rule engine | `simulator_rules` 테이블(APPROVE/DECLINE/IGNORE/DISCONNECT/MALFORMED_RESP + TTL + 금액/Symbol 매칭)은 단순 3-param mock을 넘어 실제 FEP 장애 유형을 시뮬레이션 — "단순 mock이 아니라 프로토콜 레벨 장애 패턴을 이해한다"는 포트폴리오 신호 | 규칙 엔진 범위는 MVP 완성 후 확장 가능 (Symbol-prefix 매칭, 시간대 스케줄 등) |
@@ -155,7 +155,7 @@ _Primary framing device for interviewer objections. Each boundary documented as:
 
 | Real Component          | FIX Simulator                                        | Interface Contract                                                            | Production Delta                                                | Talking Point                                              |
 | ----------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------- |
-| SMS OTP delivery gateway | TOTP via Google Authenticator (RFC 6238); secret in Vault `secret/fix/member/{memberId}/totp-secret` | `OtpService.generateSecret()` / `OtpService.confirmEnrollment()` / `OtpService.verify()` | Add SMS gateway if required; TOTP secret optionally from HSM; Vault stays | "I chose TOTP: stronger 2FA, zero telephony cost, Vault key management" |
+| SMS OTP delivery gateway | TOTP via Google Authenticator (RFC 6238); secret in Vault `secret/fix/member/{memberId}/totp-secret` | `OtpService.generateSecret()` / `OtpService.confirmEnrollment()` / `OtpService.verify()` | Add SMS gateway if required; TOTP secret optionally from HSM; Vault stays | "I chose TOTP for mandatory login MFA and only trigger extra order verification when risk signals justify it" |
 | KRX FEP gateway (FIX 4.2)  | **FEP Gateway** (`fep-gateway:8083`) + **FEP Simulator** (`fep-simulator:8082`) — Gateway는 시세 수신(LIVE/DELAYED/REPLAY)과 가상 체결 엔진 연계를 담당하고, FIX 4.2 변환·라우팅·키 관리도 담당; LIVE 시세 공급자는 KIS Open API WebSocket(`H0STCNT0`)을 사용하고, approval-key 발급(`/oauth2/Approval`) + `encFlag|trId|count|payload` 프레임 파서를 가진다 | `POST /fep/v1/orders` (JSON/HTTP, CoreBanking→Gateway) + quote snapshot contract (`quoteSnapshotId`, `quoteAsOf`, `quoteSourceMode`) → Gateway가 FIX 4.2 `NewOrderSingle(35=D)` 변환/전송 → Simulator 응답 `ExecutionReport(35=8)` | FEP Gateway의 `fep_institutions.host/port`를 실제 KRX 기관 IP로 교체; 시장데이터 공급원만 실거래소 벤더로 교체하면 상위 도메인 계약 유지 | "모의투자에서는 대외계 핵심이 시세 + 가상체결이다. 실거래 연계로 바꿔도 인터페이스 계약은 유지된다" |
 | KSD (예탁결제원) settlement | Not implemented                                      | Documented boundary in README                                                 | Add `SettlementService` at post-execution step                          | "Settlement boundary is explicit and documented"           |
 | 공인인증서 (공동인증서) | Spring Security session cookie                       | `AuthenticationProvider` interface                                            | Swap `AuthenticationProvider` implementation for PKI provider           | "Spring Security abstracts the trust anchor"               |
@@ -244,7 +244,7 @@ testImplementation "org.testcontainers:junit-jupiter:${versions.testcontainers}"
 | Decision    | Value                                             |
 | ----------- | ------------------------------------------------- |
 | Web layer   | Spring MVC (servlet stack) — `SseEmitter` for SSE |
-| Security                    | HttpOnly + Secure + SameSite cookie, CSRF Synchronizer Token, PII masking, step-up OTP | Spring Security + `HttpSessionCsrfTokenRepository` + CSRF bootstrap `GET /api/v1/auth/csrf` + non-GET `X-CSRF-TOKEN` + `AccountNumber.masked()` in `channel-common` |
+| Security                    | HttpOnly + Secure + SameSite cookie, CSRF Synchronizer Token, PII masking, mandatory login MFA + risk-based order step-up | Spring Security + `HttpSessionCsrfTokenRepository` + `AuthenticationProvider` for password + TOTP login + CSRF bootstrap `GET /api/v1/auth/csrf` + non-GET `X-CSRF-TOKEN` + `AccountNumber.masked()` in `channel-common` |
 | Session     | Spring Session Redis (`@EnableRedisHttpSession`)  |
 | Data access | Spring Data JPA + Hibernate 6.x                   |
 | Migrations  | Flyway auto-run on startup                        |
@@ -587,7 +587,7 @@ Long todaySellQty = orderRepository.sumTodaySellQty(accountId, symbol);         
 - ✅ Prevents phantom reads on `available_qty` field under concurrent load — TC-ORD-08 (`10 threads × SELL 100주 on 500주 position`) provable with real InnoDB: exactly 5 FILLED, `available_qty = 0`
 - ✅ QueryDSL daily-sell-limit runs inside lock scope — no phantom sell aggregation
 - ❌ Under extreme contention (thousands of concurrent sell orders on same symbol), throughput degrades linearly — acceptable for portfolio scale; documented in README
-- ❌ `@Version` optimistic retry would force OTP re-entry on conflict — unacceptable UX in securities order flow (30–120s user cost per retry)
+- ❌ `@Version` optimistic retry would force repeated additional verification on conflict — unacceptable UX in securities order flow (30–120s user cost per retry)
 - **Interview talking point:** _"낙관적 락은 여기에서 잘못된 선택이다 — 재시도 비용은 주문 재인증(OTP)이지 밀리초 백오프가 아니다. 도메인의 레이턴시 허용치에 맞는 락을 선택했다."
 
 ---
@@ -687,9 +687,9 @@ Regex: `^(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$`
 
 Error code: `AUTH-007 PASSWORD_POLICY_VIOLATION`. Applied via `@Pattern` on `LoginRequest.password` DTO field. Seed passwords (`Test1234!`, `Admin1234!`) comply.
 
-**RULE-015 — OTP attempt debounce**
+**RULE-015 — Order step-up attempt debounce**
 
-Before consuming an OTP attempt: `SET ch:otp-attempt-ts:{orderSessionId} NX EX 1`. If key exists → return HTTP 429 `RATE-001` without decrementing attempt counter. Prevents accidental lockout from rapid auto-submit (UX spec: 6-digit auto-submit on completion).
+Before consuming a required order step-up attempt: `SET ch:otp-attempt-ts:{orderSessionId} NX EX 1`. If key exists → return HTTP 429 `RATE-001` without decrementing attempt counter. Prevents accidental lockout from rapid auto-submit when an elevated-risk order triggers the challenge.
 
 **RULE-008 — X-Internal-Secret filter (conscious duplication)**
 
@@ -1276,12 +1276,12 @@ export const formatKRW = (amount: number): string =>
 // ❌ 금지: 서버에서 포맷된 문자열 수신 (숫자로 받아서 클라이언트 포맷)
 ```
 
-### RULE-029: OTP 입력 UX 패턴
+### RULE-029: Conditional Step-Up 입력 UX 패턴
 
 ```tsx
 // 1. 6개 별도 <input maxLength={1}> 박스 — aria-label="Authentication code digit {n}"
 // 2. 각 박스에서 숫자 외 입력 즉시 차단 (onKeyDown에서 preventDefault)
-// 3. 마지막 자리 입력 시 자동 제출 (OTP auto-submit, Story 2.3 AC)
+// 3. 마지막 자리 입력 시 자동 제출 (conditional step-up auto-submit)
 // 4. 붙여넣기 허용 (onPaste에서 숫자만 추출하여 각 박스 배분)
 // 5. 1초 debounce는 서버 측 — 프론트는 박스 disable만 담당
 ```

@@ -30,7 +30,7 @@ The UI is not an end-user product. It is a structured portfolio artifact where e
 Technical expert. Uses the 5-screen React app during live screenshare (~5 min demo window) to narrate architectural decisions. Needs: smooth flow without unexpected errors, Korean securities vocabulary to drive narrative, and ability to trigger error states on demand to demonstrate resilience patterns.
 
 **Securities Firm Interviewer Track — Evaluator A (Bank-affiliated: KB증권/신한투자증권)**
-Mental model: "이 시스템이 리테일 증권사 내부 시스템처럼 보이는가?" Looks for: Korean-language order error messages, masked account numbers (계좌번호 마스킹), step-up OTP UI, Order Book 체결 로직, KRX/금융투자협회 준수 구조. Success signal: recognizes the 체널계/계정계/대외계 3계층 아키텍처 vocabulary used at Korean bank-affiliated securities firms.
+Mental model: "이 시스템이 리테일 증권사 내부 시스템처럼 보이는가?" Looks for: Korean-language order error messages, masked account numbers (계좌번호 마스킹), mandatory login MFA and conditional order step-up UI, Order Book 체결 로직, KRX/금융투자협회 준수 구조. Success signal: recognizes the 체널계/계정계/대외계 3계층 아키텍처 vocabulary used at Korean bank-affiliated securities firms.
 
 **FinTech Interviewer Track — Evaluator B**
 Mental model: "Is this well-engineered React?" Looks for: clean component structure, CI badge passing, GitHub Pages API Docs accessible at `https://<org>.github.io/<repo>/`, SSE EventSource visible in Network tab, no Document-type requests during modal transitions. Success signal: can independently verify architectural claims within 5 minutes using Browser DevTools.
@@ -149,7 +149,7 @@ Target platform: React Web (SPA), desktop browser, local Docker Compose environm
 | ------------------------------- | -------------------------- | ----------------------------------- | --------------------------------------------- |
 | Pessimistic locking (포지션 동시체결) | Order Flow C            | 보유수량 일관성 — 음수 발생 없음    | `[data-testid="position-qty-after"]` ≥ 0      |
 | Order Book 체결 + Position Ledger | Order Flow C            | ClOrdID + FILLED + 포지션 업데이트 | `[data-testid="order-clordid"]` 존재           |
-| Step-up OTP authentication      | Order Flow B            | OTP 입력 단계가 주문 실행 전 강제됨 | `[data-testid="otp-input"]` 존재              |
+| Conditional order step-up      | Order Flow B            | 위험 신호가 있을 때만 추가 인증 단계가 표시됨 | `[data-testid="otp-input"]` 존재              |
 | Session security                | 세션 만료 에러             | 401 → 로그인 화면 redirect          | URL = `/login`                                |
 | FEP Gateway CB (기관별 임계치)  | Order Flow C (FEP 장애) | RC=9098 fallback 메시지 즉시 표시 + `/actuator/circuitbreakers`에서 OPEN 상태 확인 가능 | `[data-testid="cb-fallback-msg"]`             |
 | FIX 4.2 프로토콜 변환          | Order Flow C (완료)     | trace ID + FEP Gateway `fep_order_log` 연결 — FinTech interviewer가 "FIX 4.2 뉴오더싱글 필드 변환이 보이네"를 인지 | `[data-testid="order-trace-id"]` 존재      |
