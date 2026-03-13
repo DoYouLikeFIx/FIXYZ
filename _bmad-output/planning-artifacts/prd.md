@@ -190,7 +190,7 @@ All seven must pass in CI before the MVP is considered complete:
 
 **Persona:** Jisu, 28, is a retail investor using a KB-style web HTS (Home Trading System). She wants to buy 100 shares of a listed stock.
 
-**Opening Scene:** Jisu opens the FIX web app on her laptop. She logs in with her credentials, the session is established immediately, and the Portfolio View loads with her current cash balance and no existing holdings.
+**Opening Scene:** Jisu opens the FIX web app on her laptop. She completes password + current TOTP login MFA, a protected session is issued, and the Portfolio View loads with her current cash balance and no existing holdings.
 
 **Rising Action:** She opens order entry, selects Buy, enters symbol `005930`, quantity `100`, and limit price `5,000`. The Prepare step checks available cash against CoreBanking, detects insufficient funds, and forces her to lower the quantity to `60`. The second prepare attempt succeeds, returns an `orderSessionId`, stores the session in Redis with a 10-minute TTL, and advances the UI to Step B.
 
@@ -198,7 +198,7 @@ All seven must pass in CI before the MVP is considered complete:
 
 **Resolution:** The UI shows a successful fill message including the order number, executed price, and quantity. The trace ID is visible for debugging, and within 2 seconds an SSE notification confirms that symbol `005930` was filled at `5,000`.
 
-**Capabilities Revealed:** Session management, TOTP step-up auth, the order state machine (`NEW -> FILLED`), Order Book price-time priority matching, FIX 4.2 message exchange, position locking, SSE notification, and distributed trace IDs.
+**Capabilities Revealed:** Session management, mandatory password+TOTP login MFA, conditional order TOTP step-up, the order state machine (`NEW -> FILLED`), Order Book price-time priority matching, FIX 4.2 message exchange, position locking, SSE notification, and distributed trace IDs.
 
 ---
 
@@ -206,7 +206,7 @@ All seven must pass in CI before the MVP is considered complete:
 
 **Persona:** The same user, Jisu, is now attempting to sell 50 shares of `005930`.
 
-**Opening Scene:** She follows the same login flow, selects Sell, chooses a market order for 50 shares, completes Prepare successfully, and passes OTP verification so that the order session reaches `AUTHED`.
+**Opening Scene:** She follows the same password + current TOTP login MFA flow, selects Sell, chooses a market order for 50 shares, completes Prepare successfully, and passes the conditional OTP verification only if the order session requires step-up so that the session reaches `AUTHED`.
 
 **Rising Action:** On Execute, Channel calls CoreBanking while the simulator has already been configured to force timeouts using `PUT /fep-internal/rules { "action_type": "TIMEOUT", "delay_ms": 3000 }`. Three earlier timeouts have already exhausted the Resilience4j `slidingWindowSize=3` failure window.
 
@@ -260,7 +260,7 @@ The reviewer opens the GitHub repo, clicks the CI badge, confirms the concurrent
 | Capability | Revealed By Journey |
 | ---------- | ------------------- |
 | Session management (Redis externalization) | J1, J3, J4 |
-| TOTP step-up authentication | J1, J2 |
+| Mandatory login MFA + conditional TOTP step-up | J1, J2 |
 | Order-session state machine (`PENDING_NEW -> AUTHED -> EXECUTING -> COMPLETED / FAILED / ESCALATED / EXPIRED`) | J1, J2 |
 | Order Book price-time priority matching | J1 |
 | FIX 4.2 NewOrderSingle / ExecutionReport exchange | J1, J2 |
@@ -281,7 +281,7 @@ FIX is a **simulator**. It mirrors the control points and operational vocabulary
 
 | Real Securities Component | FIX Simulator Equivalent | Why This Is Sufficient for Interviews |
 | ------------------------ | ------------------------ | ------------------------------------- |
-| HSM-backed OTP device | TOTP via Google Authenticator (RFC 6238) with Vault-stored secret | Demonstrates step-up authentication and secret replaceability |
+| HSM-backed OTP device | TOTP via Google Authenticator (RFC 6238) with Vault-stored secret | Demonstrates mandatory login MFA, conditional step-up, and secret replaceability |
 | KRX FEP gateway (FIX 4.2 over leased line) | `fep-simulator` on port `8082` using QuickFIX/J SocketAcceptor | Demonstrates FIX 4.2 session handling and exchange fault tolerance |
 | KSD securities settlement | Not implemented | Explicitly out of MVP scope |
 | Regulatory reporting | Not implemented | Explicitly out of MVP scope |
@@ -296,7 +296,7 @@ Real KYC/AML integration, KRX/KSD live connectivity, and regulatory reporting ar
 
 | Standard | Application in FIX |
 | -------- | ------------------ |
-| OWASP Authentication Cheat Sheet | Step-up re-authentication (OTP) before order execution |
+| OWASP Authentication Cheat Sheet | Mandatory MFA at login plus re-authentication/step-up on elevated-risk order execution |
 | OWASP CSRF | Synchronizer Token (`HttpSessionCsrfTokenRepository` + `X-CSRF-TOKEN` header) |
 | OWASP Logging Cheat Sheet | No tokens, passwords, or raw PII in logs; account/member numbers masked to the last 4 digits |
 | Spring Security Cookie Guidance | `HttpOnly` + `Secure` + `SameSite` session cookie attributes |
@@ -305,9 +305,29 @@ Real KYC/AML integration, KRX/KSD live connectivity, and regulatory reporting ar
 
 ### OTP Lifecycle Specification
 
-The order flow uses a three-phase protocol with TOTP (RFC 6238) step-up authentication:
+The authenticated journey uses mandatory password+TOTP login MFA first, and the later order flow may add a conditional TOTP step-up challenge when risk policy requires it:
 
 ```text
+Phase 0A -> Password verification
+  POST /api/v1/auth/login
+  -> Validate email + password
+  -> Return short-lived `loginToken`
+  -> If already enrolled: `nextAction=VERIFY_TOTP`
+  -> If not enrolled: `nextAction=ENROLL_TOTP`
+  -> No protected session is issued at this stage
+
+Phase 0B -> Login MFA completion
+  If already enrolled:
+    POST /api/v1/auth/otp/verify
+    -> Validate `loginToken` + current TOTP
+    -> On success: issue Redis-backed session and persist MFA proof metadata (`lastMfaVerifiedAt`, related trust signals)
+  If not enrolled:
+    POST /api/v1/members/me/totp/enroll
+    -> Generate QR / manual entry bootstrap from the password-verified pre-auth state
+    POST /api/v1/members/me/totp/confirm
+    -> Enable TOTP and complete the first authenticated login
+  -> Until Phase 0B succeeds, service use remains blocked
+
 Phase 1 -> Prepare
   POST /api/v1/orders/sessions
   -> Validate available cash / available quantity against CoreBanking
@@ -534,7 +554,20 @@ Long todaySold = query
 | `AUTH-009` | TOTP enrollment required |
 | `AUTH-010` | Invalid TOTP confirm code |
 | `AUTH-011` | TOTP replay detected |
+| `AUTH-012` | Reset token invalid or expired |
+| `AUTH-013` | Reset token already consumed |
+| `AUTH-014` | Password recovery rate limit exceeded |
+| `AUTH-015` | New password equals current password |
+| `AUTH-016` | Stale session after password change |
 | `AUTH-017` | Email already exists |
+| `AUTH-018` | Login token expired or already consumed |
+| `AUTH-019` | MFA recovery proof or rebind token invalid or expired |
+| `AUTH-020` | MFA recovery proof or rebind token replayed or already consumed |
+| `AUTH-021` | MFA recovery required before login can continue |
+| `AUTH-022` | Recovery challenge proof invalid, expired, mismatched, or malformed |
+| `AUTH-023` | Recovery challenge bootstrap unavailable |
+| `AUTH-024` | Recovery challenge proof replayed or already consumed |
+| `AUTH-025` | Recovery challenge verify unavailable after solve |
 
 **CHANNEL - Channel Service:**
 
@@ -746,7 +779,7 @@ FinTech interviewer path
 | Monolith with no service separation | Four deployable services with clear Channel / CoreBanking / FEP boundaries |
 | Position modeled as a fragile running counter | `positions` + `executions` ledger model with derivable balance |
 | No concurrency proof | `TC-ORD-08` and `PositionIntegrityIntegrationTest` prove oversell protection |
-| Auth stops at JWT login | Spring Session + Redis + OTP step-up on order execution |
+| Auth stops at JWT login | Spring Session + Redis + mandatory password+TOTP login MFA plus conditional order step-up |
 | Resilience is claimed but not shown | Resilience4j circuit breaker is demoable through chaos injection and Actuator |
 | No exchange protocol knowledge | FIX 4.2 `NewOrderSingle` / `ExecutionReport` path implemented via QuickFIX/J |
 | README is only setup instructions | Dual-audience README with architecture, security, and demo paths |
@@ -1154,7 +1187,7 @@ The MVP is complete when every architectural claim in FIX is backed by a passing
 
 | Category | MVP Included |
 | -------- | ------------ |
-| Auth | Login, logout, Redis session, password recovery, OTP step-up, force logout |
+| Auth | Login (password+TOTP), TOTP enrollment, logout, Redis session, password recovery, conditional order step-up, force logout |
 | Orders | `sessions -> otp/verify -> execute` state machine |
 | Position | Atomic position update per execution |
 | Idempotency | `clOrdID` unique index + app-layer protection |
@@ -1282,7 +1315,7 @@ jobs:
 
 ### User Authentication & Session
 
-- **FR-01:** Registered user can authenticate with email and password credentials
+- **FR-01:** Registered user can authenticate with email, password, and current TOTP credentials before a protected session is issued
 - **FR-02:** Authenticated user can terminate their session (logout)
 - **FR-03:** System can maintain user session state across multiple requests without re-authentication
 - **FR-04:** User can retrieve their own identity and role information from an active session
@@ -1307,7 +1340,7 @@ jobs:
 - **FR-11:** Authenticated user can initiate an order (buy/sell) by specifying account, symbol, quantity, and side
 - **FR-12:** System can validate an order request against available position quantity before proceeding
 - **FR-13:** System can validate a SELL order request against the account's configured daily sell limit before proceeding
-- **FR-14:** System can validate a time-based one-time code submitted by the user during step-up authentication, using a pre-enrolled TOTP secret (RFC 6238, Google Authenticator-compatible)
+- **FR-14:** System can validate a time-based one-time code submitted by the user during login MFA or conditional order step-up authentication, using a pre-enrolled TOTP secret (RFC 6238, Google Authenticator-compatible)
 - **FR-15:** Authenticated user can submit a one-time code to advance a pending order to authorized state
 - **FR-16:** System can enforce a maximum number of OTP verification attempts per order session
 - **FR-17:** System can expire a pending order session after a configured time-to-live period
@@ -1375,7 +1408,7 @@ jobs:
 
 ---
 
-> **Traceability summary:** All 7 acceptance scenarios trace to FRs. All 4 User Journeys fully covered. The 5 baseline React screens remain designable from FRs alone, and the password recovery capability contract is included in the MVP auth surface. Dedicated FE/MOB password recovery UX follow-on stories in Epic 1 consume FR-57~61 without introducing additional FRs. No FR contains implementation details (HOW). Growth-scope capabilities (notification read/filter, admin UI, Keycloak) intentionally excluded.
+> **Traceability summary:** All 7 acceptance scenarios trace to FRs. All 4 User Journeys fully covered. The 5 baseline React screens remain designable from FRs alone, and the password recovery capability contract is included in the MVP auth surface. Dedicated FE/MOB password recovery UX follow-on stories in Epic 1 consume FR-57~61 without introducing additional FRs. Epic 1 follow-on MFA recovery/rebind scope (Story 1.14 / 1.15) is treated as auth-surface hardening that reuses the existing numbered contract across FR-01, FR-03, FR-05, FR-14, FR-33, FR-38, and FR-45; it therefore does not introduce a separate numbered FR, but its executable API/UX contract is fixed in the channel auth planning artifacts. Epic 1 follow-on real recovery-challenge hardening scope (Story 1.16 / 1.17 / 1.18 / 1.19) likewise reuses FR-57~61 as an auth-surface hardening rollout and does not introduce separate numbered FRs; its executable API, UX, and ops evidence contract is fixed in the channel auth planning artifacts. No FR contains implementation details (HOW). Growth-scope capabilities (notification read/filter, admin UI, Keycloak) intentionally excluded.
 
 ---
 
@@ -1417,7 +1450,7 @@ jobs:
 - **NFR-S4:** Internal service endpoints (corebank-service:8081, fep-gateway:8083, fep-simulator:8082) must be unreachable from outside the Docker Compose network. Only channel-service:8080 is exposed on host.
   _Measurement: `curl localhost:8081/actuator/health`, `curl localhost:8083/actuator/health`, and `curl localhost:8082/actuator/health` each return `Connection refused`; Docker Compose `ports:` is omitted for corebank, fep-gateway, and fep-simulator._
 
-- **NFR-S5:** TOTP step-up authentication must enforce a 3-attempt lockout per order session. Order session TTL must be <= 600 seconds. Both enforced server-side via Redis (`ch:otp-attempts:{sessionId}` counter + `ch:order-session:{sessionId}` TTL).
+- **NFR-S5:** Conditional TOTP step-up authentication must enforce a 3-attempt lockout per order session. Order session TTL must be <= 600 seconds. Both enforced server-side via Redis (`ch:otp-attempts:{sessionId}` counter + `ch:order-session:{sessionId}` TTL).
   _Canonical measurement: Submit 3 incorrect TOTP codes and confirm the session becomes `FAILED`; the 3rd OTP failure returns HTTP 403 `CHANNEL-003`. Submit a 4th OTP attempt on the same session and confirm HTTP 409 `ORD-006` (terminal state). OTP mismatch remains HTTP 422 `CHANNEL-002`, and HTTP 429 `RATE-001` is only used for debounce or explicit rate-limit cases. For TTL, create a session, wait 601 seconds, and confirm status query returns HTTP 404 `ORD-005`._
 
 - **NFR-S6:** GitHub Dependabot or OWASP Dependency-Check must be active. No dependency with CVSS score >= 7.0 may exist on the `main` branch.

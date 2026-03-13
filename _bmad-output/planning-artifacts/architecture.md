@@ -1328,7 +1328,20 @@ public final class BusinessConstants {
 | AUTH-005    | 404  | 대상 회원 없음(관리자 API) | channel-service  |
 | AUTH-006    | 403  | 권한 부족(`ROLE_ADMIN` 필요) | channel-service  |
 | AUTH-007    | 422  | 비밀번호 정책 위반 | channel-service  |
+| AUTH-012    | 401  | 재설정 토큰 무효 또는 만료 | channel-service  |
+| AUTH-013    | 409  | 이미 소비된 재설정 토큰 | channel-service  |
+| AUTH-014    | 429  | 비밀번호 재설정/챌린지 레이트 리밋 | channel-service  |
+| AUTH-015    | 422  | 새 비밀번호가 현재 비밀번호와 동일 | channel-service  |
+| AUTH-016    | 401  | 비밀번호 변경 후 stale session | channel-service  |
 | AUTH-017    | 409  | email 중복 | channel-service  |
+| AUTH-018    | 410  | 로그인 토큰 만료 또는 소비됨 | channel-service  |
+| AUTH-019    | 401  | MFA recovery proof 또는 rebind token 무효/만료 | channel-service  |
+| AUTH-020    | 409  | MFA recovery proof 또는 rebind token replay/소비 | channel-service  |
+| AUTH-021    | 403  | MFA recovery 필요 | channel-service  |
+| AUTH-022    | 401  | recovery challenge proof 무효/만료/불일치/형식 오류 | channel-service  |
+| AUTH-023    | 503  | recovery challenge bootstrap 사용 불가 | channel-service  |
+| AUTH-024    | 409  | recovery challenge proof replay 또는 이미 소비됨 | channel-service  |
+| AUTH-025    | 503  | recovery challenge verify 사용 불가 | channel-service  |
 | CHANNEL-001 | 410  | 세션 쿠키는 있으나 Redis TTL 만료 | channel-service  |
 | CHANNEL-002 | 422  | OTP 불일치                | channel-service  |
 | CHANNEL-003 | 403  | OTP 시도 초과(터미널 실패) | channel-service  |

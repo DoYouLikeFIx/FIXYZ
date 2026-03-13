@@ -97,7 +97,7 @@
 Monolith이지만 MSA로 “쪼개지기 쉬운 모놀리식”을 목표로 한다. 권장 멀티모듈 구조 예시는 아래다(단일 레포, Gradle/Maven 멀티모듈).
 
 - `channel-service` : Spring Boot entry, configuration, security, actuator
-- `channel-auth` : 인증/세션/리스크 기반 재인증(주문 재인증) 유즈케이스
+- `channel-auth` : 의무 로그인 MFA, 인증/세션, 리스크 기반 주문 재인증 유즈케이스
 - `channel-account` : 계좌조회 유즈케이스 + DTO 조립
 - `channel-order` : 주문 플로우(상태머신, FIX 4.2 NewOrderSingle) + 검증
 - `channel-notification` : WS/SSE, 디바이스 토큰, 알림 템플릿
@@ -105,17 +105,17 @@ Monolith이지만 MSA로 “쪼개지기 쉬운 모놀리식”을 목표로 한
 
 이렇게 모듈을 분리하면, 후일 혹시 분리하고 싶을 때도 “모듈 경계”가 설명 가능해진다(설계 선택).
 
-### 인증·세션·주문 재인증
+### 인증·세션·로그인 MFA·주문 재인증
 
 **세션 저장소**: Spring Security는 기본적으로 인증 정보를 HTTP 세션에 저장하며, 수평 확장 시 세션을 캐시/DB 등에 저장하도록 커스터마이징할 수 있음을 문서에서 언급한다. 따라서 본 프로젝트는 “세션 기반 채널계”를 택하고, Spring Session + Redis로 세션을 외부화한다. citeturn1search12turn7search0turn0search1
 
 - Web(React): `SESSION`(HttpOnly/Secure/SameSite) 기반 세션
 - Mobile(React Native): 쿠키 기반 또는 `X-SESSION-ID` 헤더 기반(학습용으로 단순화)
 
-**주문 재인증(2FA/OTP, step-up)**: 금융 거래는 로그인만으로 끝나지 않고 "고위험 행위(주문 실행, 설정 변경 등)"에 재인증을 요구하는 것이 일반적인 보안 설계 논리다(OWASP Authentication Cheat Sheet는 위험 이벤트 후 재인증을 강조). citeturn0search21  
+**로그인 MFA + 주문 재인증(2FA/OTP, step-up)**: 본 프로젝트는 보호된 세션 발급 자체에 password + current TOTP를 요구하고, 그 위에 금융 거래 같은 고위험 행위에는 리스크 신호에 따라 추가 재인증을 둘 수 있도록 설계한다. OWASP Authentication Cheat Sheet도 MFA와 위험 이벤트 후 재인증을 함께 강조한다. citeturn0search21  
 구현은 다음 중 하나를 선택한다.
 
-- (권장) TOTP 기반 주문 OTP: TOTP는 HOTP를 시간 기반으로 확장한 OTP 알고리즘이며 RFC로 표준화되어 있다. citeturn1search3turn1search3
+- (권장) TOTP 기반 로그인 MFA + 조건부 주문 OTP: TOTP는 HOTP를 시간 기반으로 확장한 OTP 알고리즘이며 RFC로 표준화되어 있다. citeturn1search3turn1search3
 - (대안) “간편 비밀번호(6자리)” + Redis에 시도 횟수/쿨다운 저장(학습용)
 
 **CSRF**: 쿠키 기반 세션을 쓰는 Web UI는 CSRF 방어가 필요하며, OWASP CSRF Cheat Sheet는 ‘Synchronizer Token’ 같은 패턴을 권장한다. (Spring Security의 CSRF 기능을 활용해도 된다.) citeturn6search2turn6search10
@@ -137,7 +137,8 @@ Monolith이지만 MSA로 “쪼개지기 쉬운 모놀리식”을 목표로 한
 
 핵심 엔드포인트(예시):
 
-- `POST /api/v1/auth/login` : 로그인(세션 생성)
+- `POST /api/v1/auth/login` : 로그인 비밀번호 단계(`loginToken` + `nextAction` 반환)
+- `POST /api/v1/auth/otp/verify` : 로그인 MFA 완료 및 세션 생성
 - `POST /api/v1/auth/logout` : 로그아웃(세션 무효화)
 - `GET /api/v1/accounts` : 내 계좌 및 잔액 요약(캐시 가능)
 - `GET /api/v1/accounts/{accountId}/orders?from&to` : 주문내역

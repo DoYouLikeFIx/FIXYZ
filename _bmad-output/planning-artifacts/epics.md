@@ -130,7 +130,7 @@ Provides the common development foundation (module structure, execution infrastr
 
 ### Epic 1: Channel Auth & Session Platform
 
-Completes the channel authentication/session foundation, adds password recovery capability plus bounded recovery-token cleanup/retention, and extends the platform with follow-on Google Authenticator enrollment/login MFA stories.
+Completes the channel authentication/session foundation, adds password recovery capability plus bounded recovery-token cleanup/retention, extends the platform with follow-on Google Authenticator enrollment/login MFA stories, and leaves room for auth-lane follow-on hardening such as real password-recovery challenge provider rollout.
 
 **Story Hints:**
 - Story 1.1: BE Registration & Login Session
@@ -148,6 +148,10 @@ Completes the channel authentication/session foundation, adds password recovery 
 - Story 1.13: MOB Mobile Google Authenticator Enrollment & Login MFA Flow
 - Story 1.14: BE MFA Recovery, Rebind & Session Invalidation
 - Story 1.15: FE/MOB MFA Recovery & Error UX Alignment
+- Story 1.16: BE Real Password Recovery Challenge Provider & Verification
+- Story 1.17: FE Web Real Password Recovery Challenge UX
+- Story 1.18: MOB Mobile Real Password Recovery Challenge UX
+- Story 1.19: Recovery Challenge Abuse-Defense Validation & Ops Evidence
 
 ### Epic 2: Account Domain & Inquiry APIs
 
@@ -656,8 +660,8 @@ So that the platform meets the Redis restart recovery target without manual inte
 ### Story 1.1: [BE][CH] Registration & Login Session Core
 
 As a **new or returning user**,  
-I want to register and log in with secure session issuance,  
-So that I can access protected features safely.
+I want to register and complete the password phase of login on the path to secure session issuance,  
+So that protected features are unlocked only after the required MFA flow completes.
 
 **Depends On:** Story 0.1
 
@@ -667,10 +671,13 @@ So that I can access protected features safely.
   **When** user submits sign-up request  
   **Then** member is created with default role and secure password hash.
 - **Given** valid login credentials  
-  **When** authentication succeeds  
-  **Then** Redis-backed session cookie is issued with secure attributes.
+  **When** the password phase succeeds  
+  **Then** a short-lived `loginToken` and the next required action (`VERIFY_TOTP` or `ENROLL_TOTP`) are returned, and no protected session is issued yet.
+- **Given** mandatory login MFA follow-on is completed  
+  **When** current TOTP verification or first-time enrollment confirmation succeeds  
+  **Then** a Redis-backed session cookie is issued with secure attributes.
 - **Given** duplicate login attempts from same account  
-  **When** second session is established  
+  **When** second fully authenticated session is established  
   **Then** previous session is invalidated by policy.
 - **Given** invalid credentials  
   **When** login fails  
@@ -833,9 +840,9 @@ So that I can regain access from the login experience without revealing whether 
 - **Given** `POST /api/v1/auth/password/forgot`  
   **When** the user submits any normalized email and the request is not rejected by CSRF or rate limiting  
   **Then** the UI shows the same accepted guidance for known and unknown accounts and does not disclose eligibility.
-- **Given** the recovery contract advertises `challengeMayBeRequired=true` or the flow requires challenge bootstrap  
+- **Given** the recovery lane exposes challenge bootstrap capability or the flow otherwise enters the challenge branch  
   **When** the browser calls `POST /api/v1/auth/password/forgot/challenge`  
-  **Then** the challenge token, type, and TTL are handled in UI state and the follow-up forgot submit preserves the original email payload semantics.
+  **Then** the challenge token, type, and TTL are handled in UI state and the follow-up forgot submit preserves the original email payload semantics, without treating `challengeMayBeRequired=true` as proof that the current forgot submit is already challenge-gated.
 - **Given** a CSRF failure on forgot, challenge, or reset submit  
   **When** the browser receives raw `403 Forbidden`  
   **Then** it re-fetches CSRF once, retries once with identical payload, and if the second attempt still fails shows terminal error UX.
@@ -862,9 +869,9 @@ So that I can regain access on mobile without relying on inconsistent web-only b
 - **Given** `POST /api/v1/auth/password/forgot`  
   **When** the user submits any normalized email and the request is not rejected by CSRF or rate limiting  
   **Then** the app shows the same accepted guidance for known and unknown accounts and does not disclose eligibility.
-- **Given** the recovery contract advertises `challengeMayBeRequired=true` or the flow requires challenge bootstrap  
+- **Given** the recovery lane exposes challenge bootstrap capability or the flow otherwise enters the challenge branch  
   **When** the app calls `POST /api/v1/auth/password/forgot/challenge`  
-  **Then** the challenge token, type, and TTL are handled in transient app state and the follow-up forgot submit preserves the original email payload semantics.
+  **Then** the challenge token, type, and TTL are handled in transient app state and the follow-up forgot submit preserves the original email payload semantics, without treating `challengeMayBeRequired=true` as proof that the current forgot submit is already challenge-gated.
 - **Given** a CSRF failure on forgot, challenge, or reset submit  
   **When** the app receives raw `403 Forbidden`  
   **Then** it refreshes CSRF once, retries once with identical payload, and if the second attempt still fails shows terminal error UX.
@@ -923,23 +930,23 @@ So that password recovery storage remains operationally safe while preserving sh
 
 As a **registered user**,  
 I want Google Authenticator enrollment and TOTP-based login MFA,  
-So that account access requires a second factor before privileged actions.
+So that every authenticated login requires a second factor before access is granted.
 
 **Depends On:** Story 1.1, Story 1.2, Story 1.5, Story 0.8
 
 **Acceptance Criteria:**
 
-- **Given** a newly registered member or an authenticated existing member without TOTP enabled  
+- **Given** a newly registered member or a password-verified existing member without TOTP enabled  
   **When** MFA enrollment is initiated  
   **Then** the backend issues a bounded bootstrap contract (`qrUri`, `manualEntryKey`, `enrollmentToken`, `expiresAt`) and stores the raw secret only in the approved secret store.
 - **Given** a valid first TOTP confirmation  
   **When** enrollment is completed  
-  **Then** `totp_enabled=true`, `totp_enrolled_at` is recorded, and the bootstrap token is consumed.
-- **Given** a login attempt for a member that requires MFA  
-  **When** password is correct but TOTP is missing, invalid, or enrollment is incomplete  
-  **Then** no authenticated session is issued and a deterministic MFA-required or invalid-code error is returned.
+  **Then** `totp_enabled=true`, `totp_enrolled_at` is recorded, the bootstrap token is consumed, and only then may the first authenticated session be issued.
+- **Given** any login attempt  
+  **When** the password phase succeeds but TOTP is missing, invalid, or enrollment is incomplete  
+  **Then** no authenticated session is issued and a deterministic MFA-required / enrollment-required / invalid-code outcome is returned.
 - **Given** a login attempt with valid password and current TOTP  
-  **When** authentication succeeds  
+  **When** the dedicated MFA verify step succeeds  
   **Then** Redis-backed session cookie is issued with secure attributes and the session stores MFA proof metadata for downstream authorization policy.
 - **Given** repeated invalid TOTP attempts during login  
   **When** threshold is exceeded  
@@ -1036,6 +1043,137 @@ So that I can recover access predictably from any channel.
 - **Given** an unknown MFA error  
   **When** the client cannot map it to a known case  
   **Then** correlation or support context remains visible and the user receives safe fallback guidance.
+
+### Story 1.16: [BE][CH] Real Password Recovery Challenge Provider & Verification
+
+As a **channel platform owner**,  
+I want the password recovery challenge lane backed by a real verifiable proof-of-work provider,  
+So that abuse resistance improves without changing the existing anti-enumeration recovery contract.
+
+**Depends On:** Story 1.7
+
+**Acceptance Criteria:**
+
+- **Given** `POST /api/v1/auth/password/forgot/challenge`  
+  **When** the configured proof-of-work provider is available, the rollout flag is enabled, and the request matches the explicit challenge-capable cohort rule  
+  **Then** the API returns a bootstrap contract with `challengeContractVersion=2`, opaque `challengeId`, `challengeType=proof-of-work`, bounded TTL, authoritative `challengeIssuedAtEpochMs` / `challengeExpiresAtEpochMs`, replay-safe challenge identity, and a discriminated `challengePayload.kind=proof-of-work` bundle with canonical solver fields.
+- **Given** challenge bootstrap for a known or unknown email  
+  **When** the request is CSRF-valid and non-rate-limited  
+  **Then** the bootstrap response preserves anti-enumeration parity for status, shape, and timing behavior, with a measured p95 delta of `<= 80ms` across known, unknown, and challenge-gated paths using the Story 1.7 benchmark method.
+- **Given** `POST /api/v1/auth/password/forgot` with `challengeToken` and scalar `challengeAnswer`  
+  **When** the proof is valid for the submitted email payload and challenge instance  
+  **Then** the forgot flow proceeds without changing the accepted anti-enumeration response semantics, while FE/MOB preserve the original submitted email string, challenge-gated submits require both challenge fields together, the backend performs normalization server-side, and exact-email drift is rejected.
+- **Given** invalid, expired, mismatched, or malformed proof  
+  **When** the backend rejects the request  
+  **Then** it returns deterministic recovery-challenge code `AUTH-022` without disclosing account eligibility.
+- **Given** replayed or already consumed proof  
+  **When** the backend rejects the request  
+  **Then** it returns terminal code `AUTH-024` so clients can clear stale challenge state instead of blind retry.
+- **Given** provider outage, signer failure, nonce-store failure, or other bootstrap indeterminacy  
+  **When** a fresh challenge cannot be issued  
+  **Then** the backend returns deterministic code `AUTH-023` and records audit or security evidence without leaking secrets.
+- **Given** verify-path dependency failure after the user already solved work  
+  **When** challenge verification cannot complete deterministically  
+  **Then** the backend returns deterministic code `AUTH-025` so clients can clear the active challenge and require a full challenge restart.
+- **Given** the real challenge rollout is deployed ahead of FE/MOB consumers  
+  **When** the backend is enabled in a mixed-client environment  
+  **Then** the real challenge path stays behind a staged feature flag plus explicit challenge-capable cohort rule so production can keep the exact legacy Story 1.7 challenge contract until Stories 1.17 and 1.18 are shipped.
+
+### Story 1.17: [FE] Web Real Password Recovery Challenge UX
+
+As a **locked-out web user**,  
+I want the browser recovery screen to render and submit the real proof-of-work challenge,  
+So that I can finish password recovery without stale challenge state or browser-specific confusion.
+
+**Depends On:** Story 1.6, Story 1.8, Story 1.16
+
+**Acceptance Criteria:**
+
+- **Given** the recovery challenge branch is entered  
+  **When** the browser receives the exact legacy v1 bootstrap shape it preserves Story 1.8 behavior, and when it receives `challengeType=proof-of-work` with `challengeContractVersion=2` it renders the correct proof-of-work interaction  
+  **Then** it does so without changing the existing forgot-password flow structure.
+- **Given** the browser submits a challenged forgot request  
+  **When** the proof-of-work solve completes  
+  **Then** the original submitted email string remains unchanged, scalar `challengeAnswer` is used for the current rollout, and the client preserves the existing one-refresh and one-retry CSRF behavior.
+- **Given** `AUTH-022`, `AUTH-023`, `AUTH-024`, or `AUTH-025`  
+  **When** the browser receives the response  
+  **Then** it follows the canonical next-action contract: `AUTH-022` refreshes the challenge, `AUTH-023` retries later with `Retry-After` backoff when present and otherwise shows generic retry-later guidance with no auto-retry, `AUTH-024` clears stale state and refreshes the challenge, and `AUTH-025` requires a full challenge restart while honoring `Retry-After` guidance where applicable.
+- **Given** challenge refresh, expiry, replay rejection, or verify-path failure  
+  **When** a new challenge bundle with a newer distinct `challengeId` is issued on the same route  
+  **Then** stale challenge state is replaced deterministically only when the new bundle carries a strictly greater authoritative `challengeIssuedAtEpochMs`, equal authoritative timestamps with distinct ids fail closed and refresh, and only the latest challenge remains active.
+- **Given** the browser receives an unknown `challengeContractVersion`, a discriminator mismatch, or malformed proof-of-work payload  
+  **When** it cannot trust the bundle  
+  **Then** it fails closed, clears active challenge state, offers fresh challenge refresh guidance instead of attempting a solve, records the exact canonical fail-closed telemetry reason (`unknown-version`, `kind-mismatch`, `malformed-payload`, `mixed-shape`, `clock-skew`, or `validity-untrusted`), and applies the same fail-closed path when estimated clock skew against `challengeIssuedAtEpochMs` exceeds `30s` or validity cannot be trusted after resume.
+- **Given** the browser runs proof-of-work on the supported baseline browser  
+  **When** solve UX is rendered  
+  **Then** progress appears within `150ms`, p95 solve time stays `<= 4s`, p99 solve time stays `<= 6s`, and the current rollout uses scalar `challengeAnswer` only.
+- **Given** regression and live coverage  
+  **When** verification runs  
+  **Then** the browser proves `clock-skew`, `validity-untrusted`, exact canonical fail-closed reason labeling, and authoritative issue-time replacement ordering including equal-timestamp collision fail-close in addition to the existing happy-path and failure-path evidence.
+- **Given** the user entered recovery with a protected-route redirect intent  
+  **When** challenge bootstrap, challenged forgot submit, reset success, and return-to-login complete  
+  **Then** the original redirect intent remains preserved end to end.
+
+### Story 1.18: [MOB] Mobile Real Password Recovery Challenge UX
+
+As a **locked-out mobile user**,  
+I want the native recovery screen to render and submit the real proof-of-work challenge,  
+So that I can finish password recovery without browser-only assumptions or broken mobile state handling.
+
+**Depends On:** Story 1.6, Story 1.9, Story 1.16
+
+**Acceptance Criteria:**
+
+- **Given** the recovery challenge branch is entered  
+  **When** the app receives the exact legacy v1 bootstrap shape it preserves Story 1.9 behavior, and when it receives `challengeType=proof-of-work` with `challengeContractVersion=2` it renders the correct native proof-of-work interaction  
+  **Then** it does so without changing the existing recovery semantics.
+- **Given** the app submits a challenged forgot request  
+  **When** the proof-of-work solve completes  
+  **Then** the original submitted email string remains unchanged, scalar `challengeAnswer` is used for the current rollout, and the client preserves the existing one-refresh and one-retry CSRF behavior.
+- **Given** `AUTH-022`, `AUTH-023`, `AUTH-024`, or `AUTH-025`  
+  **When** the app receives the response  
+  **Then** it follows the canonical next-action contract: `AUTH-022` refreshes the challenge, `AUTH-023` retries later with `Retry-After` backoff when present and otherwise shows generic retry-later guidance with no auto-retry, `AUTH-024` clears stale state and refreshes the challenge, and `AUTH-025` requires a full challenge restart while honoring `Retry-After` guidance where applicable.
+- **Given** a proof-of-work solve is in progress  
+  **When** the app backgrounds, resumes, or the user cancels  
+  **Then** the UI remains responsive, progress becomes visible within `150ms`, cancel input is acknowledged within `250ms`, p95 solve time stays `<= 5s`, p99 solve time stays `<= 8s`, the current rollout uses scalar `challengeAnswer` only, and the challenge is either resumed safely or replaced with an explicit restart path when validity or clock-skew confidence is lost.
+- **Given** challenge refresh, expiry, replay rejection, or verify-path failure  
+  **When** a new challenge bundle with a newer distinct `challengeId` is issued on the same route  
+  **Then** stale challenge state is replaced deterministically only when the new bundle carries a strictly greater authoritative `challengeIssuedAtEpochMs`, equal authoritative timestamps with distinct ids fail closed and refresh, and only the latest challenge remains active.
+- **Given** the app receives an unknown `challengeContractVersion`, a discriminator mismatch, or malformed proof-of-work payload  
+  **When** it cannot trust the bundle  
+  **Then** it fails closed, clears active challenge state, offers fresh challenge refresh guidance instead of attempting a solve, records the exact canonical fail-closed telemetry reason (`unknown-version`, `kind-mismatch`, `malformed-payload`, `mixed-shape`, `clock-skew`, or `validity-untrusted`), and applies the same fail-closed path when estimated clock skew against `challengeIssuedAtEpochMs` exceeds `30s` or validity cannot be trusted after resume.
+- **Given** the user entered recovery with a protected-route redirect intent  
+  **When** challenge bootstrap, challenged forgot submit, reset success, and return-to-login complete  
+  **Then** the original redirect intent remains preserved end to end.
+- **Given** regression and live coverage  
+  **When** verification runs  
+  **Then** mobile proves `clock-skew`, `validity-untrusted`, exact canonical fail-closed reason labeling, and authoritative issue-time replacement ordering including equal-timestamp collision fail-close in addition to the existing happy-path and lifecycle evidence.
+
+### Story 1.19: [CH/FE/MOB] Recovery Challenge Abuse-Defense Validation & Ops Evidence
+
+As a **platform operator**,  
+I want lane-scoped validation and operational evidence for the recovery challenge lane,  
+So that abuse-defense hardening is measurable and supportable.
+
+**Depends On:** Story 1.16, Story 1.17, Story 1.18
+
+**Acceptance Criteria:**
+
+- **Given** the proof-of-work rollout  
+  **When** automated verification runs  
+  **Then** BE integration covers parity, expiry, replay rejection, bootstrap unavailable, verify unavailable, exact-email drift rejection, deterministic fresh-issue `challengeId` rotation, monotonic authoritative issue timestamps, and rate-limit boundaries; request-mutation harness coverage owns malformed submit-shape rejection for PoW and mutated client-stack requests unreachable from normal UI; and FE plus MOB E2E cover fail-closed malformed-bundle behavior, `clock-skew` and `validity-untrusted` bundle rejection, exact canonical fail-closed reason labeling, QA/canary cohort fallback, `challengeId` consumption versus legacy-v1 absence, replacement ordering including equal-timestamp collision fail-close, and redirect-preserving recovery completion.
+- **Given** anti-enumeration timing evidence  
+  **When** the challenge rollout is reviewed  
+  **Then** the Story 1.7 benchmark method is reused with at least `30` warmed samples per path and the slowest-versus-fastest p95 delta remains `<= 80ms`.
+- **Given** provider-backed recovery traffic  
+  **When** observability data is emitted  
+  **Then** operators can inspect bootstrap rate, verify success, verify failure, replay rejection, provider failure counts, and client fail-closed bundle-rejection reasons broken down by the exact canonical reason (`unknown-version`, `kind-mismatch`, `malformed-payload`, `mixed-shape`, `clock-skew`, `validity-untrusted`) and segmented by environment, rollout flag, challenge-capable cohort, and canonical contract version label (`2` or `legacy-v1`).
+- **Given** support or incident response  
+  **When** operators inspect evidence  
+  **Then** safe `challengeIdHash` correlation using the canonical HMAC-derived format is available for challenge-rotation and stale-state investigations without exposing raw `challengeId`.
+- **Given** staged rollout or rollback  
+  **When** operators consult deployment guidance  
+  **Then** feature-flag enablement, rollback, QA/canary cohort selection, deterministic non-production cohort forcing, degraded mode, legacy-v1 versus v2 cutover rules, and verification steps are documented without redefining Epic 10 release-gate ownership.
 
 ---
 
