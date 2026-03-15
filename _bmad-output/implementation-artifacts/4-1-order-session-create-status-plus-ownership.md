@@ -1,7 +1,6 @@
 # Story 4.1: [BE][CH] Order Session Create/Status + Ownership
 
 Status: review
-Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -67,8 +66,8 @@ So that unauthorized access and invalid session usage are blocked.
 
 ### Story Completion Status
 
-- Status set to `ready-for-dev`.
-- Completion note: Story regenerated from canonical Epic 4 planning and companion contract.
+- Status set to `review`.
+- Completion note: Implementation and follow-up review fixes are complete; story remains in `review` pending reviewer sign-off.
 
 ### References
 

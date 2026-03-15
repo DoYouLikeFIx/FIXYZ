@@ -63,7 +63,7 @@ So that order setup is clear and only risky orders interrupt me with extra verif
 ### Story Completion Status
 
 - Status set to `review`.
-- Completion note: Web Step A/B now uses validated symbol and quantity draft entry, session-based branching, retry-safe error handling, and restore continuity.
+- Completion note: Implementation and review follow-up fixes are complete; story remains in `review` pending reviewer sign-off for the web Step A/B lane.
 
 ### References
 

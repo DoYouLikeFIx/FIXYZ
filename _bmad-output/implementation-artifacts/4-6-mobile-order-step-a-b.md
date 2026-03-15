@@ -68,7 +68,7 @@ So that I can initiate orders with the same server-owned risk behavior as web.
 ### Story Completion Status
 
 - Status set to `review`.
-- Completion note: Mobile Step A/B now uses validated order draft entry, explicit challenge branching, and interruption-safe session restoration.
+- Completion note: Implementation and review follow-up fixes are complete; story remains in `review` pending reviewer sign-off for the mobile Step A/B lane.
 
 ### References
 
