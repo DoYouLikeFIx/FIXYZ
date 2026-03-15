@@ -35,7 +35,7 @@ Six capability domains, all implemented in `channel-service` unless noted:
 | Auth          | Login/logout, Redis session externalization, forced session invalidation (admin), session TTL enforcement             |
 | Portfolio     | Authenticated position list with masked account numbers, available cash, position detail per symbol                   |
 | Orders        | 3-phase state machine: Prepare → Authorization Decision / Conditional Step-Up → Execute; Order Book matching (CoreBanking); FEP Gateway routing (FIX 4.2) |
-| Notification  | SSE `EventSource` stream — order execution results, position updates, security alerts; session-expiry push event      |
+| Notification  | SSE `EventSource` stream — order execution results, position updates, security alerts; **auth-session** expiry push event |
 | Admin         | Force-logout (Redis bulk purge), audit log query (`ROLE_ADMIN` only)                                                  |
 | Observability | Structured JSON logs, W3C `traceparent` propagation, Prometheus scrape + Grafana dashboards, Actuator health/circuit breaker exposure |
 
@@ -67,7 +67,7 @@ Six capability domains, all implemented in `channel-service` unless noted:
 | --------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | Concurrency                 | `SELECT FOR UPDATE` on `(account_id, symbol)` position writes                            | Pessimistic lock on position entity (EAGER mode); cross-symbol isolation must hold (005930 and 000660 can execute in parallel) |
 | Concurrent session race     | `AUTHED→EXECUTING` state transition must be atomic                                       | Redis `SET ch:txn-lock:{sessionId} NX EX 30` before CoreBanking call; `NX` failure → `ORD-010`      |
-| Security                    | HttpOnly + Secure + SameSite cookie, CSRF Synchronizer Token, PII masking, mandatory login MFA + risk-based order step-up | Spring Security + `HttpSessionCsrfTokenRepository` + `AuthenticationProvider` for password + TOTP login, CSRF bootstrap `GET /api/v1/auth/csrf` + non-GET `X-CSRF-TOKEN` + `AccountNumber.masked()` in `channel-common` |
+| Security                    | HttpOnly + Secure + SameSite cookie, CSRF Synchronizer Token, PII masking, mandatory login MFA + risk-based order step-up | Spring Security + `HttpSessionCsrfTokenRepository` + `AuthenticationProvider` for password + TOTP login, CSRF bootstrap `GET /api/v1/auth/csrf` + non-GET `X-CSRF-TOKEN` + `AccountNumber.masked()` in `channel-common`; current MVP auto-auth continuity uses trusted auth-session window plus shared login IP/user-agent continuity |
 | Resilience                  | Circuit breaker OPEN after 3 FEP timeouts (Resilience4j `slidingWindowSize=3`); post-commit failure escalates external sync state | **단일 CB 레이어**: Resilience4j `@CircuitBreaker(name="fep")` on `FepClient` in **corebank-service** — `slidingWindowSize=3`, `failureRateThreshold=100`, `waitDurationInOpenState=10s`. CB OPEN preemptive: no `@Transactional`, no order record, no position change. Post-commit FEP failure: canonical fill 유지 + `external_sync_status=FAILED/ESCALATED`, `OrderSession=ESCALATED` for replay/requery recovery. CB state: `localhost:8081/actuator/circuitbreakers` |
 | Idempotency                 | `ClOrdID` UNIQUE at DB level                                                             | `UNIQUE INDEX idx_clordid (cl_ord_id)` in `core_db.orders`                                          |
 | Execution source of truth   | Local CoreBanking Order Book match is canonical in simulator mode                        | `executions`/`positions` are committed from local matcher; FEP `ExecutionReport` used for confirmation/recovery only |
@@ -97,7 +97,7 @@ Six capability domains, all implemented in `channel-service` unless noted:
 | MySQL InnoDB only                  | H2 disqualified for runtime/integration paths — does not implement `SELECT FOR UPDATE` equivalently; exception: build-time OpenAPI generation profile may use isolated in-memory datasource only for spec emission |
 | Testcontainers mandatory           | `MySQLContainer("mysql:8.0")` + `RedisContainer` for all integration tests; `testcontainers.reuse.enable=true` in `~/.testcontainers.properties` is **CI-gate prerequisite**                          |
 | No distributed transactions        | Compensating state transitions for FEP order path; InnoDB ACID for order session commit                                                                                                               |
-| Redis EXPIRE enforcement           | Session TTL 30min, OTP TTL 600s, OrderSession TTL 600s — no scheduler cleanup                                                                                                                        |
+| Redis EXPIRE enforcement           | Session TTL 30min, OTP replay TTL 60s, OrderSession/OTP-attempt TTL 3600s — no scheduler cleanup                                                                                                      |
 | QueryDSL APT config                | **Week 1 spike required.** Done = `QOrder` generated, confirmed in `build/generated/sources/annotationProcessor`, one working `JPAQueryFactory` query (daily-sell-qty-sum) executing against Testcontainers MySQL |
 | `docker compose up` cold start     | `depends_on: condition: service_healthy` on all services; Flyway DDL targeting < 3s migration on cold boot                                                                                            |
 | No Keycloak (MVP)                  | Spring Security `AuthenticationProvider` interface used (Spring standard, zero extra cost — enables Keycloak drop-in post-MVP)                                                                        |
@@ -120,7 +120,7 @@ Six capability domains, all implemented in `channel-service` unless noted:
 | Audit logging            | Channel layer                        | `audit_logs` + `security_events` tables; scheduled purge (90/180 days)                                                                                                                                                                                                                                                                                                                      |
 | Rate limiting            | Channel layer                        | Bucket4j Filter on auth and order-authorization endpoints only (login, login MFA verify, order prepare, conditional order step-up verify)                                                                                                                                                                                                                                               |
 | CSRF                     | Channel ↔ React/Mobile               | Synchronizer Token (`HttpSessionCsrfTokenRepository`); bootstrap endpoint `GET /api/v1/auth/csrf`에서 토큰 수령 후 모든 non-GET 요청에 `X-CSRF-TOKEN` 주입; 로그인 성공 후 `changeSessionId()` 이후 CSRF 토큰 재조회 필수 |
-| SSE lifecycle            | Channel ↔ Frontend                   | SSE endpoint is session-aware push channel; backend must push session-expiry event proactively before TTL expires; CORS `allowCredentials=true` must explicitly cover `/api/v1/notifications/stream`; production (cross-origin Vercel→EC2): `allowCredentials=true` + exact origins required (`fix-xxx.vercel.app`, `localhost:5173`); `EventSource({ withCredentials: true })` on frontend |
+| SSE lifecycle            | Channel ↔ Frontend                   | SSE endpoint is session-aware push channel; backend must push **auth-session** `session-expiry` event proactively before TTL expires. Order-session expiry warning is not SSE-driven; FE/MOB compute it locally from order-session `expiresAt` and invoke owner-only `/orders/sessions/{id}/extend` when needed. CORS `allowCredentials=true` must explicitly cover `/api/v1/notifications/stream`; production (cross-origin Vercel→EC2): `allowCredentials=true` + exact origins required (`fix-xxx.vercel.app`, `localhost:5173`); `EventSource({ withCredentials: true })` on frontend |
 | Demo infrastructure      | Actuator + FEP chaos                 | `circuitbreakers` + `health` accessible without auth for screenshare; `PUT /fep-internal/rules` robustly designed (chaos endpoint is a demo use case, not test-only)                                                                                                                                                                                                                       |
 | ADR format               | Architecture document                | Key decisions use lightweight ADR: Context → Decision → Consequences; pessimistic lock rationale and simulation boundaries documented for verbatim interview narration                                                                                                                                                                                                                      |
 
@@ -622,12 +622,12 @@ No MapStruct. All entity↔DTO conversions are explicit `toDto()` / `fromDto()` 
 | --------------------- | ----------------------------------------------------------------- | ------------------- |
 | Spring Session        | `spring:session:sessions:{sessionId}` (Spring Session managed)  | 30 min (sliding)    |
 | Session index         | `spring:session:index:...:{memberId}` (principal index)         | 30 min              |
-| Order session         | `ch:order-session:{orderSessionId}`                              | 600s                |
+| Order session         | `ch:order-session:{orderSessionId}`                              | 3600s (owner extend 시 full-window refresh) |
 | TOTP replay guard     | `ch:totp-used:{memberId}:{windowIndex}:{code}`                   | 60s                 |
 | Order execute lock    | `ch:txn-lock:{sessionId}`                                        | 30s                 |
 | Rate limit bucket     | `ch:ratelimit:{endpoint}:{identifier}`                           | per Bucket4j config |
 | OTP attempt debounce  | `ch:otp-attempt-ts:{orderSessionId}`                             | 1s                  |
-| OTP attempt counter   | `ch:otp-attempts:{sessionId}`                                    | 600s (SET NX EX 600 — matches order session TTL) |
+| OTP attempt counter   | `ch:otp-attempts:{sessionId}`                                    | 3600s (SET NX EX 3600 — matches order session TTL) |
 | Idempotency key       | `ch:idempotency:{clOrdId}`                                       | 600s                |
 | Recovery scheduler lock | `ch:recovery-lock:{sessionId}`                                 | 120s (NX — prevents double-processing of same EXECUTING session) |
 | FDS IP fail count     | `fds:ip-fail:{ip}`                                               | 10 min              |
@@ -1292,8 +1292,9 @@ export const formatKRW = (amount: number): string =>
 // core-common 모듈의 BusinessConstants 클래스에만 정의
 public final class BusinessConstants {
     public static final long MAX_ORDER_AMOUNT_KRW  = 5_000_000L;
-    public static final int  OTP_EXPIRY_SECONDS       = 600;  // ch:otp-attempts TTL (= order session TTL)
-    public static final int  SESSION_EXPIRY_SECONDS   = 600;  // ch:order-session TTL
+    public static final int  OTP_EXPIRY_SECONDS       = 3600; // ch:otp-attempts TTL (= order session TTL)
+    public static final int  SESSION_EXPIRY_SECONDS   = 3600; // ch:order-session TTL
+    public static final int  SESSION_EXPIRING_SOON_SECONDS = 60; // client warning threshold
     public static final int  OTP_MAX_ATTEMPTS         = 3;
     private BusinessConstants() {}
 }
@@ -3020,7 +3021,7 @@ logback-spring.xml 패턴: [%X{correlationId}] 포함
 #### ~~Silent Refresh 패턴 (Q-7-20)~~ — **폐기**
 
 > ⚠️ **이 패턴은 폐기되었습니다.**  
-> 대체: SSE `session-expiry` 이벤트로 5분 전 알림 → 사용자 "5분 후 자동 로그아웃" 토스트 표시.  
+> 대체: **인증 세션** SSE `session-expiry` 이벤트로 5분 전 알림 → 사용자 "5분 후 자동 로그아웃" 토스트 표시. 주문 세션 연장은 별도 `expiresAt` 기반 warning bar + owner-only `/extend` 계약을 사용한다.  
 > **현행 401 핸들러**: login-flow.md 참조 — `authStore.clearMember()` + `/login` redirect (제거 코드 10줄 미만).
 
 #### OrderService 트랜잭션 경계 (Q-7-15)
@@ -3089,8 +3090,8 @@ management:
 | `spring:session:sessions:{id}`      | Spring Session 저장소  | 30분 |
 | `spring:session:index:...:{mbr}`    | principal 인덱스      | 30분 |
 | `ch:totp-used:{memberId}:{w}:{c}`   | TOTP Replay Guard       | 60s  |
-| `ch:otp-attempts:{tSessionId}`      | OTP 시도 횟수 카운터 | 600s (order session TTL과 동일) |
-| `ch:order-session:{tSessionId}`     | 주문 세션 상태         | 600s |
+| `ch:otp-attempts:{tSessionId}`      | OTP 시도 횟수 카운터 | 3600s (order session TTL과 동일) |
+| `ch:order-session:{tSessionId}`     | 주문 세션 상태         | 3600s (extend 시 full-window refresh) |
 | `ch:ratelimit:{endpoint}:{id}`      | Bucket4j Rate Limit     | Bucket4j 관리 |
 | `fds:ip-fail:{ip}`                  | FDS IP 실패 카운터   | 10분 |
 
@@ -3281,6 +3282,13 @@ eventsource.onerror = () => {
 1. Kafka 기반 비동기 알림 파이프라인 (SSE 대체)
 2. 타사 증권사 라우팅 (현재 설계 범위 밖, 의도적 제외)
 3. Grafana Alerting/Alertmanager 연계 및 SLO burn-rate 알림 고도화
+4. 모바일 주문 신뢰 강화:
+   - trusted device/app continuity (`deviceInstallationId`, `deviceTrustBindingId`, `sessionFamilyId`) 정의와 서버 truth 설계
+   - 앱 재설치, secure-storage wipe, trust revoke/rotate, session-family mismatch, recovery/rebind 이벤트 invalidation 규칙
+   - mobile network change/background-resume soft-signal telemetry-first rollout
+   - mobile Step C local biometric/app-PIN 거래 확인
+   - device-keystore / FIDO-backed transaction assertion 검토
+   - 상세 논의 기록: `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/post-mvp-mobile-order-trust-hardening.md`
 
 ---
 

@@ -645,7 +645,7 @@ So that the platform meets the Redis restart recovery target without manual inte
   **Then** troubleshooting matrix and escalation path are actionable from runbook only.
 - **Given** stuck-state guardrail requirement  
   **When** recovery validation runs  
-  **Then** no non-terminal order session exceeds `TTL + 60s` (`TTL` default 600s unless documented override).
+  **Then** no non-terminal order session exceeds `TTL + 60s` (`TTL` default 3600s unless documented override).
 - **Given** full-operational verdict requirement  
   **When** drill completes  
   **Then** success quorum is 100% pass across required probes in a single run.
@@ -1482,7 +1482,7 @@ So that unauthorized access and invalid session usage are blocked.
 - **Given** valid order initiation request  
   **When** session API is called  
   **Then** order session is created with TTL, ownership metadata, and an authorization decision payload that includes `challengeRequired`, `authorizationReason`, and current status.
-- **Given** low-risk order context with fresh login MFA proof  
+- **Given** low-risk order context with an active trusted auth-session window  
   **When** policy allows challenge bypass  
   **Then** the returned session may already be `AUTHED` without extra per-order verification.
 - **Given** status query for owned session  
@@ -1505,12 +1505,13 @@ So that UX friction is reduced without weakening high-risk order protection.
 
 **Acceptance Criteria:**
 
-- **Given** low-risk order context (trusted device/session, recent login MFA, normal order profile)  
+- **Given** low-risk order context with trusted session signals and an active trusted auth session under the current shared continuity model  
   **When** authorization policy runs  
   **Then** the session auto-advances to `AUTHED` and no additional step-up prompt is required.
-- **Given** elevated-risk order context (for example stale login MFA, new device/network, sensitive order amount, or security-event recency)  
+- **Given** elevated-risk order context (for example expired trusted auth-session window, login-context mismatch, sensitive order amount, or security-event recency)  
   **When** authorization policy runs  
   **Then** additional TOTP step-up is required before execution can proceed.
+> **Post-MVP note:** mobile-specific trusted device/app continuity, soft-signal treatment for network change/background-resume, Step C local biometric/app-PIN confirmation, and device-keystore/FIDO-backed transaction assertions are deferred hardening items and are not part of the current MVP story contract.
 - **Given** required step-up verification in allowed time window  
   **When** verify endpoint is called  
   **Then** verification succeeds and the session can advance.
@@ -1575,6 +1576,9 @@ So that order setup is clear and only risky orders interrupt me with extra verif
 - **Given** API/network error  
   **When** request fails  
   **Then** user receives retry guidance.
+- **Given** active order session with 60 seconds or less remaining  
+  **When** expiring-soon warning threshold is crossed  
+  **Then** a non-blocking extension CTA is shown and actual expiry still forces restart recovery.
 
 ### Story 4.5: [FE] Web Conditional Step-Up + Step C
 
@@ -1606,7 +1610,7 @@ So that I can complete order execution with clear status feedback.
 
 As a **mobile user**,  
 I want order input and authorization guidance on mobile,  
-So that I can initiate orders with the same risk-aware behavior as web.
+So that I can initiate orders with the same server-owned risk behavior as web.
 
 **Depends On:** Story 4.1, Story 2.5
 
@@ -1627,6 +1631,10 @@ So that I can initiate orders with the same risk-aware behavior as web.
 - **Given** navigation interruption  
   **When** user returns  
   **Then** state restoration logic preserves flow continuity.
+- **Given** active mobile order session with 60 seconds or less remaining  
+  **When** expiring-soon threshold is crossed  
+  **Then** a bottom sticky extension CTA is shown and actual expiry still forces restart recovery.
+> **Post-MVP note:** mobile-specific continuity weighting, local biometric/app-PIN confirmation at Step C, and device-keystore/FIDO-backed transaction signing remain deferred beyond the current MVP lane.
 
 ### Story 4.7: [MOB] Mobile Conditional Step-Up + Step C
 

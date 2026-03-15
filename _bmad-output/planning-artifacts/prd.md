@@ -176,6 +176,14 @@ All seven must pass in CI before the MVP is considered complete:
 - Keycloak SSO integration (demonstrates enterprise IDP awareness)
 - Advanced rate limiting and fraud detection simulation
 - DMZ perimeter hardening design package and promotion evidence gate for future hardened ingress mode
+- Mobile order trust-hardening follow-up:
+  - Revisit whether mobile continuity should prioritize trusted device/app state over the current shared login-context continuity model
+  - Define server-owned mobile trust inputs such as `deviceInstallationId`, `deviceTrustBindingId`, and `sessionFamilyId`
+  - Define invalidation rules for app reinstall, secure-storage wipe, trust revoke/rotate, session-family mismatch, and recovery/rebind security events
+  - Evaluate telemetry-first rollout where mobile network change and background/resume become soft signals rather than immediate OTP triggers
+  - Add mobile Step C local biometric/app-PIN transaction confirmation
+  - Evaluate stronger device-keystore / FIDO-backed transaction assertions after MVP
+  - See `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/post-mvp-mobile-order-trust-hardening.md` for the preserved discussion record and deferred design detail
 
 ### Vision (Future)
 
@@ -192,7 +200,7 @@ All seven must pass in CI before the MVP is considered complete:
 
 **Opening Scene:** Jisu opens the FIX web app on her laptop. She completes password + current TOTP login MFA, a protected session is issued, and the Portfolio View loads with her current cash balance and no existing holdings.
 
-**Rising Action:** She opens order entry, selects Buy, enters symbol `005930`, quantity `100`, and limit price `5,000`. The Prepare step checks available cash against CoreBanking, detects insufficient funds, and forces her to lower the quantity to `60`. The second prepare attempt succeeds, returns an `orderSessionId`, stores the session in Redis with a 10-minute TTL, and advances the UI to Step B.
+**Rising Action:** She opens order entry, selects Buy, enters symbol `005930`, quantity `100`, and limit price `5,000`. The Prepare step checks available cash against CoreBanking, detects insufficient funds, and forces her to lower the quantity to `60`. The second prepare attempt succeeds, returns an `orderSessionId` plus authorization-decision metadata (`challengeRequired=true`, `authorizationReason=ELEVATED_ORDER_RISK`), stores the session in Redis with a 10-minute TTL, and advances the UI to Step B.
 
 **Climax:** She enters her 6-digit TOTP code. The system validates it against her registered secret and moves the order session to `AUTHED`. When she confirms the order, Channel calls CoreBanking, CoreBanking acquires a `SELECT FOR UPDATE` lock on the relevant position row, creates the order, and places it into the Order Book. The Order Book matches the order at `5,000`, emits an `ExecutionReport(OrdStatus=FILLED)`, and then CoreBanking forwards the trade through FEP Gateway to FEP Simulator using FIX 4.2 `NewOrderSingle(35=D)`. The simulator returns a matching `ExecutionReport(35=8, OrdStatus=FILLED)`, and the transaction commits with position and cash updates.
 
@@ -328,20 +336,22 @@ Phase 0B -> Login MFA completion
     -> Enable TOTP and complete the first authenticated login
   -> Until Phase 0B succeeds, service use remains blocked
 
-Phase 1 -> Prepare
+Phase 1 -> Prepare + Authorization Decision
   POST /api/v1/orders/sessions
   -> Validate available cash / available quantity against CoreBanking
   -> Create OrderSession in Redis (`ch:order-session:{sessionId}`)
-  -> TTL: 600 seconds
-  -> Initial status: PENDING_NEW
-  -> Initialize `ch:otp-attempts:{sessionId}` = 3 (NX EX 600)
-  -> Return `sessionId` and `expiresAt`
+  -> TTL: 3600 seconds (60 minutes)
+  -> Evaluate current shared login-context continuity plus order risk attributes
+  -> Current MVP uses trusted auth-session window (default 60 minutes) + login IP/user-agent continuity across FE and MOB
+  -> Mobile-specific trusted-device/app continuity, soft-signal treatment for network change/background-resume, and local transaction confirmation are deferred post-MVP hardening topics
+  -> Trusted auth-session window is a create-time auto-authorization rule only; it decides whether the new session may start in `AUTHED` without Step B
+  -> Return `sessionId`, `status`, `challengeRequired`, `authorizationReason`, and `expiresAt`
+  -> Low risk + trusted auth session: `challengeRequired=false`, `authorizationReason=TRUSTED_AUTH_SESSION`, status becomes `AUTHED`
+  -> Elevated risk: `challengeRequired=true`, status remains `PENDING_NEW`
+  -> Initialize `ch:otp-attempts:{sessionId}` = 3 (NX EX 3600)
 
-Phase 2 -> Authorization Decision / Conditional Step-Up
-  POST /api/v1/orders/sessions/{sessionId}/authorization
-  -> Evaluate login MFA recency, trusted-device/session context, network change, and order risk attributes
-  -> Low risk: auto-authorize, session status becomes AUTHED
-  -> Elevated risk: require `POST /api/v1/orders/sessions/{sessionId}/otp/verify`
+Phase 2 -> Conditional Step-Up (only when `challengeRequired=true`)
+  POST /api/v1/orders/sessions/{sessionId}/otp/verify
   -> Validate RFC 6238 code (6 digits, 30-second window) only when challenge required
   -> Read secret from Vault: `secret/fix/member/{memberUuid}/totp-secret`
   -> Replay prevention: `ch:totp-used:{memberUuid}:{windowIndex}:{code}` TTL 60s
@@ -349,15 +359,23 @@ Phase 2 -> Authorization Decision / Conditional Step-Up
   -> Debounce guard: `ch:otp-attempt-ts:{sessionId}` NX EX 1
   -> Step-up success: session status becomes AUTHED
   -> 3 failures: session status becomes FAILED
+  -> Owner-only status query remains `GET /api/v1/orders/sessions/{sessionId}`
+
+Phase 2A -> Active Session Extension (only before expiry)
+  POST /api/v1/orders/sessions/{sessionId}/extend
+  -> Owner-only; allowed while session is still active (`PENDING_NEW` or `AUTHED`)
+  -> Extension is an active-session continuity action, not a new auto-authorization decision
+  -> `lastMfaVerifiedAt` freshness is not re-evaluated on extend; stale MFA alone must not block an on-time extend request
+  -> Reset `expiresAt` to extension time + 3600 seconds
+  -> Refresh Redis TTL on both `ch:order-session:{sessionId}` and `ch:otp-attempts:{sessionId}`
+  -> Client keeps countdown hidden in steady state, surfaces a non-blocking extension CTA only when 60 seconds or less remain, and shows a blocking expired-session modal only after actual expiry
 
 Phase 3 -> Execute
   POST /api/v1/orders/sessions/{sessionId}/execute
   -> Requires AUTHED state
-     - PENDING_NEW -> HTTP 409 ORD-005 (OTP not completed)
+     - PENDING_NEW or any non-AUTHED active state -> HTTP 409 ORD-009
      - EXECUTING with active `ch:txn-lock` -> HTTP 409 ORD-010
-     - EXECUTING after lock expiry but before recovery -> HTTP 409 ORD-005
-     - FAILED / COMPLETED -> HTTP 409 ORD-006
-     - EXPIRED or missing Redis key -> HTTP 404 ORD-005
+     - EXPIRED or missing Redis key -> HTTP 404 ORD-008
   -> On start: session status becomes EXECUTING
   -> CoreBanking acquires `@Lock(PESSIMISTIC_WRITE)` on the position row
   -> Matching runs synchronously within `@Transactional`
@@ -586,9 +604,12 @@ Long todaySold = query
 | `ORD-002` | Daily sell limit exceeded |
 | `ORD-003` | Insufficient position quantity |
 | `ORD-004` | Invalid symbol or price |
-| `ORD-005` | Order session not found or not executable in current state |
-| `ORD-006` | Order session already in a terminal state |
+| `ORD-005` | Quantity exceeds current orderability boundary |
+| `ORD-006` | Available cash is insufficient |
 | `ORD-007` | Duplicate `ClOrdID` |
+| `ORD-008` | Order session not found or expired |
+| `ORD-009` | Order session is not executable in its current state |
+| `ORD-010` | Duplicate execute blocked while another execution is in flight |
 | `ORD-012` | Account status blocked (`FROZEN` / `CLOSED`) |
 
 **CORE - CoreBanking Service:**
@@ -630,9 +651,9 @@ Long todaySold = query
 | `TC-ORD-01` | Buy order happy path -> `FILLED` | 200, position updated |
 | `TC-ORD-02` | OTP wrong once, session remains `PENDING_NEW` | 4xx, session still usable |
 | `TC-ORD-03` | OTP wrong three times, session -> `FAILED` | 403 `CHANNEL-003` |
-| `TC-ORD-04` | Execute while still `PENDING_NEW` | 409 `ORD-005` |
-| `TC-ORD-05` | Execute on `COMPLETED` session | 409 `ORD-006` |
-| `TC-ORD-06` | Session TTL expired (>600s) | 404 `ORD-005` |
+| `TC-ORD-04` | Execute while still `PENDING_NEW` | 409 `ORD-009` |
+| `TC-ORD-05` | Execute on `COMPLETED` session | 409 `ORD-009` |
+| `TC-ORD-06` | Session TTL expired (>3600s, or not extended before expiry) | 404 `ORD-008` |
 | `TC-ORD-07` | Reuse `ClOrdID` | 200 with original result |
 | `TC-ORD-08` | Concurrent sell (10 threads, same position) | Exactly 5 FILLED, no oversell |
 
@@ -872,10 +893,9 @@ GET    /api/v1/accounts/{accountId}/cash
 
 # Orders (Prepare -> Authorize -> Execute)
 POST   /api/v1/orders/sessions
-POST   /api/v1/orders/sessions/{sessionId}/authorization
+GET    /api/v1/orders/sessions/{sessionId}
 POST   /api/v1/orders/sessions/{sessionId}/otp/verify
 POST   /api/v1/orders/sessions/{sessionId}/execute
-GET    /api/v1/orders/sessions/{sessionId}/status
 GET    /api/v1/orders
 
 # Notifications (SSE)
@@ -972,8 +992,8 @@ services:
 | `order_sessions` | MySQL | Authoritative order-session record keyed by `session_id`; stores account reference, order intent, status, and execution snapshot |
 | `sessions` | Redis | Spring Session data for `SESSION`, TTL 30 minutes sliding |
 | `totp_keys` | Redis | `ch:totp-used:{memberUuid}:{windowIndex}:{code}`, TTL 60s |
-| `otp_attempts` | Redis | `ch:otp-attempts:{sessionId}`, TTL 600s, initialized to 3 |
-| `order_session_cache` | Redis | `ch:order-session:{sessionId}`, TTL 600s; fast-read cache over MySQL `order_sessions` |
+| `otp_attempts` | Redis | `ch:otp-attempts:{sessionId}`, TTL 3600s, initialized to 3 and refreshed with session extension |
+| `order_session_cache` | Redis | `ch:order-session:{sessionId}`, TTL 3600s; fast-read cache over MySQL `order_sessions`, owner-only extend refresh supported |
 | `txn_locks` | Redis | `ch:txn-lock:{sessionId}`, `NX EX 30` execute-phase lock |
 | `otp_debounce` | Redis | `ch:otp-attempt-ts:{sessionId}`, `NX EX 1` debounce key |
 | `recovery_locks` | Redis | `ch:recovery-lock:{sessionId}`, `NX EX 120` recovery idempotency lock |
@@ -1135,7 +1155,7 @@ Fast tests (`@WebMvcTest`) and slow tests (`@SpringBootTest` + Testcontainers) r
 | --------- | -------- | -------- |
 | `TC-RATE-01` | 6th login attempt from same IP within 1 minute | 429 |
 | `TC-RATE-02` | Login succeeds again after refill window | success after bucket refill |
-| `TC-RATE-03` | 4th OTP attempt on already failed session | 409 `ORD-006` |
+| `TC-RATE-03` | 4th OTP attempt on already failed session | 409 `ORD-009` |
 
 ---
 
@@ -1450,8 +1470,8 @@ jobs:
 - **NFR-S4:** Internal service endpoints (corebank-service:8081, fep-gateway:8083, fep-simulator:8082) must be unreachable from outside the Docker Compose network. Only channel-service:8080 is exposed on host.
   _Measurement: `curl localhost:8081/actuator/health`, `curl localhost:8083/actuator/health`, and `curl localhost:8082/actuator/health` each return `Connection refused`; Docker Compose `ports:` is omitted for corebank, fep-gateway, and fep-simulator._
 
-- **NFR-S5:** Conditional TOTP step-up authentication must enforce a 3-attempt lockout per order session. Order session TTL must be <= 600 seconds. Both enforced server-side via Redis (`ch:otp-attempts:{sessionId}` counter + `ch:order-session:{sessionId}` TTL).
-  _Canonical measurement: Submit 3 incorrect TOTP codes and confirm the session becomes `FAILED`; the 3rd OTP failure returns HTTP 403 `CHANNEL-003`. Submit a 4th OTP attempt on the same session and confirm HTTP 409 `ORD-006` (terminal state). OTP mismatch remains HTTP 422 `CHANNEL-002`, and HTTP 429 `RATE-001` is only used for debounce or explicit rate-limit cases. For TTL, create a session, wait 601 seconds, and confirm status query returns HTTP 404 `ORD-005`._
+- **NFR-S5:** Conditional TOTP step-up authentication must enforce a 3-attempt lockout per order session. Order session TTL defaults to 3600 seconds and may be refreshed back to a full 3600-second window through the owner-only extend endpoint while the session is still active. The trusted auth-session window applies only to the initial auto-authorization decision at session creation; on-time extend requests are continuity actions and must not be rejected solely because `lastMfaVerifiedAt` is older than the trusted window. Both TTL and OTP attempt lifecycle are enforced server-side via Redis (`ch:otp-attempts:{sessionId}` counter + `ch:order-session:{sessionId}` TTL).
+  _Canonical measurement: Submit 3 incorrect TOTP codes and confirm the session becomes `FAILED`; the 3rd OTP failure returns HTTP 403 `CHANNEL-003`. Submit a 4th OTP attempt on the same session and confirm HTTP 409 `ORD-009` (invalid session state). OTP mismatch remains HTTP 422 `CHANNEL-002`, and HTTP 429 `RATE-001` is only used for debounce or explicit rate-limit cases. For TTL, create a session, confirm `expiresAt` is about 3600 seconds ahead, wait until 60 seconds or less remain or simulate that condition, call `POST /api/v1/orders/sessions/{sessionId}/extend`, confirm the new `expiresAt` is reset to a fresh 3600-second window even when the login MFA is no longer fresh, and verify actual expiry still returns HTTP 404 `ORD-008`._
 
 - **NFR-S6:** GitHub Dependabot or OWASP Dependency-Check must be active. No dependency with CVSS score >= 7.0 may exist on the `main` branch.
   _Measurement: GitHub Security tab > Dependabot alerts shows 0 critical/high alerts._
@@ -1541,11 +1561,14 @@ jobs:
 
 ### UX
 
-- **NFR-UX1:** The order flow (Step A -> B -> C) must execute within a single modal without full page reload. Navigation between steps must not generate a new Document-type network request.
+- **NFR-UX1:** The order flow (Step A order draft -> Step B authorization guidance / conditional step-up -> Step C confirmation / execute) must execute within a single modal without full page reload. Navigation between steps must not generate a new Document-type network request.
   _Measurement: In Browser DevTools Network tab, filter by `Doc` type and confirm only the initial page load appears._
 
 - **NFR-UX2:** SSE (Server-Sent Events) connection for real-time notifications must re-establish automatically within 5 seconds of disconnection.
   _Measurement: React implementation uses `setTimeout(connect, 3000)` on `EventSource` error handler; verified by simulating network drop._
+
+- **NFR-UX3:** Order-session expiry affordances must stay out of the user’s way until they matter. Countdown is hidden by default; when 60 seconds or less remain, the order flow shows a non-blocking warning surface with a `세션 연장` CTA; only actual expiry may present a blocking modal.
+  _Measurement: During Step A/B/C, no persistent countdown is visible while `remainingSeconds > 60`; at `remainingSeconds <= 60`, a warning surface appears without preventing input; once `expiresAt` passes, a blocking expired-session modal appears and the stale `orderSessionId` is discarded on restart._
 
 ### Observability
 

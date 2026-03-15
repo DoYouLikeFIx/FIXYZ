@@ -35,7 +35,7 @@
 }
 ```
 
-> **Canonical contract note**: This document is the channel product/API target contract. The current Story 0.7 scaffold is intentionally partial and does not provide endpoint parity yet. Direct scaffold exposure is presently limited to `GET /api/v1/auth/csrf`, `POST /api/v1/auth/login`, `POST /api/v1/auth/otp/verify`, `POST /api/v1/orders/sessions`, `GET /api/v1/orders/sessions`, and `GET /api/v1/notifications/stream`; the public edge baseline still uses legacy `/api/v1/channel/*` aliases rather than canonical auth/order paths. Epic 12 documents those divergences separately and they must not be read back into this target contract.
+> **Canonical contract note**: This document is the channel product/API target contract. The current Story 0.7 scaffold is intentionally partial and does not provide endpoint parity yet. Direct scaffold exposure is presently limited to `GET /api/v1/auth/csrf`, `POST /api/v1/auth/login`, `POST /api/v1/auth/otp/verify`, `POST /api/v1/orders/sessions`, `GET /api/v1/orders/sessions/{orderSessionId}`, `POST /api/v1/orders/sessions/{orderSessionId}/otp/verify`, `POST /api/v1/orders/sessions/{orderSessionId}/extend`, `POST /api/v1/orders/sessions/{orderSessionId}/execute`, and `GET /api/v1/notifications/stream`; the public edge baseline still uses legacy `/api/v1/channel/*` aliases rather than canonical auth/order paths. Epic 12 documents those divergences separately and they must not be read back into this target contract.
 
 > **CSRF 유효성 실패 응답 형식**: Spring Security CSRF 필터(`CsrfFilter`)는 `@ControllerAdvice`나 `ApiResponse` 봉투에  도달하기 전 단계에서 동작한다. 따라서 X-CSRF-TOKEN 누락·오류 시 **공통 `ApiResponse` 봉투가 아닌** Spring Security 기본 `403 Forbidden` 응답이 반환된다. HTTP Status=`403`, Body=`{"status":403,"error":"Forbidden","message":"Forbidden"}` 형태. 클라이언트는 `403` 수신 시  `response.status === 403`으로 분기하여 CSRF 토큰을 재조회한 후 요청을 재시도해야 한다. non-GET 요청 전 **항상 CSRF 토큰을 선행 조회**하는 것이 권장된 구현 패턴이다.
 
@@ -317,11 +317,15 @@ sequenceDiagram
     C->>CH: POST /orders/sessions (X-ClOrdID)
     CH->>CB: GET /internal/v1/accounts/{id} (잔액·포지션 확인)
     CB-->>CH: AccountResponse
-    CH-->>C: 201 {orderSessionId, status:PENDING_NEW}
+    CH-->>C: 201 {orderSessionId, status, challengeRequired, authorizationReason, expiresAt}
 
-    C->>CH: POST /orders/sessions/{id}/otp {otpCode}
-    CH->>CH: TOTP 검증 (Vault 시크릿)
-    CH-->>C: 200 {status:AUTHED}
+    alt challengeRequired=true
+        C->>CH: POST /orders/sessions/{id}/otp/verify {otpCode}
+        CH->>CH: TOTP 검증 (Vault 시크릿)
+        CH-->>C: 200 {orderSessionId, status:AUTHED}
+    else challengeRequired=false
+        CH-->>C: 201 {orderSessionId, status:AUTHED, challengeRequired:false}
+    end
 
     C->>CH: POST /orders/sessions/{id}/execute
     CH->>CH: Redis SET txn-lock 1 NX EX 30
@@ -359,7 +363,8 @@ POST /api/v1/orders/sessions
 > **`orderSessionId` vs `clOrdId` 관계**: 두 ID는 **서로 다른 UUID**이다. `clOrdId`는 클라이언트가 생성하여 요청 헤더로 전달하는 FIX 주문 ID(Tag 11)이고, `orderSessionId`는 서버가 주문 세션 레코드 생성 시 별도로 발급하는 세션 UUID이다. 1:1 대응이지만 값이 다르다.  
 > - API 경로 기준: **`orderSessionId`** 기반 (`/orders/sessions/{orderSessionId}`)  
 > - FIX 프로토콜/감사 기준: **`clOrdId`** 기반 (FEP Gateway, 거래소 조회 시)  
-> - Step B 응답(`AUTHED`)에는 `orderSessionId`만 포함됨 — 클라이언트는 이미 Step A에서 `clOrdId`를 알고 있으므로 중복 포함 불필요.  
+> - Step A 생성 응답이 이미 authorization decision (`challengeRequired`, `authorizationReason`)을 포함하므로 별도 `/authorization` 호출은 존재하지 않는다.  
+> - Conditional Step-Up 검증 응답(`AUTHED`)에는 `orderSessionId`만 포함됨 — 클라이언트는 이미 Step A에서 `clOrdId`를 알고 있으므로 중복 포함 불필요.  
 > - Step C 응답에는 두 값 모두 포함 — 감사/재처리 목적으로 `clOrdId`를 별도 참조해야 하기 때문.
 
 **요청 헤더**
@@ -402,6 +407,8 @@ POST /api/v1/orders/sessions
     "orderSessionId": "sess-uuid-xxxx",
     "clOrdId": "client-uuid-xxxx",
     "status": "PENDING_NEW",
+    "challengeRequired": true,
+    "authorizationReason": "ELEVATED_ORDER_RISK",
     "symbol": "005930",
     "side": "BUY",
     "orderType": "LIMIT",
@@ -411,14 +418,42 @@ POST /api/v1/orders/sessions
     "quoteAsOf": "2026-03-01T10:00:00Z",
     "quoteSourceMode": "DELAYED",
     "preTradePrice": 72000,
-    "expiresAt": "2026-03-01T10:10:00Z"
+    "expiresAt": "2026-03-01T11:00:00Z"
   },
   "error": null,
   "traceId": "trace-006"
 }
 ```
 
-> **`expiresAt` 타임존**: `expiresAt`는 UTC ISO-8601 형식(`Z` 접미사)으로 반환된다. 클라이언트는 표시 시 KST(UTC+09:00) 변환을 직접 수행해야 한다. 계산 기준: `PENDING_NEW` 생성 시각(UTC) + 600초. 사용자에게 잔여 시간을 노출할 때 `new Date(expiresAt)` 기준으로 countdown timer를 구현한다.
+**응답 201 Created** (low-risk auto-authorized)
+```json
+{
+  "success": true,
+  "data": {
+    "orderSessionId": "sess-uuid-authed",
+    "clOrdId": "client-uuid-authed",
+    "status": "AUTHED",
+    "challengeRequired": false,
+    "authorizationReason": "TRUSTED_AUTH_SESSION",
+    "symbol": "005930",
+    "side": "BUY",
+    "orderType": "LIMIT",
+    "qty": 10,
+    "price": 72000,
+    "quoteSnapshotId": null,
+    "quoteAsOf": null,
+    "quoteSourceMode": null,
+    "preTradePrice": null,
+    "expiresAt": "2026-03-01T11:00:00Z"
+  },
+  "error": null,
+  "traceId": "trace-006"
+}
+```
+
+> **`expiresAt` 타임존**: `expiresAt`는 UTC ISO-8601 형식(`Z` 접미사)으로 반환된다. 클라이언트는 표시 시 KST(UTC+09:00) 변환을 직접 수행해야 한다. 계산 기준: `PENDING_NEW` 생성 또는 연장 성공 시각(UTC) + 3600초. 클라이언트는 `new Date(expiresAt)` 기준으로 잔여 시간을 계산하되, 정상 상태에서는 countdown을 상시 노출하지 않고 `remainingSeconds <= 60`일 때만 비차단 경고 surface와 `세션 연장` CTA를 띄운다.
+> **authorization decision 정책**: `challengeRequired`는 세션 생성 시 결정되는 immutable authorization flag이고, `authorizationReason`은 그 결정을 설명하는 안정적인 machine-readable reason이다. 클라이언트는 이 두 값을 그대로 화면에 반영해야 하며 별도의 로컬 리스크 판정을 만들면 안 된다.
+> **현재 MVP continuity 정책**: auto-auth 판단은 현재 trusted auth-session window와 shared login IP/user-agent continuity를 사용한다. FE와 MOB는 같은 서버 결정을 소비한다. Mobile-specific trusted device/app continuity, soft-signal reweighting for network change/background-resume, Step C local biometric/app-PIN confirmation, and any device-keystore/FIDO-backed assertion are recorded as post-MVP hardening topics and are not part of the active API contract.
 
 > **MARKET 주문 `price`/`orderType` 응답 정책**: `orderType: "MARKET"` 주문 세션의 응답 `data.price`는 **`null`로 반환**된다. 필드를 생략하지 않고 `null` 값으로 포함한다. 클라이언트는 `price: null` 분기를 반드시 처리해야 한다. `orderType`은 LIMIT/MARKET 모두 응답에 포함된다 — 클라이언트가 페이지 재로드 이후에도 세션 타입을 응답에서 직접 확인할 수 있어야 하기 때문이다.
 > `quoteSnapshotId`/`quoteAsOf`/`quoteSourceMode`/`preTradePrice`는 MARKET 사전검증 근거이며, LIMIT에서는 `quoteSnapshotId`/`quoteAsOf`/`quoteSourceMode`가 `null`일 수 있다.
@@ -456,14 +491,14 @@ ESCALATED → COMPLETED | FAILED | CANCELED (Admin Replay)
 > **`REQUERYING` · `ESCALATED` 상태**: 복구 스케줄러에 의해 `EXECUTING` 상태가 `executing_started_at` 기준 30초 이상 지속되면 `REQUERYING`으로 전환된다. FEP Requery 결과가 `FILLED`/`PARTIALLY_FILLED`면 `COMPLETED`, `CANCELED`면 `CANCELED`로 종결된다. `REJECTED`, `UNKNOWN/PENDING/MALFORMED` 지속(maxRetryCount 초과) 등 확정 불가능 케이스는 `ESCALATED`로 전환되어 수동 처리 대기 상태가 된다. 운영자 Admin Replay 후 `COMPLETED`/`FAILED`/`CANCELED`로 최종 종결된다. 이 두 상태는 클라이언트가 직접 유발할 수 없으며 서버 내부 전환만 가능하다.  
 > **`ESCALATED` 상태와 Redis TTL**: `ESCALATED` 상태는 `channel_db.order_sessions` DB 레코드를 기준으로 유지된다. Redis 주문 세션 TTL이 이미 만료돼도 DB 레코드를 기준으로 자동 Replay API가 동작한다. 운영자가 `POST /api/v1/admin/orders/{clOrdId}/replay`를 호출하면 DB 상태가 `ESCALATED`인 지 검증하며 Redis 만료 여부를 무시한다. 복구 수행 후 DB를 `COMPLETED`(승인 체결) 또는 `FAILED`(REJECT) 또는 `CANCELED`(APPROVE+CANCELED Race condition 완전 취소, `executionResult: "CANCELED"`) 또는 `CANCELED`(APPROVE+CANCELED Race condition 부분 체결 후 잔량 취소, `executionResult: "PARTIAL_FILL_CANCEL"`)으로 업데이트한다.
 
-> **세션 TTL 기산점**: TTL 600초는 `PENDING_NEW` 생성 시점부터 기산되며 `AUTHED` 전환 시 리셋되지 않는다. OTP 검증 완료 후 잔여 TTL 내에 Step C(execute)를 완료해야 한다. TTL 만료 시 현재 상태(PENDING_NEW 또는 AUTHED)와 무관하게 `EXPIRED`로 전환된다. 클라이언트는 생성 응답의 `expiresAt` 필드를 사용하여 사용자에게 잔여 시간을 노출해야 한다.
+> **세션 TTL 기산점**: 기본 TTL 3600초는 `PENDING_NEW` 생성 시점부터 기산되며 `AUTHED` 전환 시 리셋되지 않는다. 오직 `POST /api/v1/orders/sessions/{orderSessionId}/extend` 성공 시에만 `expiresAt`와 Redis TTL이 새 3600초 창으로 갱신된다. OTP 검증 완료 후에도 잔여 TTL 내에 Step C(execute)를 완료해야 한다. TTL 만료 시 현재 상태(PENDING_NEW 또는 AUTHED)와 무관하게 `EXPIRED`로 전환된다. **중요:** trusted auth-session window / recent MFA freshness는 세션 생성 시 auto-auth 결정을 위한 규칙이며, 연장 요청 시에는 다시 평가하지 않는다. 즉 `lastMfaVerifiedAt`이 trusted window 밖이라는 이유만으로 활성 세션 연장을 거부하지 않는다. 클라이언트는 생성 또는 연장 응답의 `expiresAt` 필드를 사용하되, 실제 화면에서는 기본적으로 타이머를 숨기고 만료 60초 전 경고 UI와 만료 후 차단 modal만 표시한다.
 
 ---
 
-### 2.2 OTP 검증 (Step B — Verify)
+### 2.2 OTP 검증 (Step B 내 Conditional Step-Up Verify)
 
 ```
-POST /api/v1/orders/sessions/{orderSessionId}/otp
+POST /api/v1/orders/sessions/{orderSessionId}/otp/verify
 ```
 
 **인증 필요**  
@@ -556,6 +591,55 @@ POST /api/v1/orders/sessions/{orderSessionId}/otp
 > }
 > ```
 > `enrollUrl`은 `error` 객체의 추가 프로퍼티로 직렬화되며, 클라이언트는 `error.enrollUrl` 경로로 접근한다. **`enrollUrl` 값(`/settings/totp/enroll`)은 프론트엔드 React 라우터 경로이며 백엔드 API 경로가 아니다.** 클라이언트는 이 값을 `fetch(enrollUrl)` API 호출이 아니라 `navigate(error.enrollUrl)` (react-router-dom) 클라이언트 라우팅으로 사용해야 한다. 서버는 `@JsonInclude(NON_NULL)` + 커스텀 직렬화로 표준 `ApiErrorDto`에 `enrollUrl` 필드를 조건부 추가한다. 역직렬화는 `@JsonAnySetter` / `additionalProperties` Map 패턴으로 처리한다.
+
+---
+
+### 2.2A 주문 세션 연장 (Expiring-soon Extend)
+
+```
+POST /api/v1/orders/sessions/{orderSessionId}/extend
+```
+
+**인증 필요**
+
+> **owner-only active session 정책**: 세션 연장은 세션 소유자만 요청할 수 있다. 대상 세션은 아직 만료되지 않은 `PENDING_NEW` 또는 `AUTHED`여야 하며, `EXECUTING` 이상 또는 이미 `EXPIRED` 상태인 세션은 연장할 수 없다.
+> **recent MFA 비적용 정책**: 이 엔드포인트는 새 주문 세션 생성이 아니라 이미 살아 있는 주문 세션 continuity를 유지하기 위한 동작이다. 따라서 trusted auth-session window 또는 `lastMfaVerifiedAt` freshness는 연장 허용 조건이 아니다. 소유권, 미만료, 연장 가능한 상태 여부가 핵심 게이트다.
+> **UI 사용 의도**: 클라이언트는 이 엔드포인트를 상시 타이머 버튼처럼 노출하지 않는다. 기본 상태에서는 숨기고, `remainingSeconds <= 60`일 때만 비차단 warning surface에서 호출한다. 실제 만료 후에는 차단 modal로 restart flow를 유도한다.
+
+**경로 파라미터**
+| 파라미터 | 설명 |
+|---|---|
+| `orderSessionId` | 주문 세션 UUID |
+
+**요청 바디**: 없음
+
+**응답 200 OK**
+```json
+{
+  "success": true,
+  "data": {
+    "orderSessionId": "sess-uuid-xxxx",
+    "status": "AUTHED",
+    "challengeRequired": false,
+    "authorizationReason": "TRUSTED_AUTH_SESSION",
+    "expiresAt": "2026-03-01T11:59:30Z"
+  },
+  "error": null,
+  "traceId": "trace-007a"
+}
+```
+
+> **연장 성공 결과**: 성공 시 `expiresAt`는 연장 시각 기준으로 정확히 새 3600초 창을 가리킨다. 주문 draft, OTP 입력 context, authorization decision은 유지된다. 이미 `lastMfaVerifiedAt`이 오래된 세션이라도, 세션이 활성 상태이기만 하면 이 continuity 연장은 성공할 수 있다.
+
+**오류 코드**
+| 코드 | HTTP | 설명 |
+|---|---|---|
+| `AUTH-003` | 401 | 미인증 (세션 쿠키 없거나 유효하지 않음) |
+| `CHANNEL-001` | 410 | 쿠키는 존재하나 Redis TTL로 세션 만료 |
+| `CHANNEL-006` | 403 | 세션 소유권 불일치 |
+| `ORD-008` | 404 | 세션 없음 또는 이미 만료 |
+| `ORD-009` | 409 | 세션 상태 전이 불가 (`EXECUTING` 이상 또는 terminal 상태) |
+| `SYS-001` | 500 | 내부 서버 오류 |
 
 ---
 
@@ -675,6 +759,42 @@ GET /api/v1/orders/sessions/{orderSessionId}
 
 **인증 필요**
 
+> **owner-only + authorization decision 재노출 정책**: 이 엔드포인트는 세션 소유자만 조회할 수 있으며, 모든 상태 응답은 현재 `status`와 함께 원본 authorization decision (`challengeRequired`, `authorizationReason`)을 다시 반환한다. 저위험 auto-authorized 세션은 `challengeRequired=false`, step-up 대상 세션은 `challengeRequired=true`를 유지한다.
+> **활성 세션 window 메타데이터**: 세션이 아직 Step C 이전의 활성 창(`PENDING_NEW` 또는 `AUTHED`)에 있으면 `expiresAt`와 `remainingSeconds`를 함께 반환한다. `EXECUTING` 이후 또는 terminal 상태에서는 이 값들이 `null`일 수 있으며, 클라이언트는 주문 세션 warning/expired UX를 활성 창에서만 사용해야 한다.
+
+**응답 200 OK** (활성 인증 완료 상태 예시 — `status: "AUTHED"`)
+```json
+{
+  "success": true,
+  "data": {
+    "orderSessionId": "sess-uuid-authed",
+    "clOrdId": "client-uuid-authed",
+    "status": "AUTHED",
+    "challengeRequired": false,
+    "authorizationReason": "TRUSTED_AUTH_SESSION",
+    "symbol": "005930",
+    "side": "BUY",
+    "orderType": "LIMIT",
+    "qty": 10,
+    "price": 72000,
+    "expiresAt": "2026-03-01T11:00:00Z",
+    "remainingSeconds": 2745,
+    "executionResult": null,
+    "executedQty": null,
+    "leavesQty": null,
+    "executedPrice": null,
+    "externalOrderId": null,
+    "failureReason": null,
+    "executedAt": null,
+    "canceledAt": null,
+    "createdAt": "2026-03-01T10:00:00Z",
+    "updatedAt": "2026-03-01T10:14:15Z"
+  },
+  "error": null,
+  "traceId": "trace-009"
+}
+```
+
 **응답 200 OK** (진행 중 상태 예시 — `status: "EXECUTING"`)
 ```json
 {
@@ -683,6 +803,8 @@ GET /api/v1/orders/sessions/{orderSessionId}
     "orderSessionId": "sess-uuid-xxxx",
     "clOrdId": "client-uuid-xxxx",
     "status": "EXECUTING",
+    "challengeRequired": true,
+    "authorizationReason": "ELEVATED_ORDER_RISK",
     "symbol": "005930",
     "side": "BUY",
     "orderType": "LIMIT",
@@ -712,6 +834,8 @@ GET /api/v1/orders/sessions/{orderSessionId}
     "orderSessionId": "sess-uuid-xxxx",
     "clOrdId": "client-uuid-xxxx",
     "status": "COMPLETED",
+    "challengeRequired": true,
+    "authorizationReason": "ELEVATED_ORDER_RISK",
     "symbol": "005930",
     "side": "BUY",
     "orderType": "LIMIT",
@@ -743,6 +867,8 @@ GET /api/v1/orders/sessions/{orderSessionId}
     "orderSessionId": "sess-uuid-xxxx",
     "clOrdId": "client-uuid-xxxx",
     "status": "COMPLETED",
+    "challengeRequired": true,
+    "authorizationReason": "ELEVATED_ORDER_RISK",
     "symbol": "005930",
     "side": "BUY",
     "orderType": "LIMIT",
@@ -776,6 +902,8 @@ GET /api/v1/orders/sessions/{orderSessionId}
     "orderSessionId": "sess-uuid-xxxx",
     "clOrdId": "client-uuid-xxxx",
     "status": "FAILED",
+    "challengeRequired": true,
+    "authorizationReason": "ELEVATED_ORDER_RISK",
     "symbol": "005930",
     "side": "BUY",
     "orderType": "LIMIT",
@@ -805,6 +933,8 @@ GET /api/v1/orders/sessions/{orderSessionId}
     "orderSessionId": "sess-uuid-xxxx",
     "clOrdId": "client-uuid-xxxx",
     "status": "REQUERYING",
+    "challengeRequired": true,
+    "authorizationReason": "ELEVATED_ORDER_RISK",
     "symbol": "005930",
     "side": "BUY",
     "orderType": "LIMIT",
@@ -836,6 +966,8 @@ GET /api/v1/orders/sessions/{orderSessionId}
     "orderSessionId": "sess-uuid-xxxx",
     "clOrdId": "client-uuid-xxxx",
     "status": "ESCALATED",
+    "challengeRequired": true,
+    "authorizationReason": "ELEVATED_ORDER_RISK",
     "symbol": "005930",
     "side": "BUY",
     "orderType": "LIMIT",
@@ -867,6 +999,8 @@ GET /api/v1/orders/sessions/{orderSessionId}
     "orderSessionId": "sess-uuid-xxxx",
     "clOrdId": "client-uuid-xxxx",
     "status": "CANCELED",
+    "challengeRequired": true,
+    "authorizationReason": "ELEVATED_ORDER_RISK",
     "symbol": "005930",
     "side": "BUY",
     "orderType": "LIMIT",
@@ -898,6 +1032,8 @@ GET /api/v1/orders/sessions/{orderSessionId}
     "orderSessionId": "sess-uuid-xxxx",
     "clOrdId": "client-uuid-xxxx",
     "status": "CANCELED",
+    "challengeRequired": true,
+    "authorizationReason": "ELEVATED_ORDER_RISK",
     "symbol": "005930",
     "side": "BUY",
     "orderType": "LIMIT",
@@ -957,7 +1093,8 @@ GET /api/v1/orders/sessions/{orderSessionId}
 |---|---|---|
 | `AUTH-003` | 401 | 미인증 (세션 쿠키 없거나 유효하지 않음) |
 | `CHANNEL-001` | 410 | 쿠키는 존재하나 Redis TTL로 채널 세션 만료 |
-| `ORD-008` | 404 | 세션 없음 — `orderSessionId`에 해당하는 세션이 존재하지 않거나 이미 DB에서 삭제됨 |
+| `CHANNEL-006` | 403 | 주문 세션 소유권 불일치 |
+| `ORD-008` | 404 | 세션 없음 또는 만료 — `orderSessionId`에 해당하는 세션이 없거나 TTL이 만료된 경우 |
 | `SYS-001` | 500 | 내부 서버 오류 |
 
 ---
@@ -1911,8 +2048,8 @@ flowchart LR
 | 정책 | 상세 |
 |---|---|
 | 세션 TTL | **30분 슬라이딩(Sliding) TTL** — Spring Session `maxInactiveInterval=1800s`. 모든 인증된 요청 수신 시 Redis TTL이 갱신된다. 비활동(요청 없음) 상태로 30분 경과 시 자동 만료. `SESSION_EXPIRY` SSE 이벤트는 마지막 활동 기준 25분 경과 시점에 발행. |
-| OTP TTL | **TOTP 코드 유효 윈도우**: 30초 (RFC 6238 TOTP 표준). **OTP Idempotency 키 TTL**: 60초 (`ch:otp-success:{sessionId}:{windowIndex}`, 2 윈도우). **OTP 시도 TTL**: 주문 세션 TTL(600초)과 연동 — 세션 만료 시 attempt 카운터도 소멸. |
-| 주문 세션 TTL | 600초 (Redis `EXPIRE`) |
+| OTP TTL | **TOTP 코드 유효 윈도우**: 30초 (RFC 6238 TOTP 표준). **OTP Idempotency 키 TTL**: 60초 (`ch:otp-success:{sessionId}:{windowIndex}`, 2 윈도우). **OTP 시도 TTL**: 주문 세션 TTL(3600초)과 연동 — 세션 만료 시 attempt 카운터도 소멸하며, 세션 연장 시 동일 TTL 창으로 함께 refresh된다. |
+| 주문 세션 TTL | 기본 3600초 (Redis `EXPIRE`), owner-only `/extend` 성공 시 새 3600초 창으로 refresh |
 | CSRF | Synchronizer Token (`HttpSessionCsrfTokenRepository`), 로그인 후 재조회 필수 |
 | PII 마스킹 | 계좌번호 `AccountNumber.masked()` — 로그·응답에서 전체 번호 노출 금지 |
 | Rate Limiting | Bucket4j (Redis 백엔드): 로그인 5/min/IP, 주문준비 10/min/userId, 주문실행(`POST /api/v1/orders/sessions/.../execute`) 세션당 1회(Redis NX lock), 주문취소(`POST /api/v1/orders/sessions/.../cancel`) 세션당 1회(Redis NX lock), 주문이력 조회(`GET /api/v1/orders`) 10/min/session, 알림 이력 조회(`GET /api/v1/notifications`) 10/min/session, CB 상태 조회(`GET /api/v1/orders/cb-status`) 10/min/session, 관리자 감사로그 조회(`GET /api/v1/admin/audit-logs`) · 수동재처리(`POST /api/v1/admin/orders/.../replay`) · 강제로그아웃(`DELETE /api/v1/admin/members/.../sessions`) 20/min/session; OTP 시도: 3/session (Redis 카운터 — Bucket4j 별도 아님, §2.2 attempt 카운터 기반). 애플리케이션 레이어 한도/OTP 차단 증적에는 `enforcement_layer=application`과 `limit_key_type`(`session_id`, `user_id`, `order_session_id`)가 포함되어야 하며, Epic 12 edge 한도와 혼동되면 안 된다. |
@@ -2145,7 +2282,7 @@ This contract closes the lost-authenticator path without redefining the already-
    - `recoveryProof` source:
      - issued as `X-MFA-Recovery-Proof` after successful password reset when the client chooses MFA recovery continuation
      - single-use
-     - TTL `600s`
+     - TTL `3600s`
      - FE/MOB must not persist it to disk, secure storage, localStorage, or URL query
 
 #### 7.6.2 Shared Bootstrap Response
