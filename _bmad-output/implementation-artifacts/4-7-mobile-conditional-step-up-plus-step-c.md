@@ -90,7 +90,7 @@ GPT-5 Codex (Codex desktop)
 - Brought the mobile step-up flow in line with web semantics by mapping replay, throttle, and stale-session errors deterministically and verifying as soon as a six-digit OTP is entered.
 - Added restore-safe order-session handling for `PENDING_NEW`, `AUTHED`, `EXECUTING`, `REQUERYING`, `ESCALATED`, and final result states, including forced-expiry recovery messaging.
 - Added focused mobile coverage for replay or throttle guidance, stale-session restart, explicit remount or post-refresh resume recovery, resumed `EXECUTING` to final-result transitions, and final-result rendering across `FILLED`, `PARTIAL_FILL`, `VIRTUAL_FILL`, `CANCELED`, `PARTIAL_FILL_CANCEL`, and terminal failure states.
-- Switched the mobile result-matrix tests to the shared cross-client contract fixture so web and mobile now validate the same processing/final-result payload fields, including processing body copy, `executedPrice`, `canceledAt`, and nullable `expiresAt`.
+- Switched the mobile result-matrix tests to the MOB-local order-session contract fixture derived from the canonical parity matrix so mobile stays aligned with web on processing/final-result payload fields, including processing body copy, `executedPrice`, `canceledAt`, and nullable `expiresAt`.
 
 ### File List
 
@@ -99,7 +99,7 @@ GPT-5 Codex (Codex desktop)
 - MOB/src/screens/app/AuthenticatedHomeScreen.tsx
 - MOB/tests/unit/order/AuthenticatedHomeScreen.test.tsx
 - MOB/tests/unit/order/ExternalOrderRecoverySection.test.tsx
-- tests/order-session-contract-cases.json
+- MOB/tests/order-session-contract-cases.json
 - _bmad-output/implementation-artifacts/4-7-mobile-conditional-step-up-plus-step-c.md
 
 ### Change Log
@@ -142,5 +142,5 @@ GPT-5 Codex (Codex desktop)
 
 - QA remediation verified the mobile execute-error recovery path now preserves visible external-order guidance across a successful `getOrderSession()` refresh.
 - Mobile processing-state polling now honors the 30-second fallback contract and no longer retriggers immediate restore-state polling on every same-status refresh.
-- Web and mobile now share the same order-session contract fixture for processing and final-result assertions, reducing silent parity drift for the common payload matrix.
+- Web and mobile now use FE/MOB-local order-session contract fixtures derived from the same canonical parity matrix, reducing silent drift for the common processing and final-result payload matrix.
 - The BE-MOB live order-session lane was rerun successfully on `2026-03-16`, covering fresh-MFA challenged execution plus same-window replay recovery on the current backend stack.

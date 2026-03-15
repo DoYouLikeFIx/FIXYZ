@@ -91,7 +91,7 @@ GPT-5 Codex (Codex desktop)
 - Added deterministic web guidance for replayed, throttled, expired, and stale order-session verification responses while preserving the already-`AUTHED` bypass path.
 - Synced Step C and result-state handling to backend contracts, including polling-backed refresh for `EXECUTING`, `REQUERYING`, and `ESCALATED` plus final-result rendering for reconciled outcomes.
 - Added focused web coverage for replay and throttle mapping, stale-session expiry recovery, processing-to-final polling transitions, and explicit final-result rendering across `FILLED`, `PARTIAL_FILL`, `VIRTUAL_FILL`, `CANCELED`, `PARTIAL_FILL_CANCEL`, and terminal failure states.
-- Switched the web result-matrix tests to the shared cross-client contract fixture so web and mobile now validate the same processing/final-result payload fields, including processing body copy, `executedPrice`, `canceledAt`, and nullable `expiresAt`.
+- Switched the web result-matrix tests to the FE-local order-session contract fixture derived from the canonical parity matrix so web stays aligned with mobile on processing/final-result payload fields, including processing body copy, `executedPrice`, `canceledAt`, and nullable `expiresAt`.
 
 ### File List
 
@@ -99,7 +99,7 @@ GPT-5 Codex (Codex desktop)
 - FE/src/hooks/order/useOrderRecoveryController.ts
 - FE/src/pages/OrderPage.tsx
 - FE/tests/unit/pages/OrderPage.test.tsx
-- tests/order-session-contract-cases.json
+- FE/tests/order-session-contract-cases.json
 - _bmad-output/implementation-artifacts/4-5-web-conditional-step-up-plus-step-c.md
 
 ### Change Log
@@ -143,5 +143,5 @@ GPT-5 Codex (Codex desktop)
 
 - QA remediation aligned the fallback polling interval with the 30-second API contract.
 - The visible external-order error presentation is now preserved across both the immediate refetch and subsequent processing-state polling.
-- Web and mobile now share the same order-session contract fixture for processing and final-result assertions, reducing silent parity drift for the common payload matrix.
+- Web and mobile now use FE/MOB-local order-session contract fixtures derived from the same canonical parity matrix, reducing silent drift for the common processing and final-result payload matrix.
 - The BE-FE live order-session lane was rerun successfully on `2026-03-16`, covering fresh-MFA low-risk execution plus elevated-risk Step B replay/recovery on the current backend stack.
