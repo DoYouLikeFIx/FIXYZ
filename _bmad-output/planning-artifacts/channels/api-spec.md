@@ -505,11 +505,11 @@ POST /api/v1/orders/sessions/{orderSessionId}/otp/verify
 **Rate Limit**: 3회/세션 (Redis 카운터)  
 **Debounce**: `SET ch:otp-attempt-ts:{sessionId} 1 NX EX 1` — 1초 이내 재시도 차단
 
-> **OTP Debounce Idempotency 정책**: 동일 `orderSessionId` 내에서 **동일 TOTP 30초 윈도우** 내에 이미 **성공한** OTP와 동일 코드를 재전송하면 **idempotent 200** 응답을 리턴한다. `attempt` 카운터가 추가 소비되지 않는다.  
+> **OTP Debounce Idempotency 정책**: 동일 `orderSessionId` 내에서 **동일 TOTP 30초 윈도우** 내에 이미 **성공한** OTP와 동일 코드를 재전송하면, 그리고 해당 요청이 아직 세션을 `AUTHED`로 관측하기 전의 **pending-session race window** 안에 있다면 **idempotent 200** 응답을 리턴한다. `attempt` 카운터가 추가 소비되지 않는다. 세션이 이미 `AUTHED`로 관측되면 이 규칙은 적용되지 않고 `ORD-009 409`가 우선한다.  
 > **실패한 OTP 코드는 idempotent 대상이 아니다**: 동일 윈도우 내에서라도 이전에 `CHANNEL-002`로 실패한 코드를 재전송하면 `attempt`이 추가 소비되며 `CHANNEL-002`를 다시 리턴한다.  
 > 다음 TOTP 윈도우(T+31s 이후)의 요청은 이전 윈도우에 저장된 idempotency 키와 구분되므로 정상 처리(attempt 소비).
 
-> **OTP 성공 Idempotency Redis 키 스키마**: 성공한 TOTP 코드를 `ch:otp-success:{sessionId}:{windowIndex}` 키로 저장한다 (`windowIndex` = `floor(unixTimestamp / 30)`, 즉 TOTP 30초 윈도우 인덱스). TTL은 60초(2 윈도우)로 설정한다. 동일 키가 존재하면 `attempt` 소비 없이 idempotent 200을 반환한다. 다음 윈도우(`windowIndex` 변경) 요청은 키 불일치로 정상 처리(attempt 소비)된다. replay attack 방지를 위해 성공 마크는 세션 상태가 `AUTHED`로 전환된 이후에만 설정된다.  
+> **OTP 성공 Idempotency Redis 키 스키마**: 성공한 TOTP 코드를 `ch:otp-success:{sessionId}:{windowIndex}` 키로 저장한다 (`windowIndex` = `floor(unixTimestamp / 30)`, 즉 TOTP 30초 윈도우 인덱스). TTL은 60초(2 윈도우)로 설정한다. 동일 키가 존재하면 `attempt` 소비 없이 idempotent 200을 반환할 수 있지만, 이는 어디까지나 현재 요청이 아직 pending verification 경로를 타는 동안에만 해당한다. 다음 윈도우(`windowIndex` 변경) 요청은 키 불일치로 정상 처리(attempt 소비)된다. replay attack 방지를 위해 성공 마크는 세션 상태가 `AUTHED`로 전환된 이후에만 설정된다.  
 > **디바운스와 Idempotency 상호작용**: 디바운스(`SET ch:otp-attempt-ts:{sessionId} 1 NX EX 1`)는 모든 OTP 요청에 **먼저** 적용된다. 따라서 성공한 OTP 코드를 1초 이내에 재전송하면 idempotent 200이 아닌 `RATE-001 429`가 반환된다. 세션이 이미 `AUTHED`인 경우는 디바운스 체크 없이 즉시 `ORD-009 409`을 반환한다. **이는 idempotency 키 조회(`ch:otp-success:{sessionId}:{windowIndex}`)도 건너뜀을 의미한다**: AUTHED 상태이면 이미 성공이 확정된 상태이므로 Redis 키 존재 여부와 무관하게 ORD-009를 반환하는 것이 의도적 설계이다.
 
 > **OTP 요청 처리 우선순위 (서버 검증 순서)**:

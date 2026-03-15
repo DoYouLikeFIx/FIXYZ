@@ -1597,14 +1597,23 @@ So that I can complete order execution with clear status feedback.
   **When** session is already `AUTHED`  
   **Then** UI enters confirmation/execution step directly and shows that additional verification was not required.
 - **Given** step-up failure cases  
-  **When** code is invalid/expired/replayed  
+  **When** code is invalid, expired, replayed, throttled, or stale-session blocked  
   **Then** mapped error message is displayed.
-- **Given** execution in progress  
-  **When** status polling/SSE updates  
-  **Then** result screen reflects final order state (FILLED/REJECTED/FAILED).
-- **Given** final state response  
-  **When** FILLED/REJECTED/FAILED returned  
-  **Then** ClOrdID and failure reason are rendered conditionally.
+- **Given** active Step C session with `remainingSeconds <= 60`  
+  **When** warning threshold is crossed  
+  **Then** a non-blocking session extension CTA is shown without losing confirmation context.
+- **Given** active Step C session  
+  **When** user extends the session before expiry  
+  **Then** `expiresAt` refreshes and the current confirmation/execution context is preserved.
+- **Given** actual session expiry during Step B or Step C  
+  **When** stale session is detected  
+  **Then** a blocking restart path is shown and stale context is cleared safely.
+- **Given** execution in progress or reconciliation state  
+  **When** status polling updates return `EXECUTING`, `REQUERYING`, or `ESCALATED`  
+  **Then** the UI shows processing/manual-review guidance without presenting a false terminal outcome.
+- **Given** final or reconciled result response  
+  **When** `executionResult` is `FILLED`, `PARTIAL_FILL`, `VIRTUAL_FILL`, `CANCELED`, `PARTIAL_FILL_CANCEL`, or terminal failure guidance is returned  
+  **Then** ClOrdID plus the relevant execution, quantity, price, cancel-time, or failure fields are rendered conditionally.
 
 ### Story 4.6: [MOB] Mobile Order Step A/B
 
@@ -1655,12 +1664,18 @@ So that complete order execution experience is parity with web.
 - **Given** step-up or execution errors  
   **When** response received  
   **Then** user sees mapped action guidance.
-- **Given** final result response  
-  **When** FILLED/REJECTED/FAILED  
-  **Then** ClOrdID and failure reasons are rendered.
-- **Given** app background/foreground cycle  
-  **When** session resumes  
-  **Then** current order status is recovered.
+- **Given** active Step C session with `remainingSeconds <= 60`  
+  **When** the warning threshold is crossed  
+  **Then** the app shows a sticky extension CTA without losing navigation context.
+- **Given** actual expiry during Step B, Step C, remount, or session refresh  
+  **When** stale session is detected  
+  **Then** the app shows a blocking restart path and clears stale session state safely.
+- **Given** the saved order session is reloaded after remount or session refresh  
+  **When** the stored order session is restored  
+  **Then** the app restores Step B for `PENDING_NEW`, Step C for `AUTHED`, processing guidance for `EXECUTING` or `REQUERYING`, and manual-review guidance for `ESCALATED`.
+- **Given** a final or reconciled result response  
+  **When** `executionResult` is `FILLED`, `PARTIAL_FILL`, `VIRTUAL_FILL`, `CANCELED`, `PARTIAL_FILL_CANCEL`, or terminal failure guidance is returned  
+  **Then** ClOrdID plus the relevant execution, quantity, price, cancel-time, or failure fields are rendered conditionally.
 
 ### Story 4.8: [FE/MOB] Cross-Client Authorization FSM Parity Validation
 
