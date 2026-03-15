@@ -413,7 +413,7 @@ So that the platform meets the Redis restart recovery target without manual inte
   **Then** troubleshooting matrix and escalation path are actionable from runbook only.
 - **Given** stuck-state guardrail requirement  
   **When** recovery validation runs  
-  **Then** no non-terminal order session exceeds `TTL + 60s` (`TTL` default 600s unless documented override).
+  **Then** no non-terminal order session exceeds `TTL + 60s` (`TTL` default 3600s unless documented override).
 - **Given** full-operational verdict requirement  
   **When** drill completes  
   **Then** success quorum is 100% pass across required probes in a single run.

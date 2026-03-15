@@ -7,7 +7,7 @@
 ## Summary
 
 This epic owns the channel-side order session before execution begins.
-Its responsibility is to decide whether a drafted order may proceed immediately on the strength of fresh login MFA, or whether an additional TOTP step-up challenge must be completed first.
+Its responsibility is to decide whether a drafted order may proceed immediately on the strength of an active trusted auth-session window, or whether an additional TOTP step-up challenge must be completed first.
 
 Primary outcomes:
 
@@ -63,7 +63,7 @@ Goal:
 
 Acceptance focus:
 
-- Policy consumes fresh login MFA context, trusted-device/session signal, network change, and order risk attributes.
+- Policy consumes trusted auth-session window state, trusted-device/session signal, network change, and order risk attributes.
 - Low-risk sessions bypass additional challenge cleanly.
 - Elevated-risk sessions require `POST /api/v1/orders/sessions/{sessionId}/otp/verify`.
 - Step-up verification uses Vault-backed TOTP, replay protection, debounce, and bounded attempts.
@@ -98,7 +98,7 @@ The order authorization policy may consider:
 
 ### Redis Keys
 
-- `ch:order-session:{sessionId}`: order session TTL (`600s`)
+- `ch:order-session:{sessionId}`: order session TTL (`3600s`, owner-only extend refresh)
 - `ch:otp-attempts:{sessionId}`: bounded conditional step-up attempts
 - `ch:otp-attempt-ts:{sessionId}`: debounce guard for step-up submit
 - `ch:totp-used:{memberId}:{windowIndex}:{code}`: replay prevention

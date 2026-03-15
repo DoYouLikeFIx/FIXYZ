@@ -7,18 +7,21 @@
 ## Summary
 
 Epic 4 owns the channel-side order session before execution begins.
-Its job is to decide whether a drafted order may proceed immediately on the strength of recent login MFA context, or whether an additional TOTP step-up challenge must be completed first.
+Its job is to decide whether a drafted order may proceed immediately on the strength of an active trusted auth-session window, or whether an additional TOTP step-up challenge must be completed first.
 
 **Primary outcome:** order initiation, authorization decision, conditional step-up, and FE/MOB session flow all converge on one deterministic FSM before execution starts.
 
 **Implementation focus:**
 
 - Order-session creation, ownership, TTL, and status-query contract
-- Risk-based authorization policy using fresh-login MFA context
+- Risk-based authorization policy using a trusted auth-session window plus device and network continuity
 - Conditional TOTP step-up only for elevated-risk orders
 - Explicit FSM transition governance and status-specific response contracts
+- Owner-only order-session extension with hidden-by-default countdown, expiring-soon warning CTA, and expired-session restart guard
 - Web and mobile multi-step flow parity through authorization and confirmation
 - Cross-client validation so FE and MOB do not diverge from the same order rules
+
+> **Post-MVP hardening note:** The current MVP keeps one shared backend authorization model. Follow-up discussion items — mobile-specific trusted device/app continuity, explicit invalidation rules, soft-signal handling for network change/background-resume, Step C local biometric/app-PIN confirmation, and device-keystore/FIDO-backed transaction assertions — are intentionally deferred and must not be read back into the active Epic 4 implementation contract.
 
 ## Current Delivery Status
 
@@ -201,7 +204,7 @@ The order-authorization policy may consider:
 
 ### Redis Keys
 
-- `ch:order-session:{sessionId}`: order-session TTL, default `600s`
+- `ch:order-session:{sessionId}`: order-session TTL, default `3600s` with owner-only extend refresh
 - `ch:otp-attempts:{sessionId}`: bounded conditional step-up attempts
 - `ch:otp-attempt-ts:{sessionId}`: debounce guard for rapid verify submit
 - `ch:totp-used:{memberId}:{windowIndex}:{code}`: same-window replay prevention

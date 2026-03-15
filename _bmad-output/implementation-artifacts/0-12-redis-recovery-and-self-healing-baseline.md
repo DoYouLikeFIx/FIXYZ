@@ -20,7 +20,7 @@ so that service continuity targets are met after cache/session infrastructure in
 4. Given repeatable recovery-drill requirement, when automation script or CI job executes the scenario, then timestamps, measured recovery duration, and threshold verdict are captured.
 5. Given operations evidence requirements, when drills complete, then run logs and summary artifacts are indexed under `docs/ops/redis-recovery/<YYYYMMDD>/`.
 6. Given runbook-only operability requirement, when a new engineer or clean-shell operator follows the documented procedure, then restart, verification, and escalation steps are executable without undocumented tribal knowledge.
-7. Given stuck-state guardrail requirements, when recovery validation runs, then no order session remains in non-terminal processing state beyond `TTL + 60s`, where `TTL` defaults to order-session TTL 600s per PRD policy unless overridden by configuration.
+7. Given stuck-state guardrail requirements, when recovery validation runs, then no order session remains in non-terminal processing state beyond `TTL + 60s`, where `TTL` defaults to order-session TTL 3600s per PRD policy unless overridden by configuration.
 8. Given full-operational verdict requirements, when recovery checks complete, then success quorum is 100% pass across required probes in a single drill run.
 
 ## Tasks / Subtasks
@@ -30,7 +30,7 @@ so that service continuity targets are met after cache/session infrastructure in
   - [x] Define explicit full-operational probe set and success quorum (`100%`)
   - [x] Define probe execution context inside compose network for internal service checks
   - [x] Define deterministic expected behavior during outage and recovery windows
-  - [x] Define stuck-state predicate and invariant query/checklist (`TTL=600s default`, fail if non-terminal beyond `TTL + 60s`)
+  - [x] Define stuck-state predicate and invariant query/checklist (`TTL=3600s default`, fail if non-terminal beyond `TTL + 60s`)
   - [x] Define pass/fail criteria and escalation thresholds
 - [x] Implement recovery drill automation (AC: 1, 3, 4, 5)
   - [x] Add script or workflow entrypoint to restart Redis and execute checks
@@ -66,7 +66,7 @@ so that service continuity targets are met after cache/session infrastructure in
   - outage window responses must remain standardized and deterministic
   - post-recovery representative flows must pass without manual intervention
 - Stuck-state contract:
-  - default `TTL` source: order-session TTL 600s policy unless environment-specific override is explicitly documented
+  - default `TTL` source: order-session TTL 3600s policy unless environment-specific override is explicitly documented
   - failure if any order session remains in non-terminal processing state beyond `TTL + 60s`
   - failure if post-recovery invariants detect unresolved session/order lifecycle inconsistency
 - Success quorum contract:
@@ -95,7 +95,7 @@ so that service continuity targets are met after cache/session infrastructure in
   - Full-operational probe set is explicitly executed from compose internal network context and all probes are green within SLO window.
   - During outage, stateful API failures are normalized and deterministic.
   - After recovery, representative auth/session/order smoke checks pass.
-  - Stuck-state predicate checks are green (`TTL=600s default`, `TTL + 60s` breach count = 0, or documented override baseline).
+  - Stuck-state predicate checks are green (`TTL=3600s default`, `TTL + 60s` breach count = 0, or documented override baseline).
   - Success quorum check is green (`100%` probe pass in single run).
   - Drill artifacts include timestamps, verdict, and operator notes.
   - Runbook rehearsal by another engineer or clean-shell simulation succeeds without undocumented steps.

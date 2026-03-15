@@ -12,8 +12,8 @@ So that UX friction is reduced without weakening high-risk order protection.
 
 ## Acceptance Criteria
 
-1. Given a low-risk order context with trusted session signals and fresh login MFA, when authorization policy runs, then the session auto-advances to `AUTHED` without additional step-up.
-2. Given an elevated-risk order context such as stale login MFA, new device or network, sensitive order amount, or security-event recency, when authorization policy runs, then additional TOTP step-up is required before execution can proceed.
+1. Given a low-risk order context with trusted session signals and an active trusted auth-session window, when authorization policy runs, then the session auto-advances to `AUTHED` without additional step-up.
+2. Given an elevated-risk order context such as an expired trusted auth-session window, login-context mismatch, sensitive order amount, or security-event recency, when authorization policy runs, then additional TOTP step-up is required before execution can proceed.
 3. Given required step-up verification inside the allowed time window, when the verify endpoint is called with a valid code, then verification succeeds and the session can advance.
 4. Given duplicate rapid verify attempts, when debounce policy applies, then the request is throttled without attempt over-consumption.
 5. Given TOTP replay in the same window, when replay is detected, then the request is rejected deterministically.
@@ -22,7 +22,7 @@ So that UX friction is reduced without weakening high-risk order protection.
 ## Tasks / Subtasks
 
 - [ ] Implement policy evaluation for low-risk versus elevated-risk contexts (AC: 1, 2)
-  - [ ] Consume login MFA freshness, device or network continuity, and order-risk inputs
+  - [ ] Consume login MFA freshness, shared login-context continuity, and order-risk inputs
 - [ ] Implement conditional TOTP verify path for challenge-required sessions (AC: 3)
   - [ ] Prevent verify flow from running on already authorized or terminal sessions
 - [ ] Implement debounce and replay-prevention logic (AC: 4, 5)
@@ -42,8 +42,16 @@ So that UX friction is reduced without weakening high-risk order protection.
 ### Technical Requirements
 
 - This story owns risk-based decisioning, not universal per-order OTP.
+- The default low-risk bypass window is a trusted auth-session window (60 minutes), not an immediate post-login-only MFA proof.
 - TOTP step-up must remain conditional and time-bounded.
 - Replay prevention, debounce, and attempt exhaustion must all be auditable and deterministic.
+- Post-MVP discussion items to capture but not implement in this story:
+  - mobile-specific trusted device/app continuity
+  - invalidation rules for reinstall, secure-storage wipe, trust-binding rotate/revoke, and session-family mismatch
+  - soft-signal treatment for mobile network change/background-resume
+  - Step C local biometric/app-PIN confirmation
+  - device-keystore/FIDO-backed transaction assertions
+  - see `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/post-mvp-mobile-order-trust-hardening.md`
 
 ### Architecture Compliance
 
@@ -82,6 +90,7 @@ GPT-5 Codex (Codex desktop)
 ### Completion Notes List
 
 - Story scaffold regenerated for risk-based order authorization and conditional step-up behavior.
+- Current MVP remains on the shared trusted-session + login-context continuity model; mobile-specific trust hardening and local transaction confirmation are documented as post-MVP TODO only.
 
 ### File List
 
