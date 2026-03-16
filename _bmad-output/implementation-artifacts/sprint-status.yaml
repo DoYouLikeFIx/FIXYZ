@@ -95,9 +95,9 @@ development_status:
   epic-5-retrospective: optional
 
   epic-6: backlog
-  6-1-timeout-and-circuit-breaker: ready-for-dev
-  6-2-retry-boundary-policy: ready-for-dev
-  6-3-chaos-control-api: ready-for-dev
+  6-1-timeout-and-circuit-breaker: done
+  6-2-retry-boundary-policy: done
+  6-3-chaos-control-api: done
   6-4-unknown-requery-scheduler: ready-for-dev
   6-5-manual-replay-recovery-api: ready-for-dev
   6-6-resilience-scenario-tests: ready-for-dev
