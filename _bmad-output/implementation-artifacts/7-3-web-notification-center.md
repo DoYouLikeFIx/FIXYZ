@@ -1,6 +1,6 @@
 # Story 7.3: [FE] Web Notification Center
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -19,14 +19,14 @@ So that order results are visible even across brief disconnections.
 
 ## Tasks / Subtasks
 
-- [ ] Implement acceptance-criteria scope 1 (AC: 1)
-  - [ ] Add test coverage for AC 1
-- [ ] Implement acceptance-criteria scope 2 (AC: 2)
-  - [ ] Add test coverage for AC 2
-- [ ] Implement acceptance-criteria scope 3 (AC: 3)
-  - [ ] Add test coverage for AC 3
-- [ ] Implement acceptance-criteria scope 4 (AC: 4)
-  - [ ] Add test coverage for AC 4
+- [x] Implement acceptance-criteria scope 1 (AC: 1)
+  - [x] Add test coverage for AC 1
+- [x] Implement acceptance-criteria scope 2 (AC: 2)
+  - [x] Add test coverage for AC 2
+- [x] Implement acceptance-criteria scope 3 (AC: 3)
+  - [x] Add test coverage for AC 3
+- [x] Implement acceptance-criteria scope 4 (AC: 4)
+  - [x] Add test coverage for AC 4
 
 ## Dev Notes
 
@@ -54,7 +54,7 @@ So that order results are visible even across brief disconnections.
 
 ### Story Completion Status
 
-- Status set to `ready-for-dev`.
+- Status set to `done`.
 - Completion note: Epic 7 story context prepared from canonical planning artifact.
 
 ### References
@@ -76,8 +76,48 @@ GPT-5 Codex (Codex desktop)
 
 ### Completion Notes List
 
-- Story scaffold generated with canonical numbering guardrail.
+- Extended `NotificationProvider` to keep a unified SSE connection and maintain in-app notification feed state.
+- Added reconnect backfill flow by hydrating `GET /api/v1/notifications` after reconnect open.
+- Added notification read action wiring to `PATCH /api/v1/notifications/{notificationId}/read` and reflected read state in UI.
+- Added notification center rendering in protected layout with deterministic empty-state guidance.
+- Validated with FE type-check and integration suite (`App.test.tsx`) including reconnect/backfill/read/empty-state scenarios.
+- Auto-fixed code-review findings: feed resilience fallback, mark-read failure guidance, and unavailable-feed UX guidance.
 
 ### File List
 
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/7-3-web-notification-center.md
+- FE/src/api/notificationApi.ts
+- FE/src/context/notification-context.ts
+- FE/src/context/NotificationContext.tsx
+- FE/src/hooks/auth/useProtectedSession.ts
+- FE/src/components/layout/ProtectedLayout.tsx
+- FE/src/index.css
+- FE/tests/integration/App.test.tsx
+- _bmad-output/implementation-artifacts/7-3-web-notification-center.md
+
+### Change Log
+
+- 2026-03-17: Implemented AC1-AC4 for web notification center with single SSE stream usage, bounded reconnect/backfill hydration, read-state sync action, empty-state UI, and integration test coverage.
+- 2026-03-17: Applied code-review autofixes (high/medium): robust notification feed fallback, explicit read-action failure guidance, feed-unavailable recovery action, and additional integration coverage.
+
+## Senior Developer Review (AI)
+
+### Review Date
+
+- 2026-03-17
+
+### Outcome
+
+- Approve
+
+### Summary
+
+- Verified AC coverage against implementation and tests.
+- Auto-fixed all identified high/medium findings from adversarial review.
+- Re-ran FE validation (`type-check`, `tests/integration/App.test.tsx`) successfully.
+
+### Action Items
+
+- [x] [HIGH] Resolve live-update contract fragility by adding resilient feed refresh path when SSE event payloads are unavailable.
+- [x] [HIGH] Add explicit user-facing error handling for `mark as read` failures.
+- [x] [MEDIUM] Prevent hydration failures from being shown as false empty-state; expose feed-unavailable guidance.
+- [x] [MEDIUM] Provide actionable fallback UX (`Refresh feed`) for notification feed recovery.

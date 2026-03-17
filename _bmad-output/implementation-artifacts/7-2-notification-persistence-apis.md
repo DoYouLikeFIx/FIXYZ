@@ -1,6 +1,6 @@
 # Story 7.2: [CH] Notification Persistence APIs
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -19,14 +19,14 @@ So that missed events can be recovered.
 
 ## Tasks / Subtasks
 
-- [ ] Implement acceptance-criteria scope 1 (AC: 1)
-  - [ ] Add test coverage for AC 1
-- [ ] Implement acceptance-criteria scope 2 (AC: 2)
-  - [ ] Add test coverage for AC 2
-- [ ] Implement acceptance-criteria scope 3 (AC: 3)
-  - [ ] Add test coverage for AC 3
-- [ ] Implement acceptance-criteria scope 4 (AC: 4)
-  - [ ] Add test coverage for AC 4
+- [x] Implement acceptance-criteria scope 1 (AC: 1)
+  - [x] Add test coverage for AC 1
+- [x] Implement acceptance-criteria scope 2 (AC: 2)
+  - [x] Add test coverage for AC 2
+- [x] Implement acceptance-criteria scope 3 (AC: 3)
+  - [x] Add test coverage for AC 3
+- [x] Implement acceptance-criteria scope 4 (AC: 4)
+  - [x] Add test coverage for AC 4
 
 ## Dev Notes
 
@@ -54,7 +54,7 @@ So that missed events can be recovered.
 
 ### Story Completion Status
 
-- Status set to `ready-for-dev`.
+- Status set to `done`.
 - Completion note: Epic 7 story context prepared from canonical planning artifact.
 
 ### References
@@ -76,8 +76,30 @@ GPT-5 Codex (Codex desktop)
 
 ### Completion Notes List
 
-- Story scaffold generated with canonical numbering guardrail.
+- Persisted notification read contract added (`read_at`) with member/id cursor index.
+- List API moved to session-owned member scope and retains ordered cursor pagination semantics.
+- Read-mark API added with ownership enforcement and read timestamp persistence.
+- Stream API heartbeat SSE contract restored to preserve existing session-stream clients.
+- AC coverage added at service and API levels including unauthorized and ownership-mismatch paths.
 
 ### File List
 
+- /Users/yeongjae/fixyz/BE/channel-domain/src/main/java/com/fix/channel/entity/Notification.java
+- /Users/yeongjae/fixyz/BE/channel-service/src/main/resources/db/migration/V15__add_notification_read_contract_columns.sql
+- /Users/yeongjae/fixyz/BE/channel-service/src/main/java/com/fix/channel/repository/NotificationRepository.java
+- /Users/yeongjae/fixyz/BE/channel-service/src/main/java/com/fix/channel/vo/NotificationItemVo.java
+- /Users/yeongjae/fixyz/BE/channel-service/src/main/java/com/fix/channel/dto/response/NotificationItemResponse.java
+- /Users/yeongjae/fixyz/BE/channel-service/src/main/java/com/fix/channel/dto/request/NotificationStreamRequest.java
+- /Users/yeongjae/fixyz/BE/channel-service/src/main/java/com/fix/channel/controller/NotificationController.java
+- /Users/yeongjae/fixyz/BE/channel-service/src/main/java/com/fix/channel/service/ChannelScaffoldService.java
+- /Users/yeongjae/fixyz/BE/channel-service/src/main/java/com/fix/channel/service/OrderExecutionService.java
+- /Users/yeongjae/fixyz/BE/channel-service/src/test/java/com/fix/channel/service/OrderExecutionServiceTest.java
+- /Users/yeongjae/fixyz/BE/channel-service/src/test/java/com/fix/channel/service/ChannelScaffoldNotificationServiceTest.java
+- /Users/yeongjae/fixyz/BE/channel-service/src/test/java/com/fix/channel/controller/NotificationControllerContractTest.java
+- /Users/yeongjae/fixyz/BE/channel-service/src/test/java/com/fix/channel/integration/ChannelAuthSessionIntegrationTest.java
+- /Users/yeongjae/fixyz/BE/channel-service/src/test/resources/mockito-extensions/org.mockito.plugins.MockMaker
 - /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/7-2-notification-persistence-apis.md
+
+## Change Log
+
+- 2026-03-17: Implemented AC1-AC4, restored `/api/v1/notifications/stream` SSE heartbeat contract, and added API-level read authorization/ownership tests.

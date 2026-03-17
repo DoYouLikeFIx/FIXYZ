@@ -1,6 +1,6 @@
 # Story 7.1: [CH] SSE Stream Registry
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -19,14 +19,14 @@ So that users receive order outcomes in real time.
 
 ## Tasks / Subtasks
 
-- [ ] Implement acceptance-criteria scope 1 (AC: 1)
-  - [ ] Add test coverage for AC 1
-- [ ] Implement acceptance-criteria scope 2 (AC: 2)
-  - [ ] Add test coverage for AC 2
-- [ ] Implement acceptance-criteria scope 3 (AC: 3)
-  - [ ] Add test coverage for AC 3
-- [ ] Implement acceptance-criteria scope 4 (AC: 4)
-  - [ ] Add test coverage for AC 4
+- [x] Implement acceptance-criteria scope 1 (AC: 1)
+  - [x] Add test coverage for AC 1
+- [x] Implement acceptance-criteria scope 2 (AC: 2)
+  - [x] Add test coverage for AC 2
+- [x] Implement acceptance-criteria scope 3 (AC: 3)
+  - [x] Add test coverage for AC 3
+- [x] Implement acceptance-criteria scope 4 (AC: 4)
+  - [x] Add test coverage for AC 4
 
 ## Dev Notes
 
@@ -54,8 +54,8 @@ So that users receive order outcomes in real time.
 
 ### Story Completion Status
 
-- Status set to `ready-for-dev`.
-- Completion note: Epic 7 story context prepared from canonical planning artifact.
+- Status set to `done`.
+- Completion note: Existing implementation was re-validated against AC 1~4 without refactoring.
 
 ### References
 
@@ -73,11 +73,16 @@ GPT-5 Codex (Codex desktop)
 ### Debug Log References
 
 - Generated from canonical planning artifact for Epic 7.
+- Revalidation test run: `./gradlew :channel-service:test --tests 'com.fix.channel.service.NotificationSseRegistryTest' --tests 'com.fix.channel.integration.ChannelAuthSessionIntegrationTest.shouldInvalidatePreviousSessionWhenSameAccountLogsInAgain'`
 
 ### Completion Notes List
 
-- Story scaffold generated with canonical numbering guardrail.
+- AC 1 validated: authenticated stream endpoint returns SSE and registry registers emitter by member identity.
+- AC 2 validated: duplicate member stream replaces previous emitter safely.
+- AC 3 validated: failed emitter send path triggers registry cleanup.
+- AC 4 validated: heartbeat emission path verified through immediate heartbeat on open and scheduled heartbeat dispatch.
 
 ### File List
 
 - /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/7-1-sse-stream-registry.md
+- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/sprint-status.yaml

@@ -104,11 +104,11 @@ development_status:
   6-7-degraded-operation-ux: ready-for-dev
   epic-6-retrospective: optional
 
-  epic-7: backlog
-  7-1-sse-stream-registry: ready-for-dev
-  7-2-notification-persistence-apis: ready-for-dev
-  7-3-web-notification-center: ready-for-dev
-  7-4-mobile-notification-feed: ready-for-dev
+  epic-7: in-progress
+  7-1-sse-stream-registry: done
+  7-2-notification-persistence-apis: done
+  7-3-web-notification-center: done
+  7-4-mobile-notification-feed: in-progress
   7-5-admin-session-and-audit-apis: ready-for-dev
   7-6-web-admin-console-screens: ready-for-dev
   7-7-channel-security-hardening: ready-for-dev
