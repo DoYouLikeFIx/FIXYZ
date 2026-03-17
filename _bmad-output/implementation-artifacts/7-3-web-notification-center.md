@@ -73,6 +73,10 @@ GPT-5 Codex (Codex desktop)
 ### Debug Log References
 
 - Generated from canonical planning artifact for Epic 7.
+- `pnpm test -- tests/unit/api/notificationApi.test.ts`
+- `pnpm test -- tests/integration/App.test.tsx`
+- `pnpm exec playwright test e2e/notification-center.spec.ts --reporter=list`
+- `pnpm exec playwright test e2e/live/notification-center-live.spec.ts --reporter=list`
 
 ### Completion Notes List
 
@@ -82,6 +86,12 @@ GPT-5 Codex (Codex desktop)
 - Added notification center rendering in protected layout with deterministic empty-state guidance.
 - Validated with FE type-check and integration suite (`App.test.tsx`) including reconnect/backfill/read/empty-state scenarios.
 - Auto-fixed code-review findings: feed resilience fallback, mark-read failure guidance, and unavailable-feed UX guidance.
+- Added FE notification API unit coverage for list pagination defaults, cursor-based backfill query forwarding, and canonical mark-read patch path.
+- Re-ran FE automated QA verification after API test additions with full green test outcome.
+- Added Playwright notification-center UI flow coverage for authenticated entry, live stream event rendering, and mark-as-read interaction.
+- Added Playwright reconnect-failure recovery flow coverage proving `Refresh feed` restores notification list after reconnect-triggered hydration failure.
+- Added live-folder backend smoke E2E for notification center auth boundary checks (`/api/v1/notifications`, `/api/v1/notifications/stream`).
+- Extended live-folder smoke with authenticated login flow to verify notification center renders on real `/portfolio` navigation.
 
 ### File List
 
@@ -92,12 +102,19 @@ GPT-5 Codex (Codex desktop)
 - FE/src/components/layout/ProtectedLayout.tsx
 - FE/src/index.css
 - FE/tests/integration/App.test.tsx
+- FE/tests/unit/api/notificationApi.test.ts
+- FE/e2e/notification-center.spec.ts
+- FE/e2e/live/notification-center-live.spec.ts
 - _bmad-output/implementation-artifacts/7-3-web-notification-center.md
 
 ### Change Log
 
 - 2026-03-17: Implemented AC1-AC4 for web notification center with single SSE stream usage, bounded reconnect/backfill hydration, read-state sync action, empty-state UI, and integration test coverage.
 - 2026-03-17: Applied code-review autofixes (high/medium): robust notification feed fallback, explicit read-action failure guidance, feed-unavailable recovery action, and additional integration coverage.
+- 2026-03-17: Added QA-focused FE notification API unit tests and re-validated notification center integration flows for story 7.3.
+- 2026-03-17: Added Playwright E2E coverage for notification center user flow and validated UI-level stream/update/read behavior.
+- 2026-03-17: Added reconnect-failure refresh-recovery E2E and live backend smoke E2E coverage for notification center hardening.
+- 2026-03-17: Extended live smoke coverage with real-login notification center render verification (env-gated).
 
 ## Senior Developer Review (AI)
 
