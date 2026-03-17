@@ -2778,6 +2778,83 @@ So that I understand valuation confidence before execution.
   **When** screen capture reviewed  
   **Then** source-mode visibility is clear in both web and mobile clients.
 
+### Story 11.6: [BE][AC] OrderBook Query and Sorting Contract
+
+As an **execution engine owner**,  
+I want deterministic opposite-book query and sorting contracts,  
+So that matching input order is stable and auditable before fill calculation.
+
+**Depends On:** Story 5.2, Story 11.2
+
+**Acceptance Criteria:**
+
+- **Given** opposite-side open orders for a symbol  
+  **When** execution query loads candidates  
+  **Then** only `NEW`/`PARTIALLY_FILLED` are returned with deterministic order (`price`, `createdAt`, `id`).
+- **Given** concurrent execution attempts  
+  **When** same liquidity rows are targeted  
+  **Then** pessimistic locking prevents duplicate liquidity consumption.
+
+### Story 11.7: [BE][AC] Matching Engine Core (LIMIT/MARKET Rules)
+
+As an **execution engine owner**,  
+I want a canonical matching engine core for LIMIT and MARKET rules,  
+So that execution behavior is deterministic and policy-compliant.
+
+**Depends On:** Story 11.6, Story 11.2, Story 5.2
+
+**Acceptance Criteria:**
+
+- **Given** LIMIT cross condition  
+  **When** engine runs  
+  **Then** fills follow strict price-time priority and leaves quantity is correct.
+- **Given** MARKET order with empty opposite book  
+  **When** engine runs  
+  **Then** deterministic reject (`ORD-013`) is produced and no fill artifacts are emitted.
+- **Given** identical ordered book snapshots and input order  
+  **When** engine runs repeatedly  
+  **Then** matching output (`fills[]`, totals, reject code) is identical.
+
+### Story 11.8: [BE][AC] Multi-Execution Persistence and Order State Transitions
+
+As an **execution ledger owner**,  
+I want multi-execution persistence and canonical order-state transitions,  
+So that matching outcomes are durably recorded and downstream balances stay consistent.
+
+**Depends On:** Story 11.7, Story 5.2
+
+**Acceptance Criteria:**
+
+- **Given** multi-fill matching output  
+  **When** persistence runs  
+  **Then** one `executions` row per fill is persisted with deterministic sequence and order linkage.
+- **Given** summary finalization  
+  **When** order row is updated  
+  **Then** `status`, `execution_result`, `executedQty`, `leavesQty`, `executedPrice` follow canonical transition mapping.
+- **Given** no-liquidity reject (`ORD-013`)  
+  **When** persistence finalizes  
+  **Then** execution rows are not created and cash/position mutations remain unchanged.
+
+### Story 11.9: [BE][AC] Matching Contract and Integration Regression Suite
+
+As a **quality owner for execution engine changes**,  
+I want a matching-focused contract and integration regression suite,  
+So that future changes cannot silently break deterministic matching behavior.
+
+**Depends On:** Story 11.8, Story 3.5
+
+**Acceptance Criteria:**
+
+- **Given** canonical scenario matrix (`LIMIT_CROSS`, `LIMIT_NON_CROSS`, `MARKET_SWEEP`, `MARKET_PARTIAL`, `MARKET_NO_LIQUIDITY`)  
+  **When** CI suite runs  
+  **Then** deterministic outcomes and ledger consistency are validated end-to-end.
+- **Given** anti-regression checks  
+  **When** implementation reverts to immediate single-path fill behavior  
+  **Then** suite fails deterministically.
+- **Given** release gate evaluation  
+  **When** matching suite and performance smoke complete  
+  **Then** p95 for execute path stays within existing order SLA (`<= 1000ms`) and evidence artifacts are attached.
+
 ## Epic 12: Financial DMZ Boundary and Perimeter Hardening
 
 > **Scope note:** Story 0.7 remains the active runtime baseline. Epic 12 is currently documentation-only and exists to preserve a complete DMZ design package without keeping partial runtime code in the repository.
