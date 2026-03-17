@@ -230,20 +230,13 @@ All seven must pass in CI before the MVP is considered complete:
 
 **Persona:** Hyunseok is a Security Operations engineer. He receives an alert that a customer's account shows suspicious simultaneous logins from two different IP addresses.
 
-**Opening Scene:** Hyunseok identifies the target user from the security event log and calls the admin API directly. In MVP, this flow is API-only and has no dedicated admin UI.
-
-```bash
-curl -X POST https://fix-channel/api/v1/admin/sessions/force-invalidate \
-  -b "SESSION={admin-session-id}" \
-  -H "X-CSRF-TOKEN: {csrf-token}" \
-  -d '{"userId": "jisu-001", "reason": "suspicious_concurrent_login"}'
-```
+**Opening Scene:** Hyunseok opens the dedicated admin web console, identifies the target user from the security event and audit views, and triggers a force-logout action from the browser UI. The console is backed by the same admin API contract used for force logout and audit retrieval.
 
 **Climax:** The channel service invalidates all Redis-backed sessions for that user. Any in-flight request using the stale session immediately receives `401 Unauthorized`, and pending `PENDING_NEW` orders are cleaned up by the session-expiry flow.
 
 **Resolution:** The audit log records the admin actor, target user, reason, and timestamp. On the next page load, the user is redirected to the login screen with a security message indicating that the session was terminated.
 
-**Capabilities Revealed:** Admin role endpoint, Redis session bulk invalidation, audit log with admin actor, 401 propagation on invalidated session, pending order cleanup on forced logout.
+**Capabilities Revealed:** Admin web console, admin role endpoint, Redis session bulk invalidation, audit log with admin actor, 401 propagation on invalidated session, pending order cleanup on forced logout.
 
 ---
 
@@ -1283,7 +1276,7 @@ All seven must pass in CI before MVP is complete:
 - Grafana alert tuning + Alertmanager integration
 - Keycloak SSO integration
 - More advanced Bucket4j policies beyond IP-based defaults
-- Richer admin / operational UI
+- Richer admin / operational dashboards beyond the baseline admin console
 - SSE polling fallback option
 
 **Phase 3 - Vision**
@@ -1428,7 +1421,7 @@ jobs:
 
 ---
 
-> **Traceability summary:** All 7 acceptance scenarios trace to FRs. All 4 User Journeys fully covered. The 5 baseline React screens remain designable from FRs alone, and the password recovery capability contract is included in the MVP auth surface. Dedicated FE/MOB password recovery UX follow-on stories in Epic 1 consume FR-57~61 without introducing additional FRs. Epic 1 follow-on MFA recovery/rebind scope (Story 1.14 / 1.15) is treated as auth-surface hardening that reuses the existing numbered contract across FR-01, FR-03, FR-05, FR-14, FR-33, FR-38, and FR-45; it therefore does not introduce a separate numbered FR, but its executable API/UX contract is fixed in the channel auth planning artifacts. Epic 1 follow-on real recovery-challenge hardening scope (Story 1.16 / 1.17 / 1.18 / 1.19) likewise reuses FR-57~61 as an auth-surface hardening rollout and does not introduce separate numbered FRs; its executable API, UX, and ops evidence contract is fixed in the channel auth planning artifacts. No FR contains implementation details (HOW). Growth-scope capabilities (notification read/filter, admin UI, Keycloak) intentionally excluded.
+> **Traceability summary:** All 7 acceptance scenarios trace to FRs. All 4 User Journeys fully covered. The 6 baseline React screens remain designable from FRs alone, including the baseline admin console for audit search and force logout, and the password recovery capability contract is included in the MVP auth surface. Dedicated FE/MOB password recovery UX follow-on stories in Epic 1 consume FR-57~61 without introducing additional FRs. Epic 1 follow-on MFA recovery/rebind scope (Story 1.14 / 1.15) is treated as auth-surface hardening that reuses the existing numbered contract across FR-01, FR-03, FR-05, FR-14, FR-33, FR-38, and FR-45; it therefore does not introduce a separate numbered FR, but its executable API/UX contract is fixed in the channel auth planning artifacts. Epic 1 follow-on real recovery-challenge hardening scope (Story 1.16 / 1.17 / 1.18 / 1.19) likewise reuses FR-57~61 as an auth-surface hardening rollout and does not introduce separate numbered FRs; its executable API, UX, and ops evidence contract is fixed in the channel auth planning artifacts. No FR contains implementation details (HOW). Growth-scope capabilities (notification read/filter, richer admin dashboards, Keycloak) intentionally excluded.
 
 ---
 
