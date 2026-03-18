@@ -92,6 +92,7 @@ development_status:
   5-5-concurrency-control: ready-for-dev
   5-6-ledger-integrity: ready-for-dev
   5-7-visible-result-error-ux: review
+  5-8-ledger-reconciliation-and-guarded-repair: ready-for-dev
   epic-5-retrospective: optional
 
   epic-6: backlog
@@ -109,9 +110,9 @@ development_status:
   7-2-notification-persistence-apis: done
   7-3-web-notification-center: done
   7-4-mobile-notification-feed: done
-  7-5-admin-session-and-audit-apis: ready-for-dev
-  7-6-web-admin-console-screens: in-progress
-  7-7-channel-security-hardening: ready-for-dev
+  7-5-admin-session-and-audit-apis: done
+  7-6-web-admin-console-screens: done
+  7-7-channel-security-hardening: done
   epic-7-retrospective: optional
 
   epic-8: backlog
@@ -121,6 +122,7 @@ development_status:
   8-4-openapi-completeness: ready-for-dev
   8-5-web-correlation-propagation-support: ready-for-dev
   8-6-mobile-correlation-propagation-support: ready-for-dev
+  8-7-ledger-integrity-observability-and-alerting: ready-for-dev
   epic-8-retrospective: optional
 
   epic-9: backlog

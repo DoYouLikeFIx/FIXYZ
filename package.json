@@ -8,6 +8,7 @@
   },
   "scripts": {
     "test": "npm run test:collab-webhook && npm run test:edge-gateway && npm run test:vault && npm run test:infra-bootstrap && npm run test:db-ha && npm run test:redis-recovery && npm run test:client-parity",
+    "test:be:critical-contract-suites": "node scripts/run-gradle-wrapper.js --cwd BE --no-daemon :channel-service:criticalContractSuites",
     "test:collab-webhook": "node --test tests/collab-webhook/*.test.js",
     "test:edge-gateway": "node --test tests/edge-gateway/*.test.js",
     "test:vault": "node --test tests/vault/*.test.js",

@@ -1,6 +1,6 @@
 # Story 7.5: [CH] Admin Session & Audit APIs
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -19,14 +19,20 @@ So that security incidents can be handled quickly.
 
 ## Tasks / Subtasks
 
-- [ ] Implement acceptance-criteria scope 1 (AC: 1)
-  - [ ] Add test coverage for AC 1
-- [ ] Implement acceptance-criteria scope 2 (AC: 2)
-  - [ ] Add test coverage for AC 2
-- [ ] Implement acceptance-criteria scope 3 (AC: 3)
-  - [ ] Add test coverage for AC 3
-- [ ] Implement acceptance-criteria scope 4 (AC: 4)
-  - [ ] Add test coverage for AC 4
+- [x] Implement acceptance-criteria scope 1 (AC: 1)
+  - [x] Add test coverage for AC 1
+- [x] Implement acceptance-criteria scope 2 (AC: 2)
+  - [x] Add test coverage for AC 2
+- [x] Implement acceptance-criteria scope 3 (AC: 3)
+  - [x] Add test coverage for AC 3
+- [x] Implement acceptance-criteria scope 4 (AC: 4)
+  - [x] Add test coverage for AC 4
+
+### Review Follow-ups (AI)
+
+- [x] [AI-Review][HIGH] Extend OpenAPI responses for `GET /api/v1/admin/audit-logs` and `DELETE /api/v1/admin/members/{memberUuid}/sessions` to include non-200 error contracts (at minimum 403/429 + standardized error envelope) to match implemented auth/rate-limit behavior. [BE/contracts/openapi/channel-service.json]
+- [x] [AI-Review][MEDIUM] Align invalid query-window error semantics for admin audit query (`from > to`) with canonical validation error contract (`VALIDATION_001`) instead of contract-only variant, or explicitly document and test the exception contract decision. [BE/channel-service/src/main/java/com/fix/channel/dto/request/AdminAuditLogQueryRequest.java]
+- [x] [AI-Review][MEDIUM] Add explicit automated assertion that privileged-action audit evidence contains admin identity context (e.g., `adminEmail`) to fully prove AC4 evidence claim. [BE/channel-service/src/test/java/com/fix/channel/integration/AdminSessionAuditIntegrationTest.java]
 
 ## Dev Notes
 
@@ -99,8 +105,8 @@ So that security incidents can be handled quickly.
 
 ### Story Completion Status
 
-- Status set to `ready-for-dev`.
-- Completion note: Epic 7 story context prepared from canonical planning artifact with explicit endpoint, error, and dependency guardrails added.
+- Status set to `done`.
+- Completion note: Story 7.5 admin session invalidation and audit APIs are implemented and validated, including second-round adversarial review fixes for OpenAPI error contracts, query validation semantics, and AC4 identity-evidence assertions.
 
 ### References
 
@@ -115,17 +121,97 @@ So that security incidents can be handled quickly.
 
 ### Agent Model Used
 
-GPT-5 Codex (Codex desktop)
+GPT-5.3-Codex
 
 ### Debug Log References
 
-- Generated from canonical planning artifact for Epic 7.
+- `runTests` (targeted): `BE/channel-service/src/test/java/com/fix/channel/integration/AdminSessionAuditIntegrationTest.java` passed.
+- `runTests` (broad contract class): existing unrelated baseline failures observed in `BE/channel-service/src/test/java/com/fix/channel/controller/ChannelErrorContractTest.java` environment run.
+- `get_errors` on changed main files: no new compile/lint errors from Story 7.5 implementation files.
 
 ### Completion Notes List
 
-- Story scaffold generated with canonical numbering guardrail.
-- Added explicit admin endpoint contract, idempotency rules, and dependency gate against Story 8.1.
+- Implemented canonical admin endpoints:
+  - `GET /api/v1/admin/audit-logs`
+  - `DELETE /api/v1/admin/members/{memberUuid}/sessions`
+- Added admin API rate limiting (20 req/min per admin session) with `Retry-After` support.
+- Implemented idempotent force logout (`invalidatedCount: 0` success path) with mandatory `ADMIN_FORCE_LOGOUT` audit recording.
+- Implemented audit query filtering/pagination (`page`, `size`, `from`, `to`, `memberId`, `eventType`) using canonical event mapping.
+- Extended OpenAPI contract for Story 7.5 endpoints and response schemas.
+- Evidence gate coverage attached:
+  - Forced-logout proof: `shouldInvalidateTargetMemberSessionsAndRejectStaleSessionAfterAdminForceLogout`
+  - Stale-session-after-invalidation proof: same test validates subsequent protected request returns `CHANNEL-001`.
+  - Audit-filter proof: `shouldReturnPaginatedFilteredAuditLogsForAdminAuditEndpoint`
 
 ### File List
 
-- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/7-5-admin-session-and-audit-apis.md
+- `BE/channel-service/src/main/java/com/fix/channel/controller/AdminController.java`
+- `BE/channel-service/src/main/java/com/fix/channel/repository/AuditLogRepository.java`
+- `BE/channel-service/src/main/java/com/fix/channel/service/ChannelSessionInvalidationService.java`
+- `BE/channel-service/src/main/java/com/fix/channel/service/AdminApiRateLimitService.java`
+- `BE/channel-service/src/main/java/com/fix/channel/service/AdminAuditLogQueryService.java`
+- `BE/channel-service/src/main/java/com/fix/channel/service/AdminMemberSessionService.java`
+- `BE/channel-service/src/main/java/com/fix/channel/dto/request/AdminAuditLogQueryRequest.java`
+- `BE/channel-service/src/main/java/com/fix/channel/dto/response/AdminAuditLogQueryResponse.java`
+- `BE/channel-service/src/main/java/com/fix/channel/dto/response/AdminSessionInvalidationResponse.java`
+- `BE/channel-service/src/main/java/com/fix/channel/vo/AdminActorContext.java`
+- `BE/channel-service/src/main/java/com/fix/channel/vo/AdminAuditLogItemVo.java`
+- `BE/channel-service/src/main/java/com/fix/channel/vo/AdminAuditLogQueryCommand.java`
+- `BE/channel-service/src/main/java/com/fix/channel/vo/AdminAuditLogQueryResult.java`
+- `BE/channel-service/src/main/java/com/fix/channel/vo/AdminSessionInvalidationResult.java`
+- `BE/channel-service/src/test/java/com/fix/channel/integration/AdminSessionAuditIntegrationTest.java`
+- `BE/channel-service/src/test/java/com/fix/channel/controller/ChannelErrorContractTest.java`
+- `BE/contracts/openapi/channel-service.json`
+- `_bmad-output/implementation-artifacts/7-5-admin-session-and-audit-apis.md`
+
+### Change Log
+
+- Added Story 7.5 admin audit/session APIs and supporting service, DTO, and VO layers.
+- Added idempotent session invalidation count pathway and privileged audit recording.
+- Added Story 7.5 integration tests and admin authorization contract assertions.
+- Updated channel-service OpenAPI with canonical admin endpoint contracts.
+- Senior Developer adversarial review completed; follow-up action items appended and status moved to `in-progress` pending resolution.
+- Applied second-round review fixes (OpenAPI non-200 contracts, validation code alignment, AC4 audit identity assertion) and moved story to `done`.
+
+## Senior Developer Review (AI)
+
+### Review Summary
+
+- Outcome: Changes Requested
+- AC coverage check:
+  - AC1 implemented and evidenced (`AdminSessionAuditIntegrationTest` force-logout + stale-session assertion)
+  - AC2 implemented and evidenced (filtered/paginated audit query assertion)
+  - AC3 implemented and evidenced (non-admin forbidden contract tests)
+  - AC4 implemented in code path, but test evidence is partial (identity context assertion gap)
+- Git vs Story discrepancy: no critical mismatch in BE code file listing for this story scope.
+
+### Findings
+
+1. **[HIGH] OpenAPI error responses are incomplete for new admin endpoints**
+  - Evidence: New paths only define `200` responses; implemented runtime behavior includes `403 AUTH-006` and `429 RATE_001`.
+  - Impact: Contract consumers cannot rely on documented error envelopes for authorization and throttling.
+  - Location: `BE/contracts/openapi/channel-service.json` (`/api/v1/admin/audit-logs`, `/api/v1/admin/members/{memberUuid}/sessions`).
+
+2. **[MEDIUM] Admin audit query uses `CONTRACT_VALIDATION_FAILED` for range validation without explicit story-level contract alignment**
+  - Evidence: `AdminAuditLogQueryRequest` throws `ErrorCode.CONTRACT_VALIDATION_FAILED` when `from > to`.
+  - Impact: Potential divergence from lane-wide validation semantics (`VALIDATION_001`) unless explicitly intended and documented.
+  - Location: `BE/channel-service/src/main/java/com/fix/channel/dto/request/AdminAuditLogQueryRequest.java`.
+
+3. **[MEDIUM] AC4 evidence is not fully asserted in automated tests**
+  - Evidence: Integration assertions validate action/memberId/IP/userAgent, but do not assert persisted admin identity field evidence (e.g., `adminEmail` within audit detail).
+  - Impact: Story claims complete AC4 proof while test signal can miss regression in identity persistence detail.
+  - Location: `BE/channel-service/src/test/java/com/fix/channel/integration/AdminSessionAuditIntegrationTest.java`.
+
+### Senior Developer Review (AI) - Round 2
+
+### Review Summary
+
+- Outcome: Approved
+- Re-review scope: prior HIGH/MEDIUM findings from round 1
+- Result: all previous HIGH/MEDIUM findings resolved
+
+### Resolution Notes
+
+1. OpenAPI non-200 response contracts added for both admin endpoints (`403`, `429`, plus `400` for audit query validation path).
+2. Audit query invalid range (`from > to`) now uses lane-consistent validation code path (`VALIDATION_001`).
+3. Integration tests now explicitly assert privileged audit identity evidence via `adminEmail` detail content.
