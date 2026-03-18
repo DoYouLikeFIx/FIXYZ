@@ -109,9 +109,9 @@ development_status:
   7-2-notification-persistence-apis: done
   7-3-web-notification-center: done
   7-4-mobile-notification-feed: done
-  7-5-admin-session-and-audit-apis: ready-for-dev
+  7-5-admin-session-and-audit-apis: done
   7-6-web-admin-console-screens: ready-for-dev
-  7-7-channel-security-hardening: ready-for-dev
+  7-7-channel-security-hardening: done
   epic-7-retrospective: optional
 
   epic-8: backlog

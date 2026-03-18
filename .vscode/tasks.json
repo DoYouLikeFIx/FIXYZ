@@ -1,0 +1,58 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "BE:gradle testClasses",
+      "type": "shell",
+      "command": "./gradlew",
+      "args": [
+        ":channel-service:testClasses"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/BE"
+      },
+      "group": "build",
+      "problemMatcher": [
+        "$gradle"
+      ]
+    },
+    {
+      "label": "BE:gradle channel-critical-contract-suites",
+      "type": "shell",
+      "command": "./gradlew",
+      "args": [
+        ":channel-service:criticalContractSuites"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/BE"
+      },
+      "group": "test",
+      "problemMatcher": [
+        "$gradle"
+      ]
+    },
+    {
+      "label": "BE:no-input critical-contract-suites",
+      "type": "shell",
+      "command": "./gradlew",
+      "args": [
+        "--no-daemon",
+        ":channel-service:criticalContractSuites"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/BE"
+      },
+      "group": "test",
+      "problemMatcher": [
+        "$gradle"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "focus": false,
+        "panel": "dedicated",
+        "clear": true,
+        "showReuseMessage": false
+      }
+    }
+  ]
+}
