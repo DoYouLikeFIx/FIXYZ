@@ -203,6 +203,7 @@ Ensures position ledger processing, sell limits, idempotency, and concurrency st
 - Story 5.5: BE Concurrency Control
 - Story 5.6: BE Ledger Integrity
 - Story 5.7: FE/MOB Visible Result/Error UX
+- Story 5.8: BE Ledger Reconciliation & Guarded Repair
 
 ### Epic 6: External Resilience, Chaos, Replay/Recovery Ops
 
@@ -242,6 +243,7 @@ Ensures consistency in cross-system security, audit, and observability.
 - Story 8.4: BE OpenAPI Completeness
 - Story 8.5: FE Correlation Propagation Support
 - Story 8.6: MOB Correlation Propagation Support
+- Story 8.7: BE Ledger Integrity Observability & Alerting
 
 ### Epic 9: Integration Orchestration & End-to-End Recovery
 
@@ -1873,6 +1875,29 @@ So that I can take the correct next action.
   **When** result rendered  
   **Then** ClOrdID and updated position quantity are shown where required.
 
+### Story 5.8: [BE][AC] Ledger Reconciliation & Guarded Repair
+
+As a **finance correctness owner**,  
+I want detected ledger anomalies to move through reconciliation and guarded repair,  
+So that canonical accounting state can be investigated and corrected without ad hoc SQL edits.
+
+**Depends On:** Story 5.6
+
+**Acceptance Criteria:**
+
+- **Given** stored integrity anomalies  
+  **When** reconciliation case is created  
+  **Then** traceable identifiers and initial case state are persisted.
+- **Given** a reconciliation case  
+  **When** operator triage occurs  
+  **Then** state transitions, actor, reason, and timestamps are recorded.
+- **Given** an approved repairable case  
+  **When** guarded repair executes  
+  **Then** only supported repair types are allowed and original execution/journal/ledger history is not destructively overwritten.
+- **Given** the same repair request or a post-repair rerun  
+  **When** repair key and rerun evidence are processed  
+  **Then** duplicate adjustment is not created and the case is linked as `RESOLVED` or `REOPENED`.
+
 ---
 
 ## Epic 6: External Resilience, Chaos, Replay/Recovery Ops
@@ -2358,6 +2383,29 @@ So that incident triage parity with web is maintained.
 - **Given** crash/error reporting integration  
   **When** event sent  
   **Then** correlation id is attached without PII leakage.
+
+### Story 8.7: [BE][AC] Ledger Integrity Observability & Alerting
+
+As an **operations owner**,  
+I want ledger integrity run, backlog, and alert signals exposed,  
+So that unresolved accounting risks are visible before release and during operations.
+
+**Depends On:** Story 5.6, Story 5.8, Story 8.3
+
+**Acceptance Criteria:**
+
+- **Given** stored integrity runs and reconciliation cases  
+  **When** operations summary query executes  
+  **Then** latest run result, unresolved anomaly counts, repair-pending counts, and latest failed identifiers are returned.
+- **Given** integrity check or reconciliation outcomes change  
+  **When** metrics are emitted  
+  **Then** latest run status, unresolved backlog, critical anomaly count, and stale-last-run indicators are observable.
+- **Given** configured thresholds are breached  
+  **When** alert evaluation runs  
+  **Then** a structured alert or event is emitted with run id and traceable identifiers.
+- **Given** non-operator or public caller  
+  **When** integrity observability data is requested  
+  **Then** access is denied and only internal/admin surfaces are exposed.
 
 ---
 
