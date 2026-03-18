@@ -55,14 +55,14 @@ development_status:
   1-19-recovery-challenge-abuse-defense-validation-and-ops-evidence: ready-for-dev
   epic-1-retrospective: optional
 
-  epic-2: backlog
-  2-1-schema-and-auto-account-provisioning: ready-for-dev
-  2-2-balance-and-available-balance-api: ready-for-dev
-  2-3-order-history-api: ready-for-dev
-  2-4-web-account-dashboard-and-history: ready-for-dev
-  2-5-mobile-account-dashboard-and-history: ready-for-dev
-  2-6-account-status-contract: ready-for-dev
-  epic-2-retrospective: optional
+  epic-2: done
+  2-1-schema-and-auto-account-provisioning: done
+  2-2-balance-and-available-balance-api: done
+  2-3-order-history-api: done
+  2-4-web-account-dashboard-and-history: done
+  2-5-mobile-account-dashboard-and-history: done
+  2-6-account-status-contract: done
+  epic-2-retrospective: done
 
   epic-3: done
   3-1-fep-dto-client-contract: done
@@ -73,47 +73,47 @@ development_status:
   3-6-visible-external-error-ux: done
   epic-3-retrospective: done
 
-  epic-4: in-progress
-  4-1-order-session-create-status-plus-ownership: review
-  4-2-risk-based-order-authorization-policy: review
+  epic-4: done
+  4-1-order-session-create-status-plus-ownership: done
+  4-2-risk-based-order-authorization-policy: done
   4-3-order-session-fsm-transition-governance: done
-  4-4-web-order-step-a-b: review
-  4-5-web-conditional-step-up-plus-step-c: review
-  4-6-mobile-order-step-a-b: review
-  4-7-mobile-conditional-step-up-plus-step-c: review
+  4-4-web-order-step-a-b: done
+  4-5-web-conditional-step-up-plus-step-c: done
+  4-6-mobile-order-step-a-b: done
+  4-7-mobile-conditional-step-up-plus-step-c: done
   4-8-cross-client-authorization-fsm-parity-validation: done
-  epic-4-retrospective: optional
+  epic-4-retrospective: done
 
-  epic-5: backlog
-  5-1-limit-engine: ready-for-dev
-  5-2-order-execution-and-position-update: ready-for-dev
-  5-3-fep-order-execution-semantics: ready-for-dev
-  5-4-idempotent-posting: ready-for-dev
-  5-5-concurrency-control: ready-for-dev
-  5-6-ledger-integrity: ready-for-dev
-  5-7-visible-result-error-ux: ready-for-dev
-  5-8-ledger-reconciliation-and-guarded-repair: ready-for-dev
-  epic-5-retrospective: optional
+  epic-5: done
+  5-1-limit-engine: done
+  5-2-order-execution-and-position-update: done
+  5-3-fep-order-execution-semantics: done
+  5-4-idempotent-posting: done
+  5-5-concurrency-control: done
+  5-6-ledger-integrity: done
+  5-7-visible-result-error-ux: done
+  5-8-ledger-reconciliation-and-guarded-repair: done
+  epic-5-retrospective: done
 
-  epic-6: backlog
+  epic-6: in-progress
   6-1-timeout-and-circuit-breaker: done
   6-2-retry-boundary-policy: done
   6-3-chaos-control-api: done
-  6-4-unknown-requery-scheduler: ready-for-dev
+  6-4-unknown-requery-scheduler: review
   6-5-manual-replay-recovery-api: ready-for-dev
   6-6-resilience-scenario-tests: ready-for-dev
   6-7-degraded-operation-ux: ready-for-dev
   epic-6-retrospective: optional
 
-  epic-7: in-progress
+  epic-7: done
   7-1-sse-stream-registry: done
   7-2-notification-persistence-apis: done
   7-3-web-notification-center: done
   7-4-mobile-notification-feed: done
   7-5-admin-session-and-audit-apis: done
-  7-6-web-admin-console-screens: ready-for-dev
+  7-6-web-admin-console-screens: done
   7-7-channel-security-hardening: done
-  epic-7-retrospective: optional
+  epic-7-retrospective: done
 
   epic-8: backlog
   8-1-audit-security-event-model: done
