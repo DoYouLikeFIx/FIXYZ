@@ -1,6 +1,6 @@
 # Story 5.3: [AC] FEP Order Execution Semantics
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -19,14 +19,14 @@ So that local ledger stays consistent with external processing lifecycle.
 
 ## Tasks / Subtasks
 
-- [ ] Implement acceptance-criteria scope 1 (AC: 1)
-  - [ ] Add test coverage for AC 1
-- [ ] Implement acceptance-criteria scope 2 (AC: 2)
-  - [ ] Add test coverage for AC 2
-- [ ] Implement acceptance-criteria scope 3 (AC: 3)
-  - [ ] Add test coverage for AC 3
-- [ ] Implement acceptance-criteria scope 4 (AC: 4)
-  - [ ] Add test coverage for AC 4
+- [x] Implement acceptance-criteria scope 1 (AC: 1)
+  - [x] Add test coverage for AC 1
+- [x] Implement acceptance-criteria scope 2 (AC: 2)
+  - [x] Add test coverage for AC 2
+- [x] Implement acceptance-criteria scope 3 (AC: 3)
+  - [x] Add test coverage for AC 3
+- [x] Implement acceptance-criteria scope 4 (AC: 4)
+  - [x] Add test coverage for AC 4
 
 ## Dev Notes
 
@@ -62,8 +62,8 @@ So that local ledger stays consistent with external processing lifecycle.
 - NOTE `maxRetryCount` 코드 값: `application.yml recovery.max-retry-count=5`, 참고: `fep-gateway/api-spec.md` §10.1
 - NOTE **통합 테스트 속도 최적화**: 스케줄러 60초 대기를 회피하려면 `@TestPropertySource(properties="recovery.scan-interval-ms=100")` 또는 `@SpringBootTest` 설정에서 `recovery.scan-interval-ms=100`을 오버라이드하여 100ms 주기로 실행할 것.
 
-- Status set to `ready-for-dev`.
-- Completion note: Epic 5 story context prepared from canonical planning artifact.
+- Status set to `done`.
+- Completion note: Story 5.3 external execution semantics are implemented and frozen for FE/MOB result rendering.
 
 ### References
 

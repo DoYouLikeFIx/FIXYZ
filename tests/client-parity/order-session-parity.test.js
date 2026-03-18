@@ -38,8 +38,17 @@ const normalizeOrderSessionContract = (contract) => ({
     executionResult: scenario.executionResult ?? null,
     title: scenario.title,
     body: scenario.body,
+    referenceField: scenario.referenceField ?? null,
+    referenceLabel: scenario.referenceLabel ?? null,
+    referenceVisible: scenario.referenceVisible ?? null,
     externalOrderId: scenario.externalOrderId ?? null,
     executionResultLabel: scenario.executionResultLabel ?? null,
+    positionQuantityVisible: scenario.positionQuantityVisible ?? null,
+    positionQuantityLabel: scenario.positionQuantityLabel ?? null,
+    updatedPositionQuantity: scenario.updatedPositionQuantity ?? null,
+    updatedPositionQuantityLabel: scenario.updatedPositionQuantityLabel ?? null,
+    positionQuantitySource: scenario.positionQuantitySource ?? null,
+    positionQuantitySourceStory: scenario.positionQuantitySourceStory ?? null,
     executedQty: scenario.executedQty ?? null,
     executedQtyLabel: scenario.executedQtyLabel ?? null,
     leavesQty: scenario.leavesQty ?? null,
@@ -55,6 +64,16 @@ const normalizeOrderSessionContract = (contract) => ({
 
 const normalizeExternalOrderErrorContract = (contract) => ({
   supportReferenceLabel: contract.supportReferenceLabel,
+  reasonCategories: sortBy(contract.reasonCategories ?? [], (category) => category.name).map(
+    (category) => ({
+      name: category.name,
+      codeFamilies: [...(category.codeFamilies ?? [])].sort(),
+      badgeLabel: category.badgeLabel,
+      guidanceTone: category.guidanceTone,
+      defaultNextAction: category.defaultNextAction,
+      description: category.description,
+    }),
+  ),
   cases: sortBy(
     contract.cases ?? [],
     (contractCase) =>
@@ -63,6 +82,7 @@ const normalizeExternalOrderErrorContract = (contract) => ({
     codes: [...(contractCase.codes ?? [])].sort(),
     operatorCode: contractCase.operatorCode ?? null,
     retryAfterSeconds: contractCase.retryAfterSeconds ?? null,
+    reasonCategory: contractCase.reasonCategory ?? null,
     semantic: contractCase.semantic,
     recoveryAction: contractCase.recoveryAction,
     severity: contractCase.severity,
@@ -71,6 +91,7 @@ const normalizeExternalOrderErrorContract = (contract) => ({
     nextStep: contractCase.nextStep,
   })),
   unknownFallback: {
+    reasonCategory: contract.unknownFallback.reasonCategory ?? null,
     semantic: contract.unknownFallback.semantic,
     recoveryAction: contract.unknownFallback.recoveryAction,
     severity: contract.unknownFallback.severity,

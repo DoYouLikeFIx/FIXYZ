@@ -1,6 +1,6 @@
 # Story 2.2: BE Position, Balance, and Available-Balance API
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -19,26 +19,26 @@ so that order decisions can be made safely.
 
 ## Tasks / Subtasks
 
-- [ ] Freeze Story 2.2 read contract across planning/implementation/account specs (AC: 1, 2, 4)
-  - [ ] Keep canonical scope as position + available quantity + cash balance
-  - [ ] Keep `balance` canonical and `availableBalance` alias-only (`== balance`)
-  - [ ] Keep `availableQuantity` canonical and `availableQty` compatibility alias (deprecated)
-- [ ] Implement owned-account inquiry endpoint in channel/corebank boundary (AC: 1)
-  - [ ] Channel external endpoint: `GET /api/v1/accounts/{accountId}/positions?symbol={symbol}`
-  - [ ] Corebank internal endpoint: `GET /internal/v1/accounts/{accountId}/positions?symbol={symbol}&memberId={memberId}`
-  - [ ] Preserve currency/as-of semantics consistently
-- [ ] Enforce ownership authorization on account reads (AC: 2)
-  - [ ] Extract `memberId` from session `AUTH_MEMBER_ID` in channel layer
-  - [ ] Forward `memberId` to corebank and enforce `accounts.member_id == memberId`
-  - [ ] Return `403 AUTH-005` deterministically for ownership mismatch
-- [ ] Ensure read consistency under concurrent writes (AC: 3)
-  - [ ] Apply transaction/read strategy that avoids stale or contradictory balance/position snapshots
-  - [ ] Add deterministic consistency assertions in tests
-- [ ] Normalize downstream/query failure mapping (AC: 4)
-  - [ ] Distinguish retriable/non-retriable failures with stable machine codes
-  - [ ] Avoid leaking internal exception details
-- [ ] Add integration and contract tests for owned/non-owned/concurrent/failure scenarios (AC: 1, 2, 3, 4)
-  - [ ] Include OpenAPI contract update + compatibility test pass in DoD
+- [x] Freeze Story 2.2 read contract across planning/implementation/account specs (AC: 1, 2, 4)
+  - [x] Keep canonical scope as position + available quantity + cash balance
+  - [x] Keep `balance` canonical and `availableBalance` alias-only (`== balance`)
+  - [x] Keep `availableQuantity` canonical and `availableQty` compatibility alias (deprecated)
+- [x] Implement owned-account inquiry endpoint in channel/corebank boundary (AC: 1)
+  - [x] Channel external endpoint: `GET /api/v1/accounts/{accountId}/positions?symbol={symbol}`
+  - [x] Corebank internal endpoint: `GET /internal/v1/accounts/{accountId}/positions?symbol={symbol}&memberId={memberId}`
+  - [x] Preserve currency/as-of semantics consistently
+- [x] Enforce ownership authorization on account reads (AC: 2)
+  - [x] Extract `memberId` from session `AUTH_MEMBER_ID` in channel layer
+  - [x] Forward `memberId` to corebank and enforce `accounts.member_id == memberId`
+  - [x] Return `403 AUTH-005` deterministically for ownership mismatch
+- [x] Ensure read consistency under concurrent writes (AC: 3)
+  - [x] Apply transaction/read strategy that avoids stale or contradictory balance/position snapshots
+  - [x] Add deterministic consistency assertions in tests
+- [x] Normalize downstream/query failure mapping (AC: 4)
+  - [x] Distinguish retriable/non-retriable failures with stable machine codes
+  - [x] Avoid leaking internal exception details
+- [x] Add integration and contract tests for owned/non-owned/concurrent/failure scenarios (AC: 1, 2, 3, 4)
+  - [x] Include OpenAPI contract update + compatibility test pass in DoD
 
 ## Dev Notes
 
@@ -121,8 +121,8 @@ so that order decisions can be made safely.
 
 ### Story Completion Status
 
-- Status set to `ready-for-dev`.
-- Completion note: Epic 2 position/balance inquiry guardrails prepared with ownership/error/DoD freeze.
+- Status set to `done`.
+- Completion note: Story 2.2 is implemented and its read-side contract is available for downstream FE/MOB result-context consumers.
 
 ### References
 

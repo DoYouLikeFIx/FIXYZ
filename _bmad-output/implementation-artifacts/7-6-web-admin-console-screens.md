@@ -1,6 +1,6 @@
 # Story 7.6: [FE] Web Admin Console Screens
 
-Status: ready-for-dev
+Status: in-progress
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -19,14 +19,14 @@ So that privileged tasks can be done without direct API tooling.
 
 ## Tasks / Subtasks
 
-- [ ] Implement acceptance-criteria scope 1 (AC: 1)
-  - [ ] Add test coverage for AC 1
-- [ ] Implement acceptance-criteria scope 2 (AC: 2)
-  - [ ] Add test coverage for AC 2
-- [ ] Implement acceptance-criteria scope 3 (AC: 3)
-  - [ ] Add test coverage for AC 3
-- [ ] Implement acceptance-criteria scope 4 (AC: 4)
-  - [ ] Add test coverage for AC 4
+- [x] Implement acceptance-criteria scope 1 (AC: 1)
+  - [x] Add test coverage for AC 1
+- [x] Implement acceptance-criteria scope 2 (AC: 2)
+  - [x] Add test coverage for AC 2
+- [x] Implement acceptance-criteria scope 3 (AC: 3)
+  - [x] Add test coverage for AC 3
+- [x] Implement acceptance-criteria scope 4 (AC: 4)
+  - [x] Add test coverage for AC 4
 
 ## Dev Notes
 
@@ -73,8 +73,8 @@ So that privileged tasks can be done without direct API tooling.
 
 ### Story Completion Status
 
-- Status set to `ready-for-dev`.
-- Completion note: Story restored to `ready-for-dev` after the product decision to include the baseline admin web console in MVP scope.
+- Status set to `in-progress`.
+- Completion note: Story moved from `ready-for-dev` to `in-progress` during implementation once AC 1~4 were delivered in code and tests were added.
 
 ### References
 
@@ -99,7 +99,20 @@ GPT-5 Codex (Codex desktop)
 
 - Story scaffold generated with canonical numbering guardrail.
 - Re-enabled as `ready-for-dev` after the admin UI scope decision was recorded in the PRD.
+- Admin console page and audit-search behavior implemented with route-guard alignment:
+  - Session invalidation and audit search screens are built and styled.
+  - `ROLE_ADMIN` gate keeps console isolated from non-admin and anonymous access paths.
+  - `invalidatedCount` idempotent success path is preserved in both API consumption and UI feedback.
+  - Audit query parameter normalization and pagination are implemented and tested.
 
 ### File List
 
+- FE/src/components/layout/ProtectedLayout.tsx
+- FE/src/router/AdminRoute.tsx
+- FE/src/api/adminApi.ts
 - /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/7-6-web-admin-console-screens.md
+- FE/src/pages/AdminConsolePage.tsx
+- FE/src/tests/unit/api/adminApi.test.ts
+- FE/src/tests/unit/router/AdminRoute.test.tsx
+- FE/src/tests/unit/pages/AdminConsolePage.test.tsx
+- FE/src/index.css
