@@ -1,6 +1,6 @@
 # Story 2.1: BE Schema and Auto Account Provisioning
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 

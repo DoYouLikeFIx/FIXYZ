@@ -1,6 +1,6 @@
 # Story 7.6: [FE] Web Admin Console Screens
 
-Status: in-progress
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 

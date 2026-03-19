@@ -1,6 +1,6 @@
 # Story 5.8: [AC] Ledger Reconciliation & Guarded Repair
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -19,14 +19,14 @@ So that canonical accounting state can be investigated and corrected without ad 
 
 ## Tasks / Subtasks
 
-- [ ] Implement acceptance-criteria scope 1 (AC: 1)
-  - [ ] Add test coverage for AC 1
-- [ ] Implement acceptance-criteria scope 2 (AC: 2)
-  - [ ] Add test coverage for AC 2
-- [ ] Implement acceptance-criteria scope 3 (AC: 3)
-  - [ ] Add test coverage for AC 3
-- [ ] Implement acceptance-criteria scope 4 (AC: 4)
-  - [ ] Add test coverage for AC 4
+- [x] Implement acceptance-criteria scope 1 (AC: 1)
+  - [x] Add test coverage for AC 1
+- [x] Implement acceptance-criteria scope 2 (AC: 2)
+  - [x] Add test coverage for AC 2
+- [x] Implement acceptance-criteria scope 3 (AC: 3)
+  - [x] Add test coverage for AC 3
+- [x] Implement acceptance-criteria scope 4 (AC: 4)
+  - [x] Add test coverage for AC 4
 
 ## Dev Notes
 
@@ -54,8 +54,8 @@ So that canonical accounting state can be investigated and corrected without ad 
 
 ### Story Completion Status
 
-- Status set to `ready-for-dev`.
-- Completion note: Epic 5 follow-up reconciliation and guarded repair scope prepared from canonical planning artifact.
+- Status set to `done`.
+- Completion note: Reconciliation case lifecycle, guarded repair execution, rerun linkage, and duplicate-repair suppression are already implemented on the internal ledger-integrity boundary; the story artifact was aligned to the delivered Epic 5 baseline on 2026-03-20.
 
 ### References
 
@@ -74,11 +74,26 @@ GPT-5 Codex (Codex desktop)
 ### Debug Log References
 
 - Generated from canonical planning artifact for Epic 5.
+- 2026-03-20: story artifact alignment pass confirmed the existing reconciliation, repair, migration, contract, and integration-test anchors already present in `corebank-service`.
 
 ### Completion Notes List
 
 - Story scaffold generated with canonical numbering guardrail.
+- Internal reconciliation case create/transition flows are implemented through `LedgerReconciliationService` and the `/internal/v1/ledger-integrity/**` controller surface.
+- Guarded repair and rerun flows are implemented through `LedgerRepairService`, including repair-key dedupe, rerun-run linkage, and canonical `RESOLVED` / `REOPENED` outcomes.
+- Automated verification anchors already exist for Flyway schema creation, committed OpenAPI/internal contract coverage, reconciliation lifecycle assertions, and guarded repair/rerun integration tests.
+- 2026-03-20: story artifact status aligned from `ready-for-dev` to `done` to match the delivered Epic 5 implementation already present in code and tracker evidence.
 
 ### File List
 
 - /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/5-8-ledger-reconciliation-and-guarded-repair.md
+- /Users/yeongjae/fixyz/BE/corebank-service/src/main/java/com/fix/corebank/controller/InternalCorebankController.java
+- /Users/yeongjae/fixyz/BE/corebank-service/src/main/java/com/fix/corebank/service/LedgerReconciliationService.java
+- /Users/yeongjae/fixyz/BE/corebank-service/src/main/java/com/fix/corebank/service/LedgerRepairService.java
+- /Users/yeongjae/fixyz/BE/corebank-service/src/main/resources/db/migration/V8__add_ledger_reconciliation_cases.sql
+- /Users/yeongjae/fixyz/BE/corebank-service/src/main/resources/db/migration/V9__add_ledger_reconciliation_repairs.sql
+- /Users/yeongjae/fixyz/BE/corebank-service/src/main/resources/db/migration/V10__enforce_ledger_reconciliation_case_uniqueness.sql
+- /Users/yeongjae/fixyz/BE/corebank-service/src/test/java/com/fix/corebank/integration/LedgerReconciliationIntegrationTest.java
+- /Users/yeongjae/fixyz/BE/corebank-service/src/test/java/com/fix/corebank/integration/LedgerRepairIntegrationTest.java
+- /Users/yeongjae/fixyz/BE/corebank-service/src/test/java/com/fix/corebank/contract/CorebankOpenApiCompatibilityTest.java
+- /Users/yeongjae/fixyz/BE/corebank-service/src/test/java/com/fix/corebank/migration/CoreFlywayMigrationTest.java

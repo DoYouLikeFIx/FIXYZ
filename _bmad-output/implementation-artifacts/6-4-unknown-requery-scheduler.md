@@ -1,6 +1,6 @@
 # Story 6.4: [FEP] UNKNOWN Requery Scheduler
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -54,8 +54,8 @@ So that ambiguous orders can converge to terminal states.
 
 ### Story Completion Status
 
-- Status set to `ready-for-dev`.
-- Completion note: Epic 6 story context prepared from canonical planning artifact.
+- Status set to `done`.
+- Completion note: UNKNOWN recovery now converges via cursor-based requery scanning, local retry-threshold enforcement, durable manual-recovery queue persistence, and terminal `CANCELED` reconciliation.
 
 ### References
 
@@ -72,8 +72,8 @@ GPT-5 Codex (Codex desktop)
 
 ### Debug Log References
 
-- `cd C:\Users\SSAFY\FIXYZ\BE; .\gradlew.bat :channel-domain:test --tests com.fix.channel.entity.OrderSessionStateMachineTest :channel-service:test --tests com.fix.channel.client.CorebankClientTest --tests com.fix.channel.service.OrderSessionRecoveryServiceTest --tests com.fix.channel.service.OrderSessionRecoverySchedulerTest --tests com.fix.channel.service.OrderSessionExpirySchedulerTest --no-daemon`
-- `cd C:\Users\SSAFY\FIXYZ\BE; .\gradlew.bat :channel-domain:test :channel-service:test --no-daemon`
+- `cd /Users/yeongjae/fixyz/BE && ./gradlew :channel-domain:test --tests com.fix.channel.entity.OrderSessionStateMachineTest :channel-service:test --tests com.fix.channel.client.CorebankClientTest --tests com.fix.channel.service.OrderSessionRecoveryServiceTest --tests com.fix.channel.service.ManualRecoveryQueueServiceTest --tests com.fix.channel.service.OrderSessionServiceTest --no-daemon`
+- `cd /Users/yeongjae/fixyz/BE && ./gradlew :channel-service:test --tests com.fix.channel.service.OrderExecutionServiceTest --tests com.fix.channel.service.OrderSessionRecoverySchedulerTest --tests com.fix.channel.controller.ChannelErrorContractTest --tests com.fix.channel.integration.OrderSessionIntegrationTest --tests com.fix.channel.serialization.OrderSessionResponseSerializationTest --no-daemon`
 
 ### Completion Notes List
 
@@ -82,32 +82,45 @@ GPT-5 Codex (Codex desktop)
 - Implemented `EXECUTING -> REQUERYING` transition handling and REQUERYING batch processing to reconcile sessions toward `COMPLETED` or `ESCALATED`.
 - Added `CorebankClient.requeryOrder(...)` and `OrderRequeryResult` to consume the existing corebank requery contract with attemptCount propagation.
 - Added automated coverage for AC1-AC4 in domain/client/service/scheduler tests, including convergence and metrics assertions.
-- Applied first adversarial review fixes: terminal success now accepts `ACCEPTED`/`COMPLETED`, manual recovery queue enqueue added on escalation, timeout basis aligned with `executing_started_at` (with fallback), and REQUERYING batch traversal switched to page-based scanning.
+- Applied adversarial review fixes so fresh `UNKNOWN` execution outcomes enter `REQUERYING`, detached JPA writes reload managed entities, and REQUERYING backlog traversal now uses an `(updatedAt, orderSessionId)` cursor instead of growing `NOT IN (...)` exclusions.
+- Enforced retry exhaustion locally with `max(localAttemptCount, upstreamAttemptCount)` semantics, and escalated repeated `requeryOrder(...)` transport failures once the scheduler-side retry threshold is exhausted.
+- Added terminal `CANCELED` recovery convergence with `canceledAt` propagation from corebank requery responses through the order-session state machine and serialized API contract.
+- Replaced the in-memory manual-recovery fallback with a durable `manual_recovery_queue_entries` table plus best-effort Redis publication retries so queue handoff survives Redis outages and process restarts.
+- Expanded regression coverage for `UNKNOWN` entry into requery, `PENDING`/`MALFORMED` retry exhaustion, repeated requery exceptions, `CANCELED` reconciliation, durable manual queue publishing, and cursor-based backlog scanning.
 
 ### File List
 
 - BE/channel-domain/src/main/java/com/fix/channel/entity/OrderSession.java
 - BE/channel-domain/src/test/java/com/fix/channel/entity/OrderSessionStateMachineTest.java
 - BE/channel-service/src/main/java/com/fix/channel/client/CorebankClient.java
+- BE/channel-service/src/main/java/com/fix/channel/entity/ManualRecoveryQueueEntry.java
+- BE/channel-service/src/main/java/com/fix/channel/repository/ManualRecoveryQueueEntryRepository.java
 - BE/channel-service/src/main/java/com/fix/channel/repository/OrderSessionRepository.java
 - BE/channel-service/src/main/java/com/fix/channel/service/OrderSessionPersistenceService.java
 - BE/channel-service/src/main/java/com/fix/channel/service/OrderSessionRecoveryAttemptStore.java
 - BE/channel-service/src/main/java/com/fix/channel/service/OrderSessionRecoveryLockService.java
 - BE/channel-service/src/main/java/com/fix/channel/service/ManualRecoveryQueueService.java
+- BE/channel-service/src/main/java/com/fix/channel/service/OrderExecutionService.java
 - BE/channel-service/src/main/java/com/fix/channel/service/OrderSessionRecoveryScheduler.java
 - BE/channel-service/src/main/java/com/fix/channel/service/OrderSessionRecoveryService.java
 - BE/channel-service/src/main/java/com/fix/channel/service/OrderSessionService.java
 - BE/channel-service/src/main/java/com/fix/channel/vo/OrderRequeryResult.java
 - BE/channel-service/src/main/java/db/migration/V18__add_order_session_executing_started_at_column.java
-- BE/channel-service/src/main/resources/application-test.yml
+- BE/channel-service/src/main/java/db/migration/V19__add_manual_recovery_queue_table_and_requery_cursor_index.java
 - BE/channel-service/src/main/resources/application.yml
 - BE/channel-service/src/test/java/com/fix/channel/client/CorebankClientTest.java
+- BE/channel-service/src/test/java/com/fix/channel/controller/ChannelErrorContractTest.java
+- BE/channel-service/src/test/java/com/fix/channel/service/ManualRecoveryQueueServiceTest.java
+- BE/channel-service/src/test/java/com/fix/channel/service/OrderExecutionServiceTest.java
 - BE/channel-service/src/test/java/com/fix/channel/service/OrderSessionRecoverySchedulerTest.java
 - BE/channel-service/src/test/java/com/fix/channel/service/OrderSessionRecoveryServiceTest.java
+- BE/channel-service/src/test/java/com/fix/channel/service/OrderSessionServiceTest.java
 - _bmad-output/implementation-artifacts/sprint-status.yaml
 - _bmad-output/implementation-artifacts/6-4-unknown-requery-scheduler.md
+- _bmad-output/implementation-artifacts/tests/test-summary.md
 
 ## Change Log
 
 - 2026-03-18: Implemented Story 6.4 UNKNOWN requery scheduler flow (EXECUTING timeout transition, periodic requery reconciliation, manual escalation threshold handling, and recovery metrics) with full channel-domain/channel-service automated coverage.
 - 2026-03-18: Addressed adversarial review follow-ups for AC2/AC3 convergence semantics, manual recovery queue handoff, timeout cutoff source-of-truth, and REQUERYING backlog traversal.
+- 2026-03-19: Added durable manual-recovery queue persistence/retry publishing, local retry-limit enforcement for response and transport failures, `CANCELED` requery convergence, and cursor-based backlog pagination with expanded regression coverage.

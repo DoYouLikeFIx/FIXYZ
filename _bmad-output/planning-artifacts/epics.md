@@ -2005,14 +2005,14 @@ So that unresolved orders can be corrected safely.
 **Acceptance Criteria:**
 
 - **Given** authorized operator request  
-  **When** replay endpoint called  
-  **Then** operation is accepted with replay tracking id.
+  **When** the canonical admin replay endpoint is called with a valid governance payload  
+  **Then** the operation returns the canonical final replay result envelope and routes through the upstream recovery path without direct channel-to-gateway calls.
 - **Given** unauthorized caller  
   **When** replay is attempted  
   **Then** forbidden response and security event are produced.
 - **Given** duplicate replay request  
-  **When** same replay identity used  
-  **Then** idempotent replay behavior is enforced.
+  **When** the same normalized replay command identity is used  
+  **Then** idempotent replay behavior is enforced and no second downstream replay mutation occurs.
 - **Given** replay completion/failure  
   **When** operation ends  
   **Then** final result is auditable.

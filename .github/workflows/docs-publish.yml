@@ -100,59 +100,14 @@ jobs:
       - name: Generate OpenAPI specs (build-time, no Docker needed)
         working-directory: BE
         run: |
-          ./gradlew :channel-service:generateOpenApiDocs \
-                    :corebank-service:generateOpenApiDocs \
-                    :fep-gateway:generateOpenApiDocs \
-                    :fep-simulator:generateOpenApiDocs
+          ./gradlew :channel-service:refreshOpenApiDocs \
+                    :corebank-service:refreshOpenApiDocs \
+                    :fep-gateway:refreshOpenApiDocs \
+                    :fep-simulator:refreshOpenApiDocs
 
       - name: Assemble static docs site
         run: |
-          mkdir -p docs-site
-          cp BE/channel-service/build/openapi/channel-service.json docs-site/channel.json
-          cp BE/corebank-service/build/openapi/corebank-service.json docs-site/corebank.json
-          cp BE/fep-gateway/build/openapi/fep-gateway.json docs-site/fep-gateway.json
-          cp BE/fep-simulator/build/openapi/fep-simulator.json docs-site/fep-simulator.json
-          python3 - << 'PY'
-          import json
-          import pathlib
-
-          for name in ("channel.json", "corebank.json", "fep-gateway.json", "fep-simulator.json"):
-              p = pathlib.Path("docs-site") / name
-              data = json.loads(p.read_text(encoding="utf-8"))
-              assert str(data.get("openapi", "")).startswith("3.0"), f"{name}: openapi version missing/invalid"
-              assert "paths" in data and isinstance(data["paths"], dict), f"{name}: paths missing"
-          print("OpenAPI structural validation passed")
-          PY
-          cat > docs-site/index.html << 'HTML'
-          <!DOCTYPE html>
-          <html lang="en">
-          <head>
-            <meta charset="utf-8">
-            <title>FIX API Docs</title>
-            <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui.css">
-          </head>
-          <body>
-          <div id="swagger-ui"></div>
-          <script src="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui-bundle.js"></script>
-          <script src="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui-standalone-preset.js"></script>
-          <script>
-            SwaggerUIBundle({
-              urls: [
-                { url: "channel.json", name: "Channel Service" },
-                { url: "corebank.json", name: "CoreBank Service" },
-                { url: "fep-gateway.json", name: "FEP Gateway" },
-                { url: "fep-simulator.json", name: "FEP Simulator" }
-              ],
-              "urls.primaryName": "Channel Service",
-              dom_id: "#swagger-ui",
-              deepLinking: true,
-              presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
-              layout: "StandaloneLayout"
-            });
-          </script>
-          </body>
-          </html>
-          HTML
+          node BE/scripts/assemble-openapi-docs-site.mjs --repo-root "$PWD" --output-dir "$PWD/docs-site"
 
       - name: Deploy to GitHub Pages
         if: ${{ !env.ACT }}

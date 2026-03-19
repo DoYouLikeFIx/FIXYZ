@@ -1,6 +1,6 @@
 # Story 5.6: [AC] Ledger Integrity
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -19,14 +19,14 @@ So that accounting integrity can be continuously verified.
 
 ## Tasks / Subtasks
 
-- [ ] Implement acceptance-criteria scope 1 (AC: 1)
-  - [ ] Add test coverage for AC 1
-- [ ] Implement acceptance-criteria scope 2 (AC: 2)
-  - [ ] Add test coverage for AC 2
-- [ ] Implement acceptance-criteria scope 3 (AC: 3)
-  - [ ] Add test coverage for AC 3
-- [ ] Implement acceptance-criteria scope 4 (AC: 4)
-  - [ ] Add test coverage for AC 4
+- [x] Implement acceptance-criteria scope 1 (AC: 1)
+  - [x] Add test coverage for AC 1
+- [x] Implement acceptance-criteria scope 2 (AC: 2)
+  - [x] Add test coverage for AC 2
+- [x] Implement acceptance-criteria scope 3 (AC: 3)
+  - [x] Add test coverage for AC 3
+- [x] Implement acceptance-criteria scope 4 (AC: 4)
+  - [x] Add test coverage for AC 4
 
 ## Dev Notes
 
@@ -54,8 +54,8 @@ So that accounting integrity can be continuously verified.
 
 ### Story Completion Status
 
-- Status set to `ready-for-dev`.
-- Completion note: Epic 5 story context prepared from canonical planning artifact.
+- Status set to `done`.
+- Completion note: Ledger integrity run/anomaly persistence, scheduled execution, and release-gate regression coverage are already implemented in `corebank-service`; the story artifact was aligned to the delivered Epic 5 baseline on 2026-03-20.
 
 ### References
 
@@ -75,11 +75,23 @@ GPT-5 Codex (Codex desktop)
 ### Debug Log References
 
 - Generated from canonical planning artifact for Epic 5.
+- 2026-03-20: story artifact alignment pass confirmed the existing ledger-integrity implementation anchors in service, migration, scheduler, and integration-test coverage.
 
 ### Completion Notes List
 
 - Story scaffold generated with canonical numbering guardrail.
+- Ledger integrity run/anomaly persistence is implemented via `LedgerIntegrityService` and the tracking schema introduced in `V7__add_ledger_integrity_tracking.sql`.
+- Scheduled integrity execution and failure-tolerant orchestration are implemented via `LedgerIntegrityScheduler` with dedicated scheduler coverage.
+- Automated verification anchors already exist for Flyway schema creation, stored integrity-run persistence, anomaly capture, and release-gate style regression coverage.
+- 2026-03-20: story artifact status aligned from `ready-for-dev` to `done` to match the delivered Epic 5 implementation already present in code and tracker evidence.
 
 ### File List
 
 - /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/5-6-ledger-integrity.md
+- /Users/yeongjae/fixyz/BE/corebank-service/src/main/java/com/fix/corebank/service/LedgerIntegrityService.java
+- /Users/yeongjae/fixyz/BE/corebank-service/src/main/java/com/fix/corebank/service/LedgerIntegrityScheduler.java
+- /Users/yeongjae/fixyz/BE/corebank-service/src/main/java/com/fix/corebank/repository/LedgerIntegrityQueryRepositoryImpl.java
+- /Users/yeongjae/fixyz/BE/corebank-service/src/main/resources/db/migration/V7__add_ledger_integrity_tracking.sql
+- /Users/yeongjae/fixyz/BE/corebank-service/src/test/java/com/fix/corebank/integration/LedgerIntegrityIntegrationTest.java
+- /Users/yeongjae/fixyz/BE/corebank-service/src/test/java/com/fix/corebank/service/LedgerIntegritySchedulerTest.java
+- /Users/yeongjae/fixyz/BE/corebank-service/src/test/java/com/fix/corebank/migration/CoreFlywayMigrationTest.java

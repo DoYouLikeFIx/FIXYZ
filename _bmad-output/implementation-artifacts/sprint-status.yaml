@@ -99,10 +99,10 @@ development_status:
   6-1-timeout-and-circuit-breaker: done
   6-2-retry-boundary-policy: done
   6-3-chaos-control-api: done
-  6-4-unknown-requery-scheduler: review
-  6-5-manual-replay-recovery-api: ready-for-dev
-  6-6-resilience-scenario-tests: ready-for-dev
-  6-7-degraded-operation-ux: ready-for-dev
+  6-4-unknown-requery-scheduler: done
+  6-5-manual-replay-recovery-api: done
+  6-6-resilience-scenario-tests: done
+  6-7-degraded-operation-ux: done
   epic-6-retrospective: optional
 
   epic-7: done
@@ -115,14 +115,14 @@ development_status:
   7-7-channel-security-hardening: done
   epic-7-retrospective: done
 
-  epic-8: backlog
+  epic-8: in-progress
   8-1-audit-security-event-model: done
-  8-2-pii-masking-enforcement: ready-for-dev
-  8-3-correlation-id-3-hop-propagation: ready-for-dev
-  8-4-openapi-completeness: ready-for-dev
-  8-5-web-correlation-propagation-support: ready-for-dev
-  8-6-mobile-correlation-propagation-support: ready-for-dev
-  8-7-ledger-integrity-observability-and-alerting: ready-for-dev
+  8-2-pii-masking-enforcement: done
+  8-3-correlation-id-3-hop-propagation: done
+  8-4-openapi-completeness: done
+  8-5-web-correlation-propagation-support: done
+  8-6-mobile-correlation-propagation-support: done
+  8-7-ledger-integrity-observability-and-alerting: done
   epic-8-retrospective: optional
 
   epic-9: backlog

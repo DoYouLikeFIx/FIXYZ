@@ -412,33 +412,57 @@ VITE_API_BASE_URL=https://fix-api.example.com
 
 ### Canonical Project File Tree
 
-> ⚠️ **P-F2**: 아래는 초기 설계 참고용 구버전 트리입니다. **실제 구현 기준은 아래 '최종 확정 Gradle 모듈 구조 (7개)'** 및 '완전한 프로젝트 디렉토리 트리' 섹션을 따르세요.
+> **P-F2 정본**: 아래 트리는 현재 저장소(`BE/`, `FE/`, `MOB/`) 기준의 canonical workspace layout이다. 세부 책임은 아래 '최종 확정 Gradle 모듈 구조 (7개)' 및 '완전한 프로젝트 디렉토리 트리' 섹션을 따른다.
 
 ```
-fix/                              ← root Gradle project (7-module 확정 구조: core-common, channel-domain, channel-service, corebank-domain, corebank-service, fep-gateway, fep-simulator)
-  settings.gradle.kts             ← includes all submodules
-  build.gradle.kts                ← root buildscript (version catalog only, no plugins applied)
-  core-common/                    ← Pure Java: 공통 상수/예외/유틸 (zero Spring deps)
-  channel-domain/                 ← 채널 JPA Entity 모듈
-  channel-service/                ← Spring Boot entry (channel-service:8080)
-  corebank-domain/                ← JPA entities + repositories (APT target for QueryDSL)
-  corebank-service/               ← Spring Boot entry (corebank-service:8081)
-  fep-gateway/                    ← Spring Boot entry (fep-gateway:8083)
-  fep-simulator/                  ← Spring Boot entry (fep-simulator:8082)
-  fix-frontend/                   ← Vite + React + TypeScript (pnpm)
-    src/
-      lib/axios.ts                ← axios instance (withCredentials, baseURL from env)
-      utils/format.ts             ← formatKRW() and shared formatters
+fixyz/                            ← workspace root (BE + FE + MOB + docs/artifacts)
+  .github/                        ← 루트 공통 워크플로/에이전트/문서 자동화
+  .env.example                    ← 루트 운영 환경변수 키
+  docker-compose.yml              ← 로컬 런타임 진입점
+  docker/                         ← mysql/nginx/vault 보조 자산
+  scripts/                        ← 루트 운영/복구 스크립트
+  tests/                          ← 루트 인프라/계약/보안 테스트
+  _bmad-output/                   ← PRD/Architecture/Story/QA 산출물
+
+  BE/                             ← 백엔드 Gradle 멀티모듈 루트
+    settings.gradle
+    build.gradle
+    gradle/
+    core-common/
+    channel-domain/
+    channel-service/
+    corebank-domain/
+    corebank-service/
+    fep-gateway/
+    fep-simulator/
+    scripts/
     tests/
-      setup.ts                    ← EventSource mock stub
-      integration/                ← app/router/auth flow tests
-      unit/                       ← lib/store/component tests
-      collab-webhook/             ← node:test workflow script tests
-  docker-compose.yml              ← channel + corebank + fep-gateway + fep-simulator + mysql + redis
-  .env.example                    ← committed; .env gitignored
-  .github/
-    workflows/
-      ci.yml                      ← 7 acceptance scenarios green on main
+
+  FE/                             ← Vite + React + TypeScript (pnpm)
+    src/
+      api/
+      components/
+      context/
+      hooks/
+      lib/axios.ts                ← axios 단일 인스턴스
+      order/
+      pages/
+      router/
+      store/
+      types/
+      utils/
+    tests/
+      setup.ts
+      fixtures/
+      unit/
+      integration/
+      collab-webhook/
+    e2e/                          ← Playwright 브라우저/라이브 플로우
+    scripts/                      ← 데모/진단/녹화 스크립트
+
+  MOB/                            ← React Native 앱
+    src/
+    tests/
 ```
 
 ---
@@ -872,14 +896,15 @@ export function NotificationProvider({ children }) {
 
 **D-026 — Centralized automated test roots**
 
-- All lane-local automated tests live under a top-level `tests/` directory so `src/` stays production-only.
+- FE automated tests use top-level test roots so `src/` stays production-only.
 - Recommended buckets:
   - `tests/unit/**` for pure logic/component/store tests
   - `tests/integration/**` for app/router/API wiring tests
-  - `tests/e2e/**` for runtime-backed lane flows
+  - `e2e/**` for Playwright runtime-backed lane flows
   - `tests/collab-webhook/**` for Node-only workflow script tests
+  - `tests/fixtures/**` for shared harness/contract fixtures
   - `tests/setup.ts` for shared test bootstrap such as `EventSource` stubs
-- Backend already follows this convention with `BE/tests/**`; FE and MOB must not add new `src/**/*.test.*`, `src/test/**`, or `test/**` paths.
+- Backend already follows this convention with `BE/tests/**`; FE and MOB must not add new `src/**/*.test.*`, `src/test/**`, or `test/**` paths. Playwright specs stay in top-level `e2e/**`.
 
 ---
 
@@ -2061,7 +2086,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 }));
 
 // 소비 패턴:
-// hooks/useAuth.ts: export const useAuth = () => useAuthStore();
+// hooks/auth/useAuth.ts: export const useAuth = () => useAuthStore();
 // 컴포넌트:        const { isAuthenticated, login } = useAuth();
 // axios 인터셉터:  useAuthStore.getState().logout();  ← Context 없이 호출 가능
 
@@ -2558,78 +2583,89 @@ fix/                                          # 모노레포 루트
 │               └── controller/
 │                   └── FepControllerIntegrationTest.java
 │
-└── fix-frontend/
+└── FE/
     ├── package.json                           # pnpm 관리
     ├── pnpm-lock.yaml
-    ├── vite.config.ts                         # proxy + vitest 설정
-    ├── tsconfig.json
-    ├── tailwind.config.ts
-    ├── postcss.config.js
-    ├── .eslintrc.json                         # 경고만
-    ├── .prettierrc
+    ├── vite.config.ts                         # Vite + Vitest 설정
+    ├── playwright.config.ts                   # Playwright live/runtime 플로우
+    ├── playwright.record.config.ts            # 데모 녹화 보조 설정
+    ├── eslint.config.js                       # flat config
     ├── .env.local                             # gitignore (RULE-049)
-    ├── .env.example                           # VITE_API_BASE_URL=
-    ├── vercel.json                            # SPA 라우팅 rewrites (R5)
-    ├── vitest.config.ts
-    └── src/
-        ├── main.tsx
-        ├── App.tsx                            # BrowserRouter + NotificationProvider; target-contract flow uses GET /api/v1/auth/session for Zustand initialization (current Story 0.7 scaffold parity tracked separately)
-        ├── pages/
-        │   ├── LoginPage.tsx                  # useAuthStore.login(), Zod 검증
-        │   ├── PortfolioPage.tsx              # usePortfolio(), useNotification()
-        │   ├── OrderPage.tsx                  # useOrder() useReducer
-        │   └── AdminPage.tsx                  # 감사 로그 조회, 강제 로그아웃 (ROLE_ADMIN 전용, P-C4)
-        ├── components/
-        │   ├── order/
-        │   │   ├── OrderInputForm.tsx         # React Hook Form + Zod (RULE-065)
-        │   │   ├── OrderConfirm.tsx
-        │   │   ├── OtpInput.tsx               # RULE-029
-        │   │   ├── OrderProcessing.tsx
-        │   │   └── OrderResult.tsx
-        │   └── common/
-        │       ├── AsyncStateWrapper.tsx       # RULE-027
-        │       ├── LoadingSpinner.tsx
-        │       ├── ErrorMessage.tsx
-        │       ├── NavigationBar.tsx
-        │       ├── PrivateRoute.tsx            # 인증 보호 래퍼 (R2)
-        │       ├── ErrorBoundary.tsx           # D-024
-        │       └── KrwAmountDisplay.tsx        # formatKRW 래퍼 (R2)
-        ├── context/
-        │   └── NotificationContext.tsx         # SSE lifecycle RULE-045
-        ├── store/
-        │   └── useAuthStore.ts                 # Zustand: isAuthenticated, member, login(), logout() (P-B1)
-        ├── hooks/
-        │   ├── useOrder.ts                    # useReducer RULE-046
-        │   ├── useAuth.ts                      # useAuthStore wrapper: const useAuth = () => useAuthStore()
-        │   ├── usePortfolio.ts
-        │   └── useNotification.ts              # NotificationContext 소비 (R2)
-        ├── lib/
-        │   ├── axios.ts                        # 단일 인스턴스 RULE-047
-        │   └── schemas/
-        │       ├── order.schema.ts
-        │       └── auth.schema.ts
-        ├── types/
-        │   ├── api.ts                          # ApiResponse<T> RULE-035
-        │   ├── order.ts                        # OrderStep union RULE-046
-        │   ├── portfolio.ts
-        │   └── auth.ts                         # LoginRequest, Member (R9)
-        ├── utils/
-        │   └── formatters.ts                   # formatKRW RULE-028
-        └── tests/
-            ├── setup.ts                        # jsdom + EventSource mock
-            ├── unit/
-            │   ├── components/
-            │   ├── context/
-            │   ├── hooks/
-            │   ├── lib/
-            │   └── store/
-            ├── integration/
-            │   └── app/
-            ├── fixtures/
-            │   ├── orderFixtures.ts
-            │   └── portfolioFixtures.ts
-            └── __mocks__/
-                └── axios.ts
+    ├── .env.example                           # VITE_* 예시
+    ├── README.md                              # 로컬 개발 + live E2E 가이드
+    ├── src/
+    │   ├── main.tsx
+    │   ├── App.tsx                            # BrowserRouter + NotificationProvider
+    │   ├── api/
+    │   │   ├── authApi.ts
+    │   │   ├── orderApi.ts
+    │   │   ├── accountApi.ts
+    │   │   ├── adminApi.ts
+    │   │   └── notificationApi.ts
+    │   ├── pages/
+    │   │   ├── LoginPage.tsx
+    │   │   ├── RegisterPage.tsx
+    │   │   ├── OrderPage.tsx
+    │   │   ├── PortfolioPage.tsx
+    │   │   └── AdminConsolePage.tsx          # 감사 로그 조회, 강제 로그아웃 (ROLE_ADMIN 전용, P-C4)
+    │   ├── components/
+    │   │   ├── auth/
+    │   │   ├── common/
+    │   │   ├── layout/
+    │   │   └── order/
+    │   ├── context/
+    │   │   ├── NotificationContext.tsx        # SSE lifecycle RULE-045
+    │   │   └── notification-context.ts
+    │   ├── hooks/
+    │   │   ├── auth/
+    │   │   │   ├── useAuth.ts                 # useAuthStore wrapper
+    │   │   │   └── useLoginPageController.ts
+    │   │   ├── order/
+    │   │   ├── portfolio/
+    │   │   └── useNotification.ts
+    │   ├── router/
+    │   │   ├── AppRouter.tsx
+    │   │   ├── PrivateRoute.tsx               # 인증 보호 래퍼 (R2)
+    │   │   └── AdminRoute.tsx
+    │   ├── store/
+    │   │   └── useAuthStore.ts                # Zustand 전역 인증 상태 (P-B1)
+    │   ├── lib/
+    │   │   ├── axios.ts                       # 단일 인스턴스 RULE-047
+    │   │   └── schemas/
+    │   │       ├── order.schema.ts
+    │   │       └── auth.schema.ts
+    │   ├── order/
+    │   ├── types/
+    │   │   ├── api.ts                         # ApiResponse<T> RULE-035
+    │   │   ├── order.ts
+    │   │   ├── auth.ts
+    │   │   └── admin.ts
+    │   └── utils/
+    │       └── formatters.ts                  # formatKRW RULE-028
+    ├── tests/
+    │   ├── setup.ts                           # jsdom + EventSource mock
+    │   ├── fixtures/
+    │   ├── unit/
+    │   │   ├── api/
+    │   │   ├── components/
+    │   │   ├── hooks/
+    │   │   ├── lib/
+    │   │   ├── order/
+    │   │   ├── pages/
+    │   │   ├── router/
+    │   │   └── store/
+    │   ├── integration/
+    │   └── collab-webhook/
+    ├── e2e/
+    │   ├── live/
+    │   ├── auth-recovery.spec.ts
+    │   └── order-external-error.spec.ts
+    ├── scripts/
+    │   ├── check-live-auth-contract.mjs
+    │   ├── record-order-session-demo.mjs
+    │   └── record-story-8-5-live-demo.mjs
+    └── output/
+        └── playwright/
 
 └── MOB/
     ├── App.tsx                              # runtime wiring only
@@ -2879,7 +2915,7 @@ Phase 3 — 서비스 레이어 (동시 작업 가능):
   11. fep-simulator/ (Application + FepChaosController)
 
 Phase 4 — 프론트엔드:
-  11. fix-frontend/ (Vite + lib/axios.ts + types/api.ts + vercel.json)
+  11. FE/ (Vite + src/lib/axios.ts + src/types/api.ts + tests/ + e2e/)
 ```
 
 ---
@@ -2907,7 +2943,7 @@ Phase 4 — 프론트엔드:
   - R2: React Router + PrivateRoute 추가
   - R3: Docker 네트워크 격리, Day 1 Scaffold 순서
   - R4: 7대 Scenario 매핑, AdminController, RateLimitFilter, FepChaosController
-  - R5: CorsConfig, SessionConfig, vercel.json, IntegrationTestBase 전 서비스
+  - R5: CorsConfig, SessionConfig, FE 배포/프록시 설정, IntegrationTestBase 전 서비스
   - R6: fep-domain 폐기, libs.versions.toml, 데모 시나리오 Cross-Check
   - R7: application-test.yml 패턴, Flyway 전체 목록, Day 0 체크리스트
   - R8: 패키지명 com.fix.\* 통일, docker 볼륨, BaseTimeEntity, OrderSession 필드
@@ -3305,7 +3341,7 @@ eventsource.onerror = () => {
 - Integration Test에 `@Transactional` 사용 금지 (Q-7-18)
 - correlationId는 `X-Correlation-Id` 헤더로 전파 (Q-7-11)
 - 인증 상태는 **Zustand `useAuthStore`** 전역 스토어 사용 — `AuthContext.Provider` 미사용 (P-B1)
-- `useAuth.ts` 훈 = `export const useAuth = () => useAuthStore()` 래퍼
+- `hooks/auth/useAuth.ts` = `export const useAuth = () => useAuthStore()` 래퍼
 - ❌ 금지: 컴포넌트에서 `auth state`를 `useState` 또는 `Context`로 별도 관리
 - MOB 인증 흐름은 **MVVM** 사용: `useAuthFlowViewModel -> Screen(View) + use*ViewModel -> mobile-auth-service -> authStore/authApi`
 - MOB Screen에는 keyboard/focus/scroll 같은 view concern만 남기고 validation, submit, step progression은 ViewModel로 올린다
