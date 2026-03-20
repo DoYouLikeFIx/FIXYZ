@@ -329,7 +329,9 @@ function buildBaselineInvocation({
     delete env.BRANCH_PROTECTION_FIXTURE;
   }
 
-  delete env.BRANCH_PROTECTION_TOKEN;
+  if (!Object.prototype.hasOwnProperty.call(extraEnv, "BRANCH_PROTECTION_TOKEN")) {
+    delete env.BRANCH_PROTECTION_TOKEN;
+  }
 
   return {
     repoContext,
@@ -592,6 +594,59 @@ test("run-security-baseline keeps local manual runs audit-pending when branch pr
   assert.equal(summary.summary.status, "audit-pending");
   assert.equal(branchProtection.status, "operator-action-required");
   assert.equal(index.snapshotId, "local-audit-pending");
+});
+
+test("run-security-baseline marks branch-protection API failures as capture-failed when a token is configured", async () => {
+  await withHttpServer((request, response) => {
+    if (request.url.includes("/branches/main/protection")) {
+      response.writeHead(403, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ message: "Resource not accessible by integration" }));
+      return;
+    }
+
+    if (request.url.includes("/actions/permissions")) {
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(
+        JSON.stringify({
+          enabled: true,
+          allowed_actions: "selected",
+          sha_pinning_required: true,
+        }),
+      );
+      return;
+    }
+
+    response.writeHead(404, { "Content-Type": "text/plain" });
+    response.end("not found");
+  }, async ({ baseUrl }) => {
+    const { result, outputRoot } = await runBaselineAsync({
+      alertsPayload: [],
+      exceptionRecords: [],
+      evidenceRunId: "branch-proof-api-failure",
+      branchProtectionFixture: null,
+      extraEnv: {
+        GITHUB_ACTIONS: "true",
+        BRANCH_PROTECTION_TOKEN: "integration-test-token",
+        GITHUB_API_URL: baseUrl,
+        REQUEST_MAX_ATTEMPTS: "1",
+        REQUEST_RETRY_BASE_MS: "1",
+      },
+    });
+
+    const repoContext = getRepoContext();
+    const summary = readJson(path.join(outputRoot, `scan-summary-${repoContext.repoKey}.json`));
+    const branchProtection = readJson(
+      path.join(outputRoot, `branch-protection-${repoContext.repoKey}.json`),
+    );
+
+    assert.equal(result.status, 1);
+    assert.equal(summary.summary.status, "blocked");
+    assert.equal(summary.summary.branchProtectionStatus, "capture-failed");
+    assert.equal(branchProtection.status, "capture-failed");
+    assert.equal(branchProtection.actionsPermissions.status, "captured");
+    assert.match(branchProtection.reason, /403 Forbidden while requesting/);
+    assert.match(branchProtection.reason, /Resource not accessible by integration/);
+  });
 });
 
 test("run-security-baseline keeps same-day reruns in separate snapshot directories", () => {

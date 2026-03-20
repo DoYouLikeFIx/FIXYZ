@@ -385,6 +385,7 @@ async function captureBranchProtectionEvidence({
     } catch (error) {
       failureReason = error.message;
       captureMethod = "github-rest-api";
+      status = "capture-failed";
     }
 
     try {

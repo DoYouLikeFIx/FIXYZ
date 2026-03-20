@@ -2,8 +2,12 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 
 const {
+  collectWorkflowUses,
   collectExceptionValidationFindings,
   evaluateActionPinningFindings,
   evaluateDependabotAlerts,
@@ -17,8 +21,43 @@ test("isFullLengthShaRef accepts full commit SHAs and rejects tag refs", () => {
     isFullLengthShaRef("actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5"),
     true,
   );
+  assert.equal(
+    isFullLengthShaRef('"actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5"'),
+    true,
+  );
   assert.equal(isFullLengthShaRef("actions/checkout@v4"), false);
   assert.equal(isFullLengthShaRef("./.github/actions/local"), true);
+});
+
+test("collectWorkflowUses strips wrapping quotes from uses references", () => {
+  const workflowDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "fixyz-workflows-"));
+  const workflowPath = path.join(workflowDirectory, "quoted.yml");
+
+  try {
+    fs.writeFileSync(
+      workflowPath,
+      [
+        "jobs:",
+        "  checks:",
+        "    steps:",
+        '      - uses: "actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5"',
+        "      - uses: './.github/actions/local'",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const findings = collectWorkflowUses(workflowDirectory);
+
+    assert.deepEqual(
+      findings.map((entry) => entry.uses),
+      [
+        "actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
+        "./.github/actions/local",
+      ],
+    );
+  } finally {
+    fs.rmSync(workflowDirectory, { recursive: true, force: true });
+  }
 });
 
 test("isRecordActive rejects approved exception records missing required review metadata", () => {

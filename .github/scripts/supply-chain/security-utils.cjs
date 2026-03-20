@@ -166,20 +166,22 @@ function isRecordActive(record, now = Date.now()) {
 }
 
 function isLocalActionReference(usesValue) {
-  return usesValue.startsWith("./") || usesValue.startsWith(".\\");
+  const normalizedUses = normalizeText(usesValue).replace(/^['"]|['"]$/g, "");
+  return normalizedUses.startsWith("./") || normalizedUses.startsWith(".\\");
 }
 
 function isFullLengthShaRef(usesValue) {
-  if (isLocalActionReference(usesValue)) {
+  const normalizedUses = normalizeText(usesValue).replace(/^['"]|['"]$/g, "");
+  if (isLocalActionReference(normalizedUses)) {
     return true;
   }
 
-  const atIndex = usesValue.lastIndexOf("@");
+  const atIndex = normalizedUses.lastIndexOf("@");
   if (atIndex === -1) {
     return false;
   }
 
-  return /^[a-f0-9]{40}$/i.test(usesValue.slice(atIndex + 1));
+  return /^[a-f0-9]{40}$/i.test(normalizedUses.slice(atIndex + 1));
 }
 
 function collectWorkflowUses(workflowDirectory) {
@@ -206,7 +208,7 @@ function collectWorkflowUses(workflowDirectory) {
         workflowFile: path.basename(workflowPath),
         workflowPath,
         lineNumber: index + 1,
-        uses: match[1],
+        uses: normalizeText(match[1]).replace(/^['"]|['"]$/g, ""),
       });
     });
   }
