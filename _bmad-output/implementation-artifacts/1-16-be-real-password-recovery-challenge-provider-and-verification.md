@@ -1,6 +1,6 @@
 # Story 1.16: [BE][CH] Real Password Recovery Challenge Provider & Verification
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -142,11 +142,41 @@ GPT-5 Codex (Codex desktop)
 ### Debug Log References
 
 - Regenerated from canonical Epic 1 follow-on planning artifacts for execution readiness.
+- 2026-03-20: Parallel backend implementation pass landed for proof-of-work v2 provider, legacy fallback routing, and backend test coverage updates. Validation commands were not executed in this run.
 
 ### Completion Notes List
 
 - Story scaffold created for backend real recovery challenge provider, deterministic error taxonomy, rollout safety, and anti-enumeration evidence.
+- Added backend proof-of-work v2 bootstrap and verification flow with legacy fallback behind rollout and cohort controls.
+- Added replay-safe latest-challenge invalidation, exact submitted-email digest binding, and deterministic AUTH-022/AUTH-023/AUTH-024/AUTH-025 routing behavior.
+- Added backend tests for v2 issuance, solution validation, replay rejection, stale-token invalidation, unavailable bootstrap or verify paths, and legacy-v1 fallback behavior.
+- Added metrics, correlation-ready logs, audit-detail distinctions, and verify-time issuance-context preservation for challenge issue or verify outcomes with canonical contract-version labels.
+- Targeted backend validation and QA were completed on 2026-03-20; task checkboxes remain intentionally unchanged even though the story is now in review.
 
 ### File List
 
+- BE/channel-service/src/main/java/com/fix/channel/config/PasswordRecoveryProperties.java
+- BE/channel-service/src/main/java/com/fix/channel/dto/response/PasswordForgotChallengeResponse.java
+- BE/channel-service/src/main/java/com/fix/channel/service/PasswordRecoveryChallengeTelemetryService.java
+- BE/channel-service/src/main/java/com/fix/channel/service/PasswordRecoveryChallengeProvider.java
+- BE/channel-service/src/main/java/com/fix/channel/service/PasswordRecoveryChallengeService.java
+- BE/channel-service/src/main/java/com/fix/channel/service/PasswordRecoveryService.java
+- BE/channel-service/src/main/java/com/fix/channel/service/ProofOfWorkPasswordRecoveryChallengeService.java
+- BE/channel-service/src/main/java/com/fix/channel/vo/PasswordForgotChallengeResult.java
+- BE/channel-service/src/main/resources/application.yml
+- BE/channel-service/src/test/java/com/fix/channel/compliance/LogPiiComplianceTest.java
+- BE/channel-service/src/test/java/com/fix/channel/service/PasswordRecoveryServiceBootstrapRoutingTest.java
+- BE/channel-service/src/test/java/com/fix/channel/service/ProofOfWorkPasswordRecoveryChallengeServiceTest.java
 - _bmad-output/implementation-artifacts/1-16-be-real-password-recovery-challenge-provider-and-verification.md
+
+## Change Log
+
+- 2026-03-20: Added backend proof-of-work v2 recovery challenge implementation, observability labels for issue or verify outcomes, legacy fallback routing, verify-time issuance-context preservation, and validated backend test updates.
+
+## QA Update - 2026-03-20
+- Automated QA completed for the backend proof-of-work password recovery challenge provider, verification flow, and telemetry mapping.
+- Added direct telemetry coverage in `/Users/yeongjae/fixyz/BE/channel-service/src/test/java/com/fix/channel/service/PasswordRecoveryChallengeTelemetryServiceTest.java`.
+- Verified targeted backend recovery tests and the broader `*PasswordRecovery*` suite pass.
+- Cross-surface contract coverage was also validated through FE and MOB password recovery proof-of-work contract tests.
+- Live forgot-password backend revalidation passed after adding insert compatibility defaults for audit/security UUID columns and local HTTP session-cookie compatibility for CSRF-backed recovery flows.
+- QA outcome: pass

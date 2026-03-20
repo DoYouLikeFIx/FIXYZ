@@ -49,10 +49,10 @@ development_status:
   1-13-mob-mobile-google-authenticator-enrollment-and-login-mfa-flow: done
   1-14-be-mfa-recovery-rebind-and-session-invalidation: done
   1-15-fe-mob-mfa-recovery-and-error-ux-alignment: done
-  1-16-be-real-password-recovery-challenge-provider-and-verification: ready-for-dev
-  1-17-fe-web-real-password-recovery-challenge-ux: ready-for-dev
-  1-18-mob-mobile-real-password-recovery-challenge-ux: ready-for-dev
-  1-19-recovery-challenge-abuse-defense-validation-and-ops-evidence: ready-for-dev
+  1-16-be-real-password-recovery-challenge-provider-and-verification: review
+  1-17-fe-web-real-password-recovery-challenge-ux: review
+  1-18-mob-mobile-real-password-recovery-challenge-ux: review
+  1-19-recovery-challenge-abuse-defense-validation-and-ops-evidence: review
   epic-1-retrospective: optional
 
   epic-2: done

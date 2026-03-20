@@ -1,6 +1,6 @@
 # Story 1.17: [FE] Web Real Password Recovery Challenge UX
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -127,11 +127,36 @@ GPT-5 Codex (Codex desktop)
 ### Debug Log References
 
 - Regenerated from canonical Epic 1 follow-on planning artifacts for execution readiness.
+- 2026-03-20: Parallel web implementation pass landed for proof-of-work v2 recovery UX, fail-closed handling, and FE test coverage updates. Validation commands were not executed in this run.
 
 ### Completion Notes List
 
 - Story scaffold created for FE proof-of-work recovery UX, stale-state control, deterministic error handling, and redirect preservation.
+- Added FE parsing and transient handling for legacy-v1 and proof-of-work v2 recovery challenge bundles.
+- Added fail-closed web challenge handling for unknown-version, kind-mismatch, malformed-payload, mixed-shape, clock-skew, and validity-untrusted cases.
+- Added FE auth-error guidance and tests for AUTH-022/AUTH-023/AUTH-024/AUTH-025 plus proof-of-work bundle parsing and recovery flow behavior.
+- Runtime fail-closed telemetry now always reaches a built-in sink, and transport-harness coverage is documented separately from route-level UI coverage.
 
 ### File List
 
+- FE/src/components/auth/ForgotPasswordForm.tsx
+- FE/src/hooks/auth/useForgotPasswordPageController.ts
+- FE/src/lib/auth-errors.ts
+- FE/src/lib/recovery-challenge.ts
+- FE/src/types/auth.ts
+- FE/tests/integration/password-recovery.test.tsx
+- FE/tests/unit/api/authApi.test.ts
+- FE/tests/unit/lib/auth-errors.test.ts
+- FE/tests/unit/lib/recovery-challenge.test.ts
 - _bmad-output/implementation-artifacts/1-17-fe-web-real-password-recovery-challenge-ux.md
+
+## Change Log
+
+- 2026-03-20: Added web proof-of-work v2 recovery UX, fail-closed handling, runtime fail-closed telemetry sink coverage, and validated FE test updates.
+
+## QA Update - 2026-03-20
+- Automated QA completed for the web password recovery proof-of-work UX, fail-closed handling, route-level integration, and FE auth transport harness coverage.
+- Added FE auth transport harness coverage in `/Users/yeongjae/fixyz/FE/tests/integration/password-recovery-transport.test.ts`.
+- Verified web challenge parsing and actual route integration coverage remain green, including `/Users/yeongjae/fixyz/FE/tests/integration/password-recovery.test.tsx`.
+- Live BE-FE forgot-password acceptance and challenge bootstrap were revalidated with Playwright against `http://127.0.0.1:8080` after the backend session-cookie and live preflight fixes.
+- QA outcome: pass
