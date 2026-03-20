@@ -1460,6 +1460,10 @@ flowchart TD
 - If `AUTH-025` includes `Retry-After`, FE and MOB surface the backoff window as advisory restart guidance, clear the active challenge, and require a fresh challenge bootstrap after the backoff elapses; if it does not, they show generic restart guidance without replaying the same proof.
 - Web proof-of-work solve must keep the page responsive, show progress within `150ms`, and stay within the canonical supported-browser solve budget of p95 `<= 4s` and p99 `<= 6s` on the documented baseline browser and device used for release evidence.
 - Mobile proof-of-work solve must not block the main UI thread; progress must render within `150ms`, cancel must acknowledge within `250ms`, and background or resume transitions must either safely resume a still-valid challenge or explicitly clear it with a restart CTA. The canonical supported-mobile solve budget is p95 `<= 5s` and p99 `<= 8s` on the documented baseline mobile devices used for release evidence.
+- Story `1.19` fixes the current release-evidence baselines to:
+  - Web: Playwright `Desktop Chrome` from `FE/playwright.config.ts`
+  - Mobile: Maestro iOS simulator `iPhone 17` from `MOB/scripts/run-maestro-auth-suite.sh`
+- If another browser or mobile device becomes the canonical release-evidence baseline, update this section and `docs/ops/password-recovery-challenge-runbook.md` in the same change before collecting new evidence.
 
 ### J1A — MFA Recovery / Rebind Flow
 

@@ -1,6 +1,6 @@
 # Story 1.18: [MOB] Mobile Real Password Recovery Challenge UX
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -134,11 +134,37 @@ GPT-5 Codex (Codex desktop)
 ### Debug Log References
 
 - Regenerated from canonical Epic 1 follow-on planning artifacts for execution readiness.
+- 2026-03-20: Parallel mobile implementation pass landed for proof-of-work v2 recovery UX, lifecycle-safe fail-closed handling, and MOB test coverage updates. Validation commands were not executed in this run.
 
 ### Completion Notes List
 
 - Story scaffold created for mobile proof-of-work recovery UX, lifecycle safety, deterministic error handling, and redirect preservation.
+- Added mobile parsing and transient handling for legacy-v1 and proof-of-work v2 recovery challenge bundles.
+- Added fail-closed mobile recovery handling for unknown-version, kind-mismatch, malformed-payload, mixed-shape, clock-skew, and validity-untrusted cases, including background or resume reset behavior.
+- Added mobile guidance coverage for AUTH-022/AUTH-023/AUTH-024/AUTH-025 and tests for bundle parsing plus forgot-password view-model behavior.
+- Added runtime fail-closed telemetry sink behavior and separated transport-harness coverage from actual view-model recovery coverage.
 
 ### File List
 
+- MOB/src/auth/auth-errors.ts
+- MOB/src/auth/recovery-challenge.ts
+- MOB/src/auth/use-forgot-password-view-model.ts
+- MOB/src/screens/auth/ForgotPasswordScreen.tsx
+- MOB/src/types/auth.ts
+- MOB/tests/unit/api/auth-api.test.ts
+- MOB/tests/unit/auth/recovery-challenge-auth-errors.test.ts
+- MOB/tests/unit/auth/recovery-challenge.test.ts
+- MOB/tests/unit/auth/use-forgot-password-view-model.test.tsx
 - _bmad-output/implementation-artifacts/1-18-mob-mobile-real-password-recovery-challenge-ux.md
+
+## Change Log
+
+- 2026-03-20: Added mobile proof-of-work v2 recovery UX, lifecycle-safe fail-closed handling, runtime fail-closed telemetry sink coverage, and validated MOB test updates.
+
+## QA Update - 2026-03-20
+- Automated QA completed for the mobile password recovery proof-of-work UX, fail-closed handling, view-model solve flow, and mobile auth transport harness coverage.
+- Added v2 bootstrap service coverage in `/Users/yeongjae/fixyz/MOB/tests/unit/auth/mobile-auth-service.test.ts`.
+- Added mobile auth transport harness coverage in `/Users/yeongjae/fixyz/MOB/tests/integration/mobile-password-recovery-transport.test.ts`.
+- Verified mobile recovery unit, API, view-model, and transport harness coverage pass.
+- Live BE-MOB forgot-password challenge-submit was revalidated on the `iPhone 17` simulator after fixing the `AppNavigator` runtime prop wiring, local HTTP session-cookie compatibility, and compact-height auth scrolling.
+- QA outcome: pass

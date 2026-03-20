@@ -222,7 +222,7 @@ GPT-5 Codex (Codex desktop)
 ### Debug Log References
 
 - `npm --prefix MOB run lint`
-- `npm --prefix MOB test -- auth-flow-view-model.test.ts mobile-password-recovery.e2e.test.ts`
+- `npm --prefix MOB test -- auth-flow-view-model.test.ts mobile-password-recovery-transport.test.ts`
 - `npm --prefix MOB run typecheck`
 - `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer MOB/scripts/run-maestro-auth-suite.sh MOB/e2e/maestro/auth/12-password-recovery-terminal-403.yaml`
 - `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer MOB/scripts/run-maestro-auth-suite.sh MOB/e2e/maestro/auth/13-password-recovery-challenge-terminal-403.yaml`
@@ -274,7 +274,7 @@ GPT-5 Codex (Codex desktop)
 - MOB/tests/unit/navigation/auth-navigation.test.ts
 - MOB/tests/unit/auth/auth-flow-view-model.test.ts
 - MOB/tests/unit/auth/mobile-auth-service.test.ts
-- MOB/tests/e2e/mobile-password-recovery.e2e.test.ts
+- MOB/tests/integration/mobile-password-recovery-transport.test.ts
 - MOB/e2e/maestro/auth/08-password-recovery-request.yaml
 - MOB/e2e/maestro/auth/09-password-reset-manual-token.yaml
 - MOB/e2e/maestro/auth/10-password-reset-success.yaml

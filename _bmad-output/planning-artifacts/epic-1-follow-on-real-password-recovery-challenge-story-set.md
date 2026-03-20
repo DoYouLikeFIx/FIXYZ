@@ -155,6 +155,12 @@ Acceptance criteria:
 3. Story `1.18` third so Mobile consumes the same stable contract.
 4. Story `1.19` last to attach operational evidence and lane confidence.
 
+## Story 1.19 Execution Readiness Note
+
+- Until Stories `1.16`, `1.17`, and `1.18` exit `review`, Story `1.19` must treat their reviewed challenge contract, rollout routing semantics, and canonical client fail-closed reason vocabulary as frozen on the same implementation branch.
+- Story `1.19` validates those baselines and packages evidence for them; it does not redefine them mid-implementation.
+- Canonical operator guidance, telemetry routing, and evidence baselines for Story `1.19` live in `docs/ops/password-recovery-challenge-runbook.md`.
+
 ## Suggested Ownership
 
 - `1.16`: CH
