@@ -7,9 +7,11 @@
     "doc": "docs"
   },
   "scripts": {
-    "test": "npm run test:collab-webhook && npm run test:edge-gateway && npm run test:vault && npm run test:infra-bootstrap && npm run test:db-ha && npm run test:redis-recovery && npm run test:client-parity",
+    "test": "npm run test:collab-webhook && npm run test:edge-gateway && npm run test:vault && npm run test:infra-bootstrap && npm run test:db-ha && npm run test:redis-recovery && npm run test:client-parity && npm run test:supply-chain",
     "test:be:critical-contract-suites": "node scripts/run-gradle-wrapper.js --cwd BE --no-daemon :channel-service:criticalContractSuites",
     "test:collab-webhook": "node --test tests/collab-webhook/*.test.js",
+    "test:supply-chain": "node --test tests/supply-chain/*.test.cjs",
+    "capture:supply-chain:evidence": "node .github/scripts/supply-chain/capture-live-evidence.cjs",
     "test:edge-gateway": "node --test tests/edge-gateway/*.test.js",
     "test:vault": "node --test tests/vault/*.test.js",
     "test:infra-bootstrap": "node --test tests/infra-bootstrap/*.test.js",
@@ -17,6 +19,7 @@
     "test:redis-recovery": "node --test tests/redis-recovery/*.test.js",
     "test:client-parity": "node --test tests/client-parity/*.test.js",
     "lint:collab-webhook": "node --check .github/scripts/collab-webhook/*.js",
+    "lint:supply-chain": "node --check .github/scripts/supply-chain/security-utils.cjs && node --check .github/scripts/supply-chain/run-security-baseline.cjs && node --check .github/scripts/supply-chain/capture-live-evidence.cjs",
     "lint:edge-gateway": "bash -n docker/nginx/scripts/*.sh",
     "lint:vault": "bash -n docker/vault/init/*.sh docker/vault/scripts/*.sh",
     "lint:infra-bootstrap": "bash -n scripts/infra-bootstrap/*.sh",
