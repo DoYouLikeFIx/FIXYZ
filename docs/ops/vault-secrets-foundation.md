@@ -4,6 +4,10 @@
 
 Story `0-8-vault-secrets-foundation` baseline for centralized secret management.
 
+For staging/prod separation and operator-managed external Vault flows, continue with `docs/ops/vault-external-operations.md`.
+
+For a low-cost non-local dev server that still keeps persistent `raft` storage in Docker, continue with `docs/ops/vault-external-dev-server.md`.
+
 - Vault engine: `KV v2` at `secret/`
 - CI auth: `GitHub Actions OIDC` to `auth/jwt`
 - Runtime auth: `AppRole` with short-lived tokens
@@ -37,7 +41,7 @@ Policy files are stored at:
 1. Fill required variables in `.env` (from `.env.example`):
    - `VAULT_DEV_ROOT_TOKEN_ID`
    - `INTERNAL_SECRET_BOOTSTRAP`
-2. Start Vault baseline:
+2. Start Vault baseline for local/dev only:
 
 ```bash
 docker compose -f docker-compose.vault.yml up -d vault vault-init
@@ -70,6 +74,8 @@ docker compose up -d
 ```
 
 Runtime behavior is **fail-fast**: compose requires `INTERNAL_SECRET` and aborts startup when not provided.
+
+Local bootstrap can optionally use `COMPOSE_PROFILES=local-vault`. Non-local environments must not enable that profile.
 
 ## CI Integration (GitHub Actions OIDC)
 

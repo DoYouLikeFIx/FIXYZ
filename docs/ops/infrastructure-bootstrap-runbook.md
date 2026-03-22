@@ -14,6 +14,7 @@ Story `0-9-additional-infrastructure-bootstrap` bootstrap for dev/staging founda
 1. Docker Engine and Docker Compose plugin installed.
 2. `.env` populated from `.env.example`.
 3. Vault bootstrap values are set (`VAULT_DEV_ROOT_TOKEN_ID`, `INTERNAL_SECRET_BOOTSTRAP`).
+4. Local Vault bootstrap is opt-in via `COMPOSE_PROFILES=local-vault`.
 
 ## First-time bootstrap
 
@@ -22,6 +23,7 @@ Run this sequence in order:
 ```bash
 cp .env.example .env
 # edit .env and set required non-empty values
+export COMPOSE_PROFILES=local-vault
 
 # Phase 1: foundation provisioning + static contracts
 BOOTSTRAP_ENV=dev \
@@ -52,6 +54,8 @@ Validation includes:
 - Nginx edge checks from `docker/nginx/scripts/validate-edge-gateway.sh`
 - Vault secret-read check via `docker/vault/scripts/read-internal-secret.sh`
 - Policy/config contract checks for `runtime-internal-secret.hcl` and `ci-docs-publish.hcl`
+
+For `staging`/`prod`, use the external Vault contract and profile guard documented in `docs/ops/vault-external-operations.md`.
 
 ## Idempotent re-run
 
