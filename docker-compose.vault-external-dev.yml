@@ -1,0 +1,49 @@
+services:
+  vault-external-dev:
+    image: hashicorp/vault:1.15
+    container_name: vault-external-dev
+    restart: unless-stopped
+    cap_add:
+      - IPC_LOCK
+    command:
+      - /bin/sh
+      - -ec
+      - mkdir -p /vault/file/raft && exec vault server -config=/vault/config/vault-external-dev.hcl
+    volumes:
+      - vault-external-dev-data:/vault/file
+      - ./docker/vault/config:/vault/config:ro
+    ports:
+      - "8200:8200"
+    networks:
+      - vault-external-dev-net
+
+  vault-external-dev-init:
+    image: hashicorp/vault:1.15
+    container_name: vault-external-dev-init
+    depends_on:
+      - vault-external-dev
+    restart: "no"
+    environment:
+      VAULT_ADDR: ${VAULT_ADDR:-http://vault-external-dev:8200}
+      INTERNAL_SECRET_BOOTSTRAP: ${INTERNAL_SECRET_BOOTSTRAP:?INTERNAL_SECRET_BOOTSTRAP must be provided}
+      GITHUB_OIDC_DISCOVERY_URL: ${GITHUB_OIDC_DISCOVERY_URL:-https://token.actions.githubusercontent.com}
+      GITHUB_OIDC_ISSUER: ${GITHUB_OIDC_ISSUER:-https://token.actions.githubusercontent.com}
+      GITHUB_OIDC_AUDIENCE: ${GITHUB_OIDC_AUDIENCE:-https://github.com/DoYouLikeFIx}
+      GITHUB_REPOSITORY_BOUND: ${GITHUB_REPOSITORY_BOUND:-DoYouLikeFIx/FIXYZ}
+      GITHUB_JOB_WORKFLOW_REF_GLOB: ${GITHUB_JOB_WORKFLOW_REF_GLOB:-DoYouLikeFIx/FIXYZ/.github/workflows/docs-publish.yml@*}
+      VAULT_AUDIT_LOG_PATH: ${VAULT_AUDIT_LOG_PATH:-/vault/file/audit.log}
+      VAULT_RUNTIME_ROLE: ${VAULT_RUNTIME_ROLE:-runtime-core-services}
+      VAULT_ROTATION_ROLE: ${VAULT_ROTATION_ROLE:-ops-rotate-internal-secret}
+    entrypoint: ["/bin/sh", "/vault/bootstrap/init/vault-single-node-bootstrap.sh"]
+    volumes:
+      - vault-external-dev-data:/vault/file
+      - ./docker/vault:/vault/bootstrap:ro
+    networks:
+      - vault-external-dev-net
+
+volumes:
+  vault-external-dev-data:
+
+networks:
+  vault-external-dev-net:
+    driver: bridge

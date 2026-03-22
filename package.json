@@ -18,7 +18,7 @@
     "test:client-parity": "node --test tests/client-parity/*.test.js",
     "lint:collab-webhook": "node --check .github/scripts/collab-webhook/*.js",
     "lint:edge-gateway": "bash -n docker/nginx/scripts/*.sh",
-    "lint:vault": "bash -n docker/vault/init/*.sh docker/vault/scripts/*.sh",
+    "lint:vault": "bash -n docker/vault/init/*.sh docker/vault/scripts/*.sh .github/scripts/vault/*.sh scripts/vault/*.sh",
     "lint:infra-bootstrap": "bash -n scripts/infra-bootstrap/*.sh",
     "lint:db-ha": "bash -n docker/mysql/ha/scripts/*.sh",
     "lint:redis-recovery": "bash -n scripts/redis-recovery/*.sh",
