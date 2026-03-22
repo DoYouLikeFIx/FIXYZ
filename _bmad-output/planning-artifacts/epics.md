@@ -655,6 +655,75 @@ So that the platform meets the Redis restart recovery target without manual inte
   **When** recovery probes are executed  
   **Then** internal service probes run from compose network context, not host-exposed ports.
 
+### Story 0.13: [BE][OPS][SEC] Vault Production Separation and External Operations
+
+As a **platform engineer**,
+I want non-local Vault usage to be separated from local compose-owned services,
+So that staging/production secret delivery uses external Vault contracts, fail-closed guardrails, and explicit ownership boundaries.
+
+**Depends On:** Story 0.8, Story 0.9
+
+**Acceptance Criteria:**
+
+- **Given** staging/production environments are used
+  **When** CI workflows resolve platform secrets
+  **Then** GitHub Actions OIDC -> Vault JWT login uses an external Vault endpoint over TLS and protected workflows fail closed without degraded bypass.
+- **Given** protected workflow policy is defined
+  **When** `.github/vault-protected-workflows.txt` is validated
+  **Then** every allowlist entry maps to an existing workflow file and broken mappings fail policy checks.
+- **Given** runtime service startup in non-local environments
+  **When** the stack boots
+  **Then** secrets are delivered only by deploy-time pre-start retrieval plus environment injection using AppRole credentials, and deployment fails if local `vault` or `vault-init` services are enabled.
+- **Given** Story 0.9 local bootstrap assumptions exist
+  **When** the non-local environment matrix is reviewed
+  **Then** staging/production are explicitly marked `external-vault-only`, while `docker-compose.vault.yml` remains a local/dev-only bootstrap path.
+- **Given** repository-owned Vault integrations are inventoried
+  **When** non-local Vault rules are applied
+  **Then** boot-path secret delivery and application-owned business-flow Vault clients are classified explicitly, including the current `channel-service` TOTP Vault client as a business-flow integration aligned to the same external endpoint/TLS policy.
+- **Given** least-privilege and bootstrap ownership constraints
+  **When** Vault roles/policies are provisioned
+  **Then** one-time setup is owned by operator process or IaC, CI/runtime never require root token exposure, and TTL/capability contracts for CI/runtime/rotation remain enforced.
+- **Given** service/application configuration is hardened for non-local use
+  **When** secret-related defaults are evaluated
+  **Then** local-only secret fallbacks and localhost Vault defaults are removed or profile-gated so non-local profiles fail closed on missing or invalid secret configuration.
+- **Given** repository guardrail coverage requirements
+  **When** tests and runbooks are reviewed
+  **Then** failure taxonomy, deterministic exit codes/log signatures, HTTPS-only/CA trust/hostname verification, secret-log safety rules, and the explicit handoff to Story 0.14 are documented and regression-protected.
+
+### Story 0.14: [OPS][SEC] Vault External Cutover Rehearsal and Audit Evidence
+
+As a **platform security owner**,
+I want a rehearsed external Vault cutover with indexed evidence,
+So that non-local Vault operations are proven under outage, rotation, and audit-retention conditions before dependent hardening stories rely on them operationally.
+
+**Depends On:** Story 0.13
+
+**Execution Start Gate:** Do not begin live rehearsal execution until Story 0.13 is `done` and the required external-Vault rehearsal prerequisites are available (external endpoint, CA/trust material, CI/runtime auth roles, audit export access, immutable evidence sink, and named rollback owner).
+
+**Acceptance Criteria:**
+
+- **Given** external Vault outage scenarios are exercised
+  **When** protected branches or production-runtime equivalents encounter Vault failure
+  **Then** the documented decision matrix is enforced as fail-fast only, while degraded mode remains allowed only for explicitly documented non-protected/local simulation paths.
+- **Given** audit/compliance requirements
+  **When** external Vault read/write operations are executed during rehearsal
+  **Then** actor/path metadata evidence is retained with minimum retention `>=90 days` and an immutable storage policy (`S3 Object Lock Compliance mode` or equivalent WORM lock) is documented and validated.
+- **Given** migration safety requirements
+  **When** the external Vault cutover rehearsal is executed
+  **Then** required probes are all green within `<=300s`, critical secret-auth error count remains `0`, and rollback is triggered on gate breach.
+- **Given** transport-security lifecycle controls
+  **When** certificate or trust-continuity rehearsal is executed
+  **Then** CA distribution path, hostname verification, validation checklist, rollback trigger, and cumulative downtime SLO `<=300s` are documented and exercised without policy bypass.
+- **Given** secret rotation operations are rehearsed in external mode
+  **When** a critical secret is rotated
+  **Then** the next deployment/restart path makes the new value effective within `<=15m`, using explicit `t0`/`t1` measurement formula and documented restart sequence.
+- **Given** evidence-pack requirements
+  **When** the story is completed
+  **Then** fresh indexed evidence artifacts are produced for this story under a dedicated external-Vault evidence path and the story does not rely on missing or historical local-baseline evidence files as substitutes.
+- **Given** Story 0.14 is an operational proof story
+  **When** completion is assessed
+  **Then** only `live-external` rehearsal evidence from the target staging-like environment can satisfy this story, while local simulation, planning review, or historical baseline evidence may support preparation but cannot mark the story done.
+
 ---
 
 ## Epic 1: Channel Auth & Session Platform

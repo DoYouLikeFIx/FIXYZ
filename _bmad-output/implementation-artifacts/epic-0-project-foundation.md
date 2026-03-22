@@ -2,14 +2,14 @@
 
 ## Sync Note
 
-This document is synchronized to `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/epics.md` (Epic 0 section) and is the execution companion for Story 0.1 through Story 0.13.
+This document is synchronized to `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/epics.md` (Epic 0 section) and is the execution companion for Story 0.1 through Story 0.14.
 
 Primary source of truth for story decomposition remains `epics.md`.
 
-Current implementation status as of 2026-03-11:
+Current implementation status as of 2026-03-20:
 - Completed: Story 0.1 through Story 0.10, plus Story 0.12
-- Remaining open: Story 0.11 and Story 0.13
-- Epic 0 closeout status: in progress until those two stories are completed
+- Remaining open: Story 0.11, Story 0.13, and Story 0.14
+- Epic 0 closeout status: in progress until those three stories are completed
 
 ---
 
@@ -33,6 +33,7 @@ Completed stories:
 Remaining stories before Epic 0 can be fully closed:
 - `0.11` Supply Chain Security Baseline
 - `0.13` Vault Production Separation and External Operations
+- `0.14` Vault External Cutover Rehearsal and Audit Evidence
 
 ---
 
@@ -45,7 +46,7 @@ Epic 0 establishes the common platform foundation required before feature epics:
 - Web and mobile scaffolds aligned to backend contracts
 - Team collaboration notification baseline (GitHub/Jira -> MatterMost)
 - Shared platform infrastructure hardening for edge, secrets, and data availability
-- Operational self-healing baseline for release safety, with supply-chain security and external Vault production-ops hardening still open
+- Operational self-healing baseline for release safety, with supply-chain security, external Vault guardrails, and external Vault cutover/evidence hardening still open
 
 ---
 
