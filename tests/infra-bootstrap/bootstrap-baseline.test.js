@@ -39,6 +39,7 @@ test("component matrix defines environment components, owners, and dependency gr
   mustInclude(matrix, "environment: dev");
   mustInclude(matrix, "environment: staging");
   mustInclude(matrix, "component: vault");
+  mustInclude(matrix, "component: external-vault-endpoint");
   mustInclude(matrix, "component: edge-gateway");
   mustInclude(matrix, "owner:");
   mustInclude(matrix, "depends_on:");
@@ -73,6 +74,7 @@ test("nginx and vault integration validation script checks both baselines", () =
   mustInclude(validationScript, "MAIN_COMPOSE_FILE");
   mustInclude(validationScript, "EDGE_COMPOSE_FILE");
   mustInclude(validationScript, "VAULT_COMPOSE_FILE");
+  mustInclude(validationScript, "validate-nonlocal-profile.sh");
 });
 
 test("parity check script detects missing and mismatched baseline components", () => {

@@ -77,6 +77,8 @@ test("Vault bootstrap config enforces least-privilege policy mapping and short-l
   const runtimePolicy = readText(vaultPolicyRuntimePath);
   const rotationPolicy = readText(vaultPolicyRotationPath);
   const bootstrap = readText(vaultBootstrapPath);
+  const readScript = readText(vaultReadScriptPath);
+  const rotateScript = readText(vaultRotateScriptPath);
 
   mustInclude(ciPolicy, 'capabilities = ["read"]');
   mustInclude(runtimePolicy, 'capabilities = ["read"]');
@@ -92,6 +94,10 @@ test("Vault bootstrap config enforces least-privilege policy mapping and short-l
   mustInclude(bootstrap, 'token_ttl="5m"');
   mustInclude(bootstrap, 'token_max_ttl="30m"');
   mustInclude(bootstrap, 'secret_id_ttl="24h"');
+  mustInclude(readScript, 'grep -qx "vault-external-dev"');
+  mustInclude(readScript, "http://127.0.0.1:8200");
+  mustInclude(rotateScript, 'grep -qx "vault-external-dev"');
+  mustInclude(rotateScript, "http://127.0.0.1:8200");
 });
 
 test("docker compose includes Vault + vault-init services and removes static INTERNAL_SECRET fallback", () => {
