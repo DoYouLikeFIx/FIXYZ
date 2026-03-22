@@ -1,6 +1,6 @@
 version: 1
-story: 0-9-additional-infrastructure-bootstrap
-last_updated: 2026-03-03
+story: 0-13-vault-production-separation-and-external-operations
+last_updated: 2026-03-20
 
 environments:
   - environment: dev
@@ -48,7 +48,7 @@ environments:
         depends_on: [fix-net, edge-certs]
 
   - environment: staging
-    purpose: baseline parity for pre-production infrastructure contracts
+    purpose: external-vault-only parity for pre-production infrastructure contracts
     components:
       - component: fix-net
         type: docker-network
@@ -65,26 +65,16 @@ environments:
         bootstrap_required: true
         owner: platform
         depends_on: [fix-net]
-      - component: vault-data
-        type: docker-volume
-        bootstrap_required: true
-        owner: platform-security
-        depends_on: [fix-net]
       - component: edge-certs
         type: docker-volume
         bootstrap_required: true
         owner: platform-edge
         depends_on: [fix-net]
-      - component: vault
-        type: compose-service
+      - component: external-vault-endpoint
+        type: external-service
         bootstrap_required: true
         owner: platform-security
-        depends_on: [vault-data, fix-net]
-      - component: vault-init
-        type: compose-service
-        bootstrap_required: true
-        owner: platform-security
-        depends_on: [vault, vault-data]
+        depends_on: [fix-net]
       - component: edge-gateway
         type: compose-service
         bootstrap_required: false
@@ -97,19 +87,22 @@ dependency_graph:
       - vault
       - vault-data
       - fix-net
+  - component: external-vault-endpoint
+    depends_on:
+      - fix-net
   - component: corebank-service
     depends_on:
       - mysql
       - redis
-      - vault-init
+      - external-vault-endpoint
   - component: fep-gateway
     depends_on:
       - corebank-service
-      - vault-init
+      - external-vault-endpoint
   - component: fep-simulator
     depends_on:
       - fep-gateway
-      - vault-init
+      - external-vault-endpoint
   - component: channel-service
     depends_on:
       - corebank-service
@@ -117,7 +110,7 @@ dependency_graph:
       - fep-simulator
       - mysql
       - redis
-      - vault-init
+      - external-vault-endpoint
   - component: edge-gateway
     depends_on:
       - channel-service

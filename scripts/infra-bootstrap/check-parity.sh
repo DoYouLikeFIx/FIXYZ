@@ -34,6 +34,29 @@ mark_misaligned() {
   PARITY_STATUS="FAIL"
 }
 
+env_has_component() {
+  local target_component="$1"
+
+  awk -v target_env="${PARITY_ENV}" -v target_component="${target_component}" '
+    $1 == "dependency_graph:" { in_env = 0 }
+    $1 == "-" && $2 == "environment:" {
+      in_env = ($3 == target_env)
+      next
+    }
+    in_env && $1 == "-" && $2 == "component:" {
+      component = $3
+      gsub(/"/, "", component)
+      if (component == target_component) {
+        found = 1
+      }
+      next
+    }
+    END {
+      exit(found ? 0 : 1)
+    }
+  ' "${PARITY_MATRIX_PATH}"
+}
+
 matrix_components_by_type() {
   local target_type="$1"
   local required_filter="${2:-any}"
@@ -256,10 +279,19 @@ main() {
   check_required_file "docs/ops/infrastructure-bootstrap-runbook.md" "docs/infrastructure-bootstrap-runbook"
 
   check_required_pattern "${PARITY_MAIN_COMPOSE_FILE}" "edge-gateway:" "compose/edge-gateway"
-  check_required_pattern "${PARITY_MAIN_COMPOSE_FILE}" "vault-init:" "compose/vault-init"
-  check_required_pattern "${PARITY_VAULT_COMPOSE_FILE}" "vault-init:" "compose-vault/vault-init"
   check_required_pattern "docker/vault/policies/runtime-internal-secret.hcl" 'capabilities = ["read"]' "vault-policy/runtime-read"
   check_required_pattern "docker/vault/policies/ci-docs-publish.hcl" 'capabilities = ["read"]' "vault-policy/ci-read"
+
+  if env_has_component "vault-init"; then
+    check_required_pattern "${PARITY_MAIN_COMPOSE_FILE}" "vault-init:" "compose/vault-init"
+    check_required_pattern "${PARITY_VAULT_COMPOSE_FILE}" "vault-init:" "compose-vault/vault-init"
+  fi
+
+  if env_has_component "external-vault-endpoint"; then
+    check_required_file "docs/ops/vault-external-operations.md" "docs/vault-external-operations"
+    check_required_file "scripts/vault/validate-nonlocal-profile.sh" "script/validate-nonlocal-profile"
+    check_required_pattern "${PARITY_MATRIX_PATH}" "component: external-vault-endpoint" "matrix/external-vault-endpoint"
+  fi
 
   if [[ -n "${PARITY_INDUCED_MISMATCH_COMPONENT}" ]]; then
     mark_misaligned "induced/${PARITY_INDUCED_MISMATCH_COMPONENT}"

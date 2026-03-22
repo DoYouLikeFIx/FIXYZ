@@ -12,11 +12,13 @@ EDGE_COMPOSE_FILE="${EDGE_COMPOSE_FILE:-${MAIN_COMPOSE_FILE}}"
 VAULT_CONTAINER_NAME="${VAULT_CONTAINER_NAME:-vault}"
 VAULT_INTERNAL_SECRET_PATH="${VAULT_INTERNAL_SECRET_PATH:-secret/fix/shared/core-services/internal-secret}"
 SKIP_COMPOSE_UP="${SKIP_COMPOSE_UP:-0}"
+DEPLOY_ENV="${DEPLOY_ENV:-${BOOTSTRAP_ENV:-dev}}"
 
 RUNTIME_POLICY_PATH="docker/vault/policies/runtime-internal-secret.hcl"
 CI_POLICY_PATH="docker/vault/policies/ci-docs-publish.hcl"
 READ_SCRIPT_PATH="./docker/vault/scripts/read-internal-secret.sh"
 EDGE_VALIDATE_SCRIPT_PATH="./docker/nginx/scripts/validate-edge-gateway.sh"
+NONLOCAL_VALIDATE_SCRIPT_PATH="./scripts/vault/validate-nonlocal-profile.sh"
 
 log() {
   printf '[bootstrap-validate] %s\n' "$*"
@@ -102,6 +104,17 @@ load_approle_from_container_if_available() {
   fi
 }
 
+is_nonlocal_environment() {
+  case "${DEPLOY_ENV}" in
+    staging|stage|prod|production|preprod|uat)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 main() {
   local validation_mode
   validation_mode="$(resolve_validation_mode)"
@@ -110,6 +123,7 @@ main() {
   require_file "${CI_POLICY_PATH}"
   require_file "${READ_SCRIPT_PATH}"
   require_file "${EDGE_VALIDATE_SCRIPT_PATH}"
+  require_file "${NONLOCAL_VALIDATE_SCRIPT_PATH}"
   require_file "${MAIN_COMPOSE_FILE}"
   require_file "${VAULT_COMPOSE_FILE}"
   require_file "${EDGE_COMPOSE_FILE}"
@@ -124,8 +138,17 @@ main() {
     "${EDGE_COMPOSE_FILE}"
   require_pattern "${VAULT_COMPOSE_FILE}" 'vault-init:' 'vault bootstrap compose includes init'
 
+  VALIDATE_NONLOCAL_ENV="${DEPLOY_ENV}" \
+    VALIDATE_NONLOCAL_ENABLED_PROFILES="${COMPOSE_PROFILES:-${DOCKER_COMPOSE_PROFILES:-}}" \
+    bash "${NONLOCAL_VALIDATE_SCRIPT_PATH}"
+
   if [[ "${validation_mode}" == "static" ]]; then
     log "Static integration checks passed (runtime checks skipped by configuration)."
+    return
+  fi
+
+  if is_nonlocal_environment; then
+    log "Non-local integration checks passed (external Vault runtime validation is operator-owned)."
     return
   fi
 
