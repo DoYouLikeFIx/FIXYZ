@@ -6,6 +6,7 @@ VAULT_INTERNAL_SECRET_PATH="${VAULT_INTERNAL_SECRET_PATH:-secret/fix/shared/core
 VAULT_RUNTIME_ROLE_ID="${VAULT_RUNTIME_ROLE_ID:-${VAULT_ROLE_ID:-}}"
 VAULT_RUNTIME_SECRET_ID="${VAULT_RUNTIME_SECRET_ID:-${VAULT_SECRET_ID:-}}"
 OUTPUT_MODE="${1:-value}"
+VAULT_LOCAL_CONTAINER_NAME="${VAULT_LOCAL_CONTAINER_NAME:-}"
 
 usage() {
   cat <<'EOF'
@@ -45,6 +46,8 @@ resolve_vault_token() {
 }
 
 vault_exec() {
+  local_container_name="${VAULT_LOCAL_CONTAINER_NAME}"
+
   if command -v vault >/dev/null 2>&1; then
     if [ -n "${VAULT_TOKEN:-}" ]; then
       VAULT_ADDR="${VAULT_ADDR}" VAULT_TOKEN="${VAULT_TOKEN}" vault "$@"
@@ -59,15 +62,23 @@ vault_exec() {
     exit 1
   fi
 
-  if ! docker ps --format '{{.Names}}' | grep -qx "vault"; then
-    printf '%s\n' "ERROR: vault CLI missing and running 'vault' container not found." >&2
+  if [ -z "${local_container_name}" ]; then
+    if docker ps --format '{{.Names}}' | grep -qx "vault"; then
+      local_container_name="vault"
+    elif docker ps --format '{{.Names}}' | grep -qx "vault-external-dev"; then
+      local_container_name="vault-external-dev"
+    fi
+  fi
+
+  if [ -z "${local_container_name}" ]; then
+    printf '%s\n' "ERROR: vault CLI missing and no running local Vault container was found (checked: vault, vault-external-dev)." >&2
     exit 1
   fi
 
   if [ -n "${VAULT_TOKEN:-}" ]; then
-    docker exec -e VAULT_ADDR="http://127.0.0.1:8200" -e VAULT_TOKEN="${VAULT_TOKEN}" vault vault "$@"
+    docker exec -e VAULT_ADDR="http://127.0.0.1:8200" -e VAULT_TOKEN="${VAULT_TOKEN}" "${local_container_name}" vault "$@"
   else
-    docker exec -e VAULT_ADDR="http://127.0.0.1:8200" vault vault "$@"
+    docker exec -e VAULT_ADDR="http://127.0.0.1:8200" "${local_container_name}" vault "$@"
   fi
 }
 
