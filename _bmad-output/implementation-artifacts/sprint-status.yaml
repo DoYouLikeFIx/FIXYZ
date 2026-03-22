@@ -28,7 +28,7 @@ development_status:
   0-8-vault-secrets-foundation: done
   0-9-additional-infrastructure-bootstrap: done
   0-10-database-high-availability-and-replication-baseline: done
-  0-11-supply-chain-security-baseline: ready-for-dev
+  0-11-supply-chain-security-baseline: done
   0-12-redis-recovery-and-self-healing-baseline: done
   0-13-vault-production-separation-and-external-operations: done
   0-14-vault-external-cutover-rehearsal-and-audit-evidence: done
