@@ -8,6 +8,8 @@ on:
       - 'BE'
       - 'BE/**'
       - 'docker/vault/**'
+      - '.github/scripts/vault/**'
+      - '.github/vault-protected-workflows.txt'
       - '.github/workflows/docs-publish.yml'
 
 permissions:
@@ -23,6 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
+      VAULT_CA_CERT_PEM: ${{ secrets.VAULT_CA_CERT_PEM }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -34,6 +37,15 @@ jobs:
         with:
           java-version: '21'
           distribution: 'temurin'
+
+      - name: Materialize Vault CA trust bundle
+        if: ${{ !env.ACT && env.VAULT_ADDR != '' && env.VAULT_CA_CERT_PEM != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' "${VAULT_CA_CERT_PEM}" > "${RUNNER_TEMP}/vault-ca.pem"
+          chmod 600 "${RUNNER_TEMP}/vault-ca.pem"
+          echo "VAULT_CACERT=${RUNNER_TEMP}/vault-ca.pem" >> "${GITHUB_ENV}"
 
       - name: Install Vault CLI for OIDC login
         if: ${{ !env.ACT && env.VAULT_ADDR != '' }}
@@ -49,32 +61,14 @@ jobs:
           sudo install vault /usr/local/bin/vault
           vault -version
 
-      - name: Resolve INTERNAL_SECRET from Vault using GitHub OIDC
-        if: ${{ !env.ACT && env.VAULT_ADDR != '' }}
+      - name: Resolve INTERNAL_SECRET with protected Vault guardrails
         shell: bash
         env:
           VAULT_OIDC_AUDIENCE: ${{ vars.VAULT_OIDC_AUDIENCE || format('https://github.com/{0}', github.repository_owner) }}
+          VAULT_PROTECTED_WORKFLOWS_FILE: .github/vault-protected-workflows.txt
         run: |
-          set -euo pipefail
-          oidc_response="$(
-            curl -sSfL \
-              -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
-              "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${VAULT_OIDC_AUDIENCE}"
-          )"
-          oidc_jwt="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<< "${oidc_response}")"
-          vault_token="$(vault write -field=token auth/jwt/login role=ci-docs-publish jwt="${oidc_jwt}")"
-          internal_secret="$(
-            VAULT_TOKEN="${vault_token}" \
-              vault kv get -field=value secret/fix/shared/core-services/internal-secret
-          )"
-          echo "::add-mask::${internal_secret}"
-          echo "INTERNAL_SECRET=${internal_secret}" >> "${GITHUB_ENV}"
-          echo "VAULT_SECRET_MODE=vault" >> "${GITHUB_ENV}"
-
-      - name: Mark controlled degraded mode when Vault is not configured
-        if: ${{ env.ACT || env.VAULT_ADDR == '' }}
-        run: |
-          echo "VAULT_SECRET_MODE=degraded" >> "${GITHUB_ENV}"
+          # Resolver performs: vault write -field=token auth/jwt/login role=ci-docs-publish
+          ./.github/scripts/vault/resolve-internal-secret.sh
 
       - name: Restore Node PATH for act compatibility
         if: ${{ env.ACT }}
