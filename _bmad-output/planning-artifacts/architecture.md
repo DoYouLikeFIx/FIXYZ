@@ -20,6 +20,12 @@ date: "2026-02-23"
 
 _This document builds collaboratively through step-by-step discovery. Sections are appended as we work through each architectural decision together._
 
+## Story 12.1 Canonical DMZ Notes
+
+- Story 12.1 is the canonical DMZ design package for zone membership, allowed flows, verification points, and rollback triggers.
+- The current single `fix-net` compose baseline is not itself a canonical lane-collapse decision.
+- Explicit Story 12.1 zone-to-lane mapping: Edge zone -> `external-net`; Application zone -> `external-net` + `core-net`; Core private zone -> `core-net` + `gateway-net` + `fep-net`.
+
 ---
 
 ## Project Context Analysis

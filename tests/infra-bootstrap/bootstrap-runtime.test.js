@@ -9,10 +9,38 @@ const { spawnSync } = require("node:child_process");
 
 const repoRoot = path.resolve(__dirname, "..", "..");
 
+function toBashPath(filePath) {
+  return filePath
+    .replace(/\\/g, "/")
+    .replace(/^([A-Za-z]):/, (_, drive) => `/mnt/${drive.toLowerCase()}`);
+}
+
+function normalizeEnvValue(value) {
+  if (typeof value !== "string") {
+    return value;
+  }
+  if (/^[A-Za-z]:[\\/]/.test(value)) {
+    return toBashPath(value);
+  }
+  return value.replace(/\\/g, "/");
+}
+
+function quoteForBash(value) {
+  return `'${String(value).replace(/'/g, `'\"'\"'`)}'`;
+}
+
 function runBashScript(scriptPath, env = {}) {
-  return spawnSync("bash", [scriptPath], {
+  const envAssignments = Object.entries(env)
+    .map(([key, value]) => `${key}=${quoteForBash(normalizeEnvValue(value))}`);
+  const command = [
+    ...envAssignments,
+    quoteForBash("/bin/bash"),
+    quoteForBash(toBashPath(path.join(repoRoot, scriptPath))),
+  ].join(" ");
+
+  return spawnSync("bash", ["-lc", command], {
     cwd: repoRoot,
-    env: { ...process.env, ...env },
+    env: { ...process.env },
     encoding: "utf8",
     timeout: 20000,
     maxBuffer: 1024 * 1024,

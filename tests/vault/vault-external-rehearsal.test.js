@@ -46,6 +46,38 @@ function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
 }
 
+function toBashPath(filePath) {
+  return filePath
+    .replace(/\\/g, "/")
+    .replace(/^([A-Za-z]):/, (_, drive) => `/mnt/${drive.toLowerCase()}`);
+}
+
+function normalizeEnvValue(key, value) {
+  if (typeof value !== "string") {
+    return value;
+  }
+  if (key === "PATH") {
+    return value;
+  }
+  if (/^[A-Za-z]:[\\/]/.test(value)) {
+    return toBashPath(value);
+  }
+  return value.replace(/\\/g, "/");
+}
+
+function quoteForBash(value) {
+  return `'${String(value).replace(/'/g, `'\"'\"'`)}'`;
+}
+
+function pathOverrideForBash(value) {
+  return String(value)
+    .split(";")
+    .map((segment) => segment.trim())
+    .filter((segment) => segment !== "")
+    .map((segment) => (/^[A-Za-z]:[\\/]/.test(segment) ? toBashPath(segment) : segment.replace(/\\/g, "/")))
+    .join(":");
+}
+
 function mustInclude(text, needle) {
   assert.match(text, new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 }
@@ -93,9 +125,24 @@ function createRehearsalWorkspace(prefix, story013Status = "review") {
 
 function runBashScript(scriptPath, env = {}, options = {}) {
   const { cwd = repoRoot } = options;
-  return spawnSync("bash", [scriptPath], {
+  const normalizedEnv = {
+    ...process.env,
+  };
+  const envAssignments = Object.entries(env)
+    .map(([key, value]) => {
+      if (key === "PATH") {
+        return `${key}=${quoteForBash(pathOverrideForBash(value))}:"$PATH"`;
+      }
+      return `${key}=${quoteForBash(normalizeEnvValue(key, value))}`;
+    });
+  const command = [
+    ...envAssignments,
+    quoteForBash("/bin/bash"),
+    quoteForBash(toBashPath(scriptPath)),
+  ].join(" ");
+  return spawnSync("bash", ["-lc", command], {
     cwd,
-    env: { ...process.env, ...env },
+    env: normalizedEnv,
     encoding: "utf8",
     timeout: 30000,
     maxBuffer: 1024 * 1024,
