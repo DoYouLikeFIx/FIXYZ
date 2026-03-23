@@ -185,9 +185,9 @@ test("Story 12.4 story record keeps downstream-proof work explicit, portable, an
   const sharedSuiteList = extractBulletListAfterLine(story, "Shared-suite unblocker outside Story 12.4 ownership:");
 
   assert.doesNotMatch(story, /\/Users\/yeongjae\/fixyz\//);
-  mustInclude(story, "Status: in-progress");
-  mustInclude(story, "- Status set to `in-progress`.");
-  assert.doesNotMatch(story, /ready-for-dev/);
+  mustInclude(story, "Status: done");
+  mustInclude(story, "- Status set to `done`.");
+  assert.doesNotMatch(story, /ready-for-dev|Status: in-progress|Status set to `in-progress`\./);
   assert.doesNotMatch(story, /^- \[ \]/m);
   mustInclude(story, "Align `docs/ops/dmz-abuse-response.md` to the shared Story 12.4 operator envelope, scope taxonomy, and private-listener rules");
   mustInclude(story, "Sync `docs/ops/dmz-drill-governance.md` and `docs/ops/dmz-release-checklist-template.md` so the `admin-credential-ttl-expiry` dependency remains explicit in downstream evidence requirements");
