@@ -74,7 +74,6 @@ so that future implementation has an explicit allowlist, deny behavior, abuse po
   - `tests/edge-gateway/dmz-perimeter-policy.test.js`
   - `_bmad-output/implementation-artifacts/12-2-edge-perimeter-policy-hardening.md`
   - `_bmad-output/implementation-artifacts/sprint-status.yaml`
-  - `_bmad-output/implementation-artifacts/tests/story-12-2-edge-perimeter-policy-hardening-summary.md`
 - Validated unchanged design inputs for this story:
   - `docs/ops/dmz-trusted-proxies.md`
   - `docs/ops/dmz-abuse-response.md`
@@ -136,7 +135,7 @@ GPT-5 Codex (Codex desktop)
 - Added root regression assertions that lock Story 12.2 to the current Story 0.7 edge baseline and prevent cross-repo scope expansion into `BE`, `FE`, or `MOB`.
 - Realigned the existing DMZ network segmentation regression to the current documentation wording so the root `edge-gateway` suite remains authoritative for Epic 12 documentation-only stories.
 - Validated Story 12.2 with syntax checks, targeted regression execution, and the full root `edge-gateway` test suite.
-- Senior review fixes applied: removed workspace-specific path assumptions from the Story 12.2 regression, expanded AC1 matrix coverage to all canonical public rows, clarified changed-versus-validated inputs, documented deterministic `HEAD`/`OPTIONS` handling, and moved QA reporting into a story-specific summary artifact.
+- Senior review fixes applied: removed workspace-specific path assumptions from the Story 12.2 regression, expanded AC1 matrix coverage to all canonical public rows, clarified changed-versus-validated inputs, documented deterministic `HEAD`/`OPTIONS` handling, and kept QA evidence in tracked story artifacts instead of ignored local summary files.
 
 ### Review-Time Worktree Snapshot
 
@@ -165,7 +164,6 @@ Changed during this implementation round:
 - `tests/edge-gateway/dmz-perimeter-policy.test.js`
 - `_bmad-output/implementation-artifacts/12-2-edge-perimeter-policy-hardening.md`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
-- `_bmad-output/implementation-artifacts/tests/story-12-2-edge-perimeter-policy-hardening-summary.md`
 
 Validated unchanged inputs:
 
@@ -184,7 +182,8 @@ Reference-only runtime baseline input:
 - 2026-03-24: Senior code review fixes applied for Story 12.2 portability, matrix completeness coverage, and DMZ document traceability; story moved to done.
 - 2026-03-24: Follow-up review fixes converted Story 12.2 path references to repo-relative form, moved validated DMZ docs into the File List contract, and hardened canonical-route negative checks against exact-match Nginx locations.
 - 2026-03-24: QA follow-up added explicit review-time dirty worktree disclosure and a regression that protects Story 12.2 auditability against unrelated repository changes.
-- 2026-03-24: Adversarial review follow-up replaced static disclosure checks with live dirty-worktree comparison, tightened abuse-threshold and method-contract coverage, reconciled scope/file-list traceability, and split Story 12.2 QA output into a dedicated summary artifact.
+- 2026-03-24: Adversarial review follow-up replaced static disclosure checks with live dirty-worktree comparison, tightened abuse-threshold and method-contract coverage, and reconciled scope/file-list traceability.
+- 2026-03-24: Review follow-up removed ignored QA-summary references and kept Story 12.2 QA evidence in the tracked story artifact plus root `edge-gateway` regression commands.
 
 ## Senior Developer Review (AI)
 
@@ -209,5 +208,10 @@ Reference-only runtime baseline input:
 - [MEDIUM] Replaced broad disclosure globs with an exact review-time dirty-worktree snapshot that preserves modified versus untracked markers.
 - [MEDIUM] Documented deterministic `HEAD` and `OPTIONS` handling for allowlisted public routes and extended regression coverage over abuse thresholds and method contracts.
 - [LOW] Removed unrelated script-lint evidence from the Story 12.2 verification record.
-- [LOW] Moved Story 12.2 QA reporting into `_bmad-output/implementation-artifacts/tests/story-12-2-edge-perimeter-policy-hardening-summary.md` so it is no longer mixed into a shared summary for other stories.
+- [LOW] Kept Story 12.2 QA evidence inside the tracked story artifact and root regression record instead of relying on ignored local summary files.
 - [LOW] Reworked Story 12.2 regressions toward section-aware, table-aware, and live-state-aware assertions to reduce brittleness from exact markdown phrasing.
+
+### Review Follow-up Notes
+
+- QA evidence remains in this tracked story artifact and the root `edge-gateway` regression suite.
+- The Story 12.2 root test no longer reads ignored `_bmad-output/implementation-artifacts/tests/**` files.
