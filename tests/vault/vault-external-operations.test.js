@@ -67,6 +67,38 @@ function readText(filePath) {
   return fs.readFileSync(filePath, "utf8");
 }
 
+function toBashPath(filePath) {
+  return filePath
+    .replace(/\\/g, "/")
+    .replace(/^([A-Za-z]):/, (_, drive) => `/mnt/${drive.toLowerCase()}`);
+}
+
+function normalizeEnvValue(key, value) {
+  if (typeof value !== "string") {
+    return value;
+  }
+  if (key === "PATH") {
+    return value;
+  }
+  if (/^[A-Za-z]:[\\/]/.test(value)) {
+    return toBashPath(value);
+  }
+  return value.replace(/\\/g, "/");
+}
+
+function quoteForBash(value) {
+  return `'${String(value).replace(/'/g, `'\"'\"'`)}'`;
+}
+
+function pathOverrideForBash(value) {
+  return String(value)
+    .split(";")
+    .map((segment) => segment.trim())
+    .filter((segment) => segment !== "")
+    .map((segment) => (/^[A-Za-z]:[\\/]/.test(segment) ? toBashPath(segment) : segment.replace(/\\/g, "/")))
+    .join(":");
+}
+
 function makeTempDir(prefix) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
@@ -84,9 +116,25 @@ function createCaBundle(dirPath) {
 }
 
 function runBashScript(scriptPath, env = {}, args = []) {
-  return spawnSync("bash", [scriptPath, ...args], {
+  const normalizedEnv = {
+    ...process.env,
+  };
+  const envAssignments = Object.entries(env)
+    .map(([key, value]) => {
+      if (key === "PATH") {
+        return `${key}=${quoteForBash(pathOverrideForBash(value))}:"$PATH"`;
+      }
+      return `${key}=${quoteForBash(normalizeEnvValue(key, value))}`;
+    });
+  const command = [
+    ...envAssignments,
+    quoteForBash("/bin/bash"),
+    quoteForBash(toBashPath(scriptPath)),
+    ...args.map((value) => quoteForBash(String(value).replace(/\\/g, "/"))),
+  ].join(" ");
+  return spawnSync("bash", ["-lc", command], {
     cwd: repoRoot,
-    env: { ...process.env, ...env },
+    env: normalizedEnv,
     encoding: "utf8",
     timeout: 20000,
     maxBuffer: 1024 * 1024,
@@ -141,6 +189,17 @@ function runResolver(stubConfig = {}, envOverrides = {}) {
   const kvStdoutPath = path.join(stubDir, "vault-kv.stdout");
   const kvStderrPath = path.join(stubDir, "vault-kv.stderr");
   const kvExitPath = path.join(stubDir, "vault-kv.exit");
+  const bashCurlArgsPath = toBashPath(curlArgsPath);
+  const bashCurlRequestUrlPath = toBashPath(curlRequestUrlPath);
+  const bashCurlStdoutPath = toBashPath(curlStdoutPath);
+  const bashCurlStderrPath = toBashPath(curlStderrPath);
+  const bashCurlExitPath = toBashPath(curlExitPath);
+  const bashLoginStdoutPath = toBashPath(loginStdoutPath);
+  const bashLoginStderrPath = toBashPath(loginStderrPath);
+  const bashLoginExitPath = toBashPath(loginExitPath);
+  const bashKvStdoutPath = toBashPath(kvStdoutPath);
+  const bashKvStderrPath = toBashPath(kvStderrPath);
+  const bashKvExitPath = toBashPath(kvExitPath);
 
   fs.writeFileSync(curlStdoutPath, stubConfig.curlStdout ?? '{"value":"mock-jwt"}');
   fs.writeFileSync(curlStderrPath, stubConfig.curlStderr ?? "");
@@ -157,15 +216,15 @@ function runResolver(stubConfig = {}, envOverrides = {}) {
     "curl",
     `#!/usr/bin/env bash
 set -euo pipefail
-printf '%s\\n' "$*" > "${curlArgsPath}"
-printf '%s\\n' "\${*: -1}" > "${curlRequestUrlPath}"
-if [[ -s "${curlStderrPath}" ]]; then
-  cat "${curlStderrPath}" >&2
+printf '%s\\n' "$*" > "${bashCurlArgsPath}"
+printf '%s\\n' "\${*: -1}" > "${bashCurlRequestUrlPath}"
+if [[ -s "${bashCurlStderrPath}" ]]; then
+  cat "${bashCurlStderrPath}" >&2
 fi
-if [[ "$(cat "${curlExitPath}")" != "0" ]]; then
-  exit "$(cat "${curlExitPath}")"
+if [[ "$(cat "${bashCurlExitPath}")" != "0" ]]; then
+  exit "$(cat "${bashCurlExitPath}")"
 fi
-cat "${curlStdoutPath}"
+cat "${bashCurlStdoutPath}"
 `,
   );
 
@@ -175,23 +234,23 @@ cat "${curlStdoutPath}"
     `#!/usr/bin/env bash
 set -euo pipefail
 if [[ "$*" == *"auth/jwt/login"* ]]; then
-  if [[ -s "${loginStderrPath}" ]]; then
-    cat "${loginStderrPath}" >&2
+  if [[ -s "${bashLoginStderrPath}" ]]; then
+    cat "${bashLoginStderrPath}" >&2
   fi
-  if [[ "$(cat "${loginExitPath}")" != "0" ]]; then
-    exit "$(cat "${loginExitPath}")"
+  if [[ "$(cat "${bashLoginExitPath}")" != "0" ]]; then
+    exit "$(cat "${bashLoginExitPath}")"
   fi
-  cat "${loginStdoutPath}"
+  cat "${bashLoginStdoutPath}"
   exit 0
 fi
 if [[ "$*" == *"kv get -field=value secret/fix/shared/core-services/internal-secret"* ]]; then
-  if [[ -s "${kvStderrPath}" ]]; then
-    cat "${kvStderrPath}" >&2
+  if [[ -s "${bashKvStderrPath}" ]]; then
+    cat "${bashKvStderrPath}" >&2
   fi
-  if [[ "$(cat "${kvExitPath}")" != "0" ]]; then
-    exit "$(cat "${kvExitPath}")"
+  if [[ "$(cat "${bashKvExitPath}")" != "0" ]]; then
+    exit "$(cat "${bashKvExitPath}")"
   fi
-  cat "${kvStdoutPath}"
+  cat "${bashKvStdoutPath}"
   exit 0
 fi
 printf 'unexpected vault call: %s\\n' "$*" >&2
@@ -200,7 +259,7 @@ exit 1
   );
 
   const env = {
-    PATH: `${stubDir}:${process.env.PATH}`,
+    PATH: `${stubDir};${String(process.env.PATH || "")}`,
     ACTIONS_ID_TOKEN_REQUEST_TOKEN: "request-token",
     ACTIONS_ID_TOKEN_REQUEST_URL: "https://token.actions.githubusercontent.com/request?existing=1",
     GITHUB_WORKFLOW_REF: "DoYouLikeFIx/FIXYZ/.github/workflows/docs-publish.yml@refs/heads/main",
@@ -212,7 +271,7 @@ exit 1
     ...envOverrides,
   };
 
-  const result = runBashScript(resolveSecretScriptPath, env);
+  const result = runBashScript(toBashPath(resolveSecretScriptPath), env);
   return { result, githubEnvPath, caBundlePath, curlArgsPath, curlRequestUrlPath };
 }
 

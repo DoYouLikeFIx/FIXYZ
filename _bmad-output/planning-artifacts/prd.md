@@ -949,6 +949,10 @@ PUT    /fep-internal/rules
 
 **Canonical hardened lane model for reviewed DMZ isolation:**
 
+Story 12.1 keeps the future DMZ lane model explicit even though Story 0.7 remains the active runtime baseline.
+The four-lane network snippet below is the future hardened target, not the currently shipped compose topology.
+Lane-collapse decisions, rollback triggers and verification points are maintained in `docs/ops/dmz-network-mapping.md`.
+
 ```yaml
 networks:
   external-net:  # external clients <-> edge-gateway <-> channel-service

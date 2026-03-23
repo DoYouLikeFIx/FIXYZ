@@ -24,21 +24,21 @@ Its purpose is to make integrated order execution converge cleanly through orche
 ### Story 9.1: [INT/CH] Execution Orchestration
 
 As an **integration owner**,
-I want unified orchestration for FEP-routed execution,
-So that order paths are controlled through a single domain flow.
+I want a single FEP-routed order execution flow via `OrderExecutionService`,
+So that all sell orders are consistently routed to KRX via FEP Gateway.
 
 **Depends On:** Story 4.3, Story 5.2, Story 5.3, Story 3.2
 
 **Acceptance Highlights:**
 
-- AUTHED order execution starts through a single orchestration service.
-- FEP terminal results are reflected deterministically in the channel-facing state.
-- Timeout/failure paths move orders into recovery-eligible states.
-- Integration tests protect the orchestration path from regression.
+- AUTHED order execution starts through `OrderExecutionService` only.
+- Confirmed downstream results persist deterministic terminal channel state.
+- Degraded outcomes transition to `REQUERYING`, `ESCALATED`, or `FAILED` according to canonical failure handling.
+- Integration tests protect both happy-path and degraded orchestration behavior.
 
 **Implementation Artifact:** `_bmad-output/implementation-artifacts/9-1-execution-orchestration.md`
 
-### Story 9.2: [INT/CH] End-state Normalization
+### Story 9.2: [BE][INT/CH] End-state Normalization
 
 As a **platform consumer**,
 I want normalized order terminal states,
@@ -48,44 +48,44 @@ So that clients can render outcomes without service-specific branching.
 
 **Acceptance Highlights:**
 
-- Terminal states follow a common contract across integrated branches.
-- Failure reasons map to a documented taxonomy.
-- Completed responses always include the canonical order reference.
-- Contract/schema regressions fail CI.
+- `COMPLETED`, `FAILED`, `CANCELED`, `REQUERYING`, and `ESCALATED` responses follow one channel contract.
+- Canonical `failureReason` values and degraded-state masking semantics stay stable for clients.
+- Completed responses always include canonical `clOrdId`, while `externalOrderId` remains supplemental external linkage.
+- Contract/schema regressions fail serializer, controller, and OpenAPI compatibility suites.
 
 **Implementation Artifact:** `_bmad-output/implementation-artifacts/9-2-end-state-normalization.md`
 
-### Story 9.3: [INT/CH] Recovery Scheduler Integration
+### Story 9.3: [BE][INT/CH] Recovery Scheduler Integration
 
 As a **reliability owner**,
 I want orchestrated recovery for `EXECUTING` and `UNKNOWN` orders,
-So that stuck orders eventually converge.
+So that stuck orders eventually converge and operators can inspect recovery evidence.
 
 **Depends On:** Story 9.1, Story 6.4
 
 **Acceptance Highlights:**
 
-- A scheduler detects non-terminal orders crossing recovery thresholds.
-- External requery results close orders with normalized end states.
-- Max-attempt overflow escalates to manual recovery handling.
-- Recovery attempts remain queryable for audit and operations review.
+- A scheduler detects timed-out `EXECUTING` sessions and eligible `REQUERYING` backlog entries crossing recovery thresholds.
+- External requery results close orders with normalized end states such as `COMPLETED` and `CANCELED`.
+- Max-attempt overflow or rejected/unresolved recovery outcomes escalate to durable manual recovery handling.
+- Recovery attempts are queryable through canonical `ORDER_RECOVERY` admin-audit filtering plus durable manual-recovery queue evidence.
 
 **Implementation Artifact:** `_bmad-output/implementation-artifacts/9-3-recovery-scheduler-integration.md`
 
 ### Story 9.4: [INT/CH] Cross-system Idempotency Reconciliation
 
 As an **integration data owner**,
-I want idempotency reconciled across CH/AC/FEP,
-So that duplicate operations never diverge across system boundaries.
+I want reconciliation anchored on canonical `clOrdId` across CH/AC/FEP,
+So that retries and downstream sync gaps converge without producing divergent order identities.
 
 **Depends On:** Story 5.4, Story 3.3, Story 9.1
 
 **Acceptance Highlights:**
 
-- Channel-boundary dedupe returns the same canonical outcome.
-- Partial AC/FEP records can be reconciled to one canonical order identity.
-- Mismatches are surfaced to operations instead of remaining silent.
-- Reconciliation reports emit success/failure counters.
+- Same-owner replay reuses one canonical local outcome across CH/AC instead of creating a second posting.
+- Reconciliation restores only channel-side supplemental external linkage (`externalOrderId`, `externalSyncStatus`) from CoreBank snapshot evidence when business state already aligns with the canonical `clOrdId`.
+- Non-restorable terminal-state or ownership/reference divergence is surfaced to operations instead of being rewritten silently.
+- Reconciliation reporting emits `scanned`/`restored`/`mismatched`/`failed` counts plus named Micrometer counters.
 
 **Implementation Artifact:** `_bmad-output/implementation-artifacts/9-4-cross-system-idempotency-reconciliation.md`
 
@@ -128,7 +128,7 @@ So that order completion behavior is parity with web.
 - All sell-order execution continues through the FEP-routed path described in the canonical Epic 9 section.
 - Client rendering must consume normalized terminal states rather than service-specific raw status codes.
 - Recovery logic must converge or escalate; indefinite hidden limbo states are not acceptable.
-- Reconciliation outcomes must be observable to operations through counters, auditability, or explicit surfaced mismatch signals.
+- Reconciliation outcomes must be observable through canonical admin-audit evidence and deterministic counter/report outputs.
 
 ## References
 
