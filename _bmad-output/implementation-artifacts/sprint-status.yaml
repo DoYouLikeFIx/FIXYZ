@@ -14,6 +14,10 @@ notes:
   - Epic 4 now uses standalone story markdown files plus an epic companion contract for shared authorization-session invariants.
   - Epic 1 and Epic 5 use standalone story markdown files plus epic companion documents.
   - Epic 1 baseline stories 1.1~1.10 remain done, Google Authenticator rollout scope is tracked through Story 1.11~1.15, and password recovery challenge hardening follow-on is tracked through Story 1.16~1.19.
+  - Epic 2 is reopened for Story 2.7 and Story 2.8 so FR-55/FR-56 valuation and PnL scope matches the canonical account inquiry contract.
+  - Story 0.15 is blocked until Story 12.6 is done because mobile edge-mode validation cannot start before canonical public edge routing exists.
+  - Epic 12 execution sequence is fixed as Story 12.4 -> Story 12.6 -> Story 0.15 -> Story 12.5.
+  - Story 12.5 is blocked until Stories 12.6 and 0.15 are done because its promotion evidence is explicitly post-runtime-re-entry and post-client-parity.
   - Canonical story scope lives in _bmad-output/planning-artifacts/epics.md.
 
 development_status:
@@ -32,7 +36,7 @@ development_status:
   0-12-redis-recovery-and-self-healing-baseline: done
   0-13-vault-production-separation-and-external-operations: done
   0-14-vault-external-cutover-rehearsal-and-audit-evidence: done
-  0-15-mobile-edge-parity-and-physical-device-transport-hardening: ready-for-dev
+  0-15-mobile-edge-parity-and-physical-device-transport-hardening: blocked
   epic-0-retrospective: optional
 
   epic-1: in-progress
@@ -57,14 +61,16 @@ development_status:
   1-19-recovery-challenge-abuse-defense-validation-and-ops-evidence: review
   epic-1-retrospective: optional
 
-  epic-2: done
+  epic-2: in-progress
   2-1-schema-and-auto-account-provisioning: done
   2-2-balance-and-available-balance-api: done
   2-3-order-history-api: done
   2-4-web-account-dashboard-and-history: done
   2-5-mobile-account-dashboard-and-history: done
   2-6-account-status-contract: done
-  epic-2-retrospective: done
+  2-7-position-valuation-and-pnl-contract: ready-for-dev
+  2-8-portfolio-pnl-visibility-and-stale-valuation-guidance: ready-for-dev
+  epic-2-retrospective: optional
 
   epic-3: done
   3-1-fep-dto-client-contract: done
@@ -107,7 +113,7 @@ development_status:
   6-7-degraded-operation-ux: done
   epic-6-retrospective: optional
 
-  epic-7: done
+  epic-7: in-progress
   7-1-sse-stream-registry: done
   7-2-notification-persistence-apis: done
   7-3-web-notification-center: done
@@ -115,7 +121,8 @@ development_status:
   7-5-admin-session-and-audit-apis: done
   7-6-web-admin-console-screens: done
   7-7-channel-security-hardening: done
-  epic-7-retrospective: done
+  7-8-web-operations-monitoring-dashboard-mvp: ready-for-dev
+  epic-7-retrospective: optional
 
   epic-8: in-progress
   8-1-audit-security-event-model: done
@@ -157,11 +164,11 @@ development_status:
   11-9-be-matching-contract-and-integration-regression-suite: ready-for-dev
   epic-11-retrospective: optional
 
-  epic-12: backlog
+  epic-12: in-progress
   12-1-dmz-network-segmentation-profile: done
   12-2-edge-perimeter-policy-hardening: done
   12-3-service-boundary-trust-hardening-secret-rotation-mtls-readiness: done
-  12-4-admin-access-control-path-for-dmz-operations: ready-for-dev
-  12-5-dmz-security-drill-and-evidence-gate: ready-for-dev
+  12-4-admin-access-control-path-for-dmz-operations: done
   12-6-canonical-public-edge-route-enablement: ready-for-dev
+  12-5-dmz-security-drill-and-evidence-gate: blocked
   epic-12-retrospective: optional

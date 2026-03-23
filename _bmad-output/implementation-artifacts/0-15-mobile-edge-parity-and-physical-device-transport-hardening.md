@@ -1,6 +1,6 @@
 # Story 0.15: Mobile Edge Parity and Physical-Device Transport Hardening
 
-Status: ready-for-dev
+Status: blocked
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -16,7 +16,7 @@ so that simulator workflows stay fast while shared QA and physical-device traffi
 
 1. Given local simulator or emulator development, when no explicit edge profile or base-URL override is configured, then MOB may continue to use the current direct `channel-service:8080` host matrix for developer convenience.
 2. Given shared QA, edge-validation, or physical-device flows, when `MOB_API_INGRESS_MODE=edge` is configured and `MOB_EDGE_BASE_URL` is provided, then MOB resolves that HTTPS edge base URL instead of plain `http://<LAN_IP>:8080`.
-3. Given physical-device startup uses a non-localhost base URL, when session-cookie policy would otherwise require `SameSite=None; Secure`, then MOB fails fast on unsafe plaintext transport unless an explicit dev-only override is set and documented.
+3. Given physical-device startup or any explicit base-URL override resolves to a non-localhost base URL, when session-cookie policy would otherwise require `SameSite=None; Secure`, then MOB fails fast on unsafe plaintext transport unless the named dev-only bypass `MOB_ALLOW_INSECURE_DEV_BASE_URL=true` is set in a development runtime and documented.
 4. Given MOB runs in edge mode, when it performs CSRF bootstrap, login, logout, session refresh, order-session APIs, and notification APIs, then cookie-session and CSRF behavior remain functional without a separate non-canonical client contract.
 5. Given MOB subscribes to notifications through edge mode, when transient disconnects or app-resume events occur, then SSE reconnect, missed-notification backfill, and stream recovery continue to follow the existing mobile notification contract.
 6. Given mobile verification runs, when CI or release-readiness validation executes, then at least one automated lane or scripted verification path covers edge mode in addition to the existing direct-connect simulator lane.
@@ -27,11 +27,14 @@ so that simulator workflows stay fast while shared QA and physical-device traffi
 - [ ] Separate mobile runtime modes for direct-dev versus edge validation (AC: 1, 2, 7)
   - [ ] Add `MOB_API_INGRESS_MODE` as the canonical ingress selector with allowed values `direct` and `edge`
   - [ ] Add `MOB_EDGE_BASE_URL` as the required edge URL input when ingress mode is `edge`
+  - [ ] Add matching launch arguments `mobApiIngressMode` and `mobEdgeBaseUrl`
   - [ ] Preserve existing simulator and emulator defaults when no edge mode is selected
   - [ ] Keep `MOB_API_BASE_URL` override as the highest-precedence escape hatch for controlled testing rather than the primary mode selector
 - [ ] Harden physical-device transport and cookie policy (AC: 2, 3, 7)
   - [ ] Detect unsafe plaintext physical-device combinations before auth bootstrap begins
-  - [ ] Introduce a clearly scoped dev-only override if plaintext LAN testing must remain possible
+  - [ ] Introduce `MOB_ALLOW_INSECURE_DEV_BASE_URL` as the only named dev-only bypass if plaintext LAN testing must remain possible
+  - [ ] Add matching launch argument `mobAllowInsecureDevBaseUrl` for dev automation only
+  - [ ] Enforce the same transport-safety checks for `MOB_API_BASE_URL` overrides unless that named dev-only bypass is active
   - [ ] Document the supported HTTPS prerequisites for shared QA and physical-device flows
 - [ ] Verify canonical API parity through edge mode (AC: 4, 5)
   - [ ] Exercise auth, order-session, and notification APIs through the edge base URL
@@ -60,7 +63,8 @@ so that simulator workflows stay fast while shared QA and physical-device traffi
 - The canonical ingress selector for this story is `MOB_API_INGRESS_MODE`:
   - `direct` = existing simulator/emulator or dev host-matrix behavior
   - `edge` = resolve `MOB_EDGE_BASE_URL` for ingress validation
-  - `MOB_API_BASE_URL` remains a higher-precedence escape hatch for controlled overrides, but it is not the primary mode-selection mechanism
+  - `MOB_API_BASE_URL` remains a higher-precedence escape hatch for controlled overrides, but it is not the primary mode-selection mechanism and does not bypass transport-safety rules by itself
+- The only named plaintext bypass allowed by this story is `MOB_ALLOW_INSECURE_DEV_BASE_URL=true`, and it is development-only.
 
 ### Technical Requirements
 
@@ -69,8 +73,12 @@ so that simulator workflows stay fast while shared QA and physical-device traffi
   - edge mode for shared QA and intended ingress validation
   - physical-device prerequisites for safe session/cookie transport
 - `MOB_API_INGRESS_MODE` is the canonical ingress selector for Story 0.15 and should be wired through runtime options and launch arguments before any optional override handling.
-- `MOB_EDGE_BASE_URL` is the canonical edge URL input for Story 0.15 and should have a matching launch-argument equivalent for simulator/device automation.
-- `MOB_API_BASE_URL` and launch-argument overrides in `MOB/src/config/runtime-options.ts` must remain supported and continue to take precedence over defaults as explicit escape hatches.
+- Exact launch-argument names for Story 0.15 are:
+  - `mobApiIngressMode` for `MOB_API_INGRESS_MODE`
+  - `mobEdgeBaseUrl` for `MOB_EDGE_BASE_URL`
+  - `mobAllowInsecureDevBaseUrl` for `MOB_ALLOW_INSECURE_DEV_BASE_URL`
+- `MOB_API_BASE_URL` and launch-argument overrides in `MOB/src/config/runtime-options.ts` must remain supported and continue to take precedence over defaults as explicit escape hatches, but they must still pass the same transport-safety validation as any other resolved base URL.
+- `MOB_ALLOW_INSECURE_DEV_BASE_URL` is the only approved bypass for plaintext non-localhost URLs and must be ignored outside development runtime or simulator/device QA lanes explicitly marked dev-only.
 - When `MOB_API_INGRESS_MODE=edge`, startup must require `MOB_EDGE_BASE_URL` and must fail fast if it is missing, non-HTTPS, or otherwise unsafe.
 - The unsafe combination to guard explicitly is a non-localhost plaintext base URL paired with cookie policy that requires `Secure`.
 - Edge-mode parity should cover the currently shipped mobile contract, including:
@@ -131,8 +139,8 @@ so that simulator workflows stay fast while shared QA and physical-device traffi
 
 ### Story Completion Status
 
-- Status set to `ready-for-dev`.
-- Completion note: Story 0.15 now defines the mobile runtime split between direct-dev convenience and safe edge-first validation.
+- Status set to `blocked` until Story 12.6 is completed.
+- Completion note: Story 0.15 now defines the mobile runtime split between direct-dev convenience and safe edge-first validation, but implementation should not start before canonical public edge routing from Story 12.6 is available.
 
 ### References
 

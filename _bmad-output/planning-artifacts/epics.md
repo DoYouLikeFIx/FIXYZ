@@ -155,7 +155,7 @@ Completes the channel authentication/session foundation, adds password recovery 
 
 ### Epic 2: Account Domain & Inquiry APIs
 
-Completes the account schema/inquiry API and delivers the FE/MOB account/history screens.
+Completes the account schema/inquiry API, adds contract-owned valuation/PnL follow-ons with explicit stale-quote handling, and delivers the FE/MOB account/history screens.
 
 **Story Hints:**
 - Story 2.1: BE Schema & Auto Account Provisioning
@@ -164,6 +164,8 @@ Completes the account schema/inquiry API and delivers the FE/MOB account/history
 - Story 2.4: FE Portfolio Dashboard & History
 - Story 2.5: MOB Portfolio Dashboard & History
 - Story 2.6: BE Account Status Contract
+- Story 2.7: BE Position Valuation & PnL Contract
+- Story 2.8: FE/MOB Portfolio PnL Visibility & Stale Valuation Guidance
 
 ### Epic 3: External Gateway Contract (FEP)
 
@@ -285,11 +287,13 @@ Defines simulator-grade market data contracts (LIVE/DELAYED/REPLAY), quote fresh
 
 ### Epic 12: Financial DMZ Boundary and Perimeter Hardening
 
-Defines the documentation package for future finance-grade DMZ boundary controls.
+Defines the finance-grade DMZ boundary plan where Stories 12.1 through 12.5 primarily own documentation, governance, and release-gate controls, while Story 12.6 is the reviewed runtime re-entry lane for canonical public edge routing.
 
-**Execution Boundary:** Story 0.7 remains the active runtime owner for TLS termination, basic security headers, and route forwarding. Epic 12 currently carries design, governance, and handoff documents only.
+**Execution Boundary:** Story 0.7 remains the active baseline runtime owner for TLS termination, basic security headers, and route forwarding. Within Epic 12, Stories 12.1 through 12.5 remain design/governance/handoff scopes, and Story 12.6 is the only Epic 12 story that intentionally reintroduces reviewed runtime edge behavior.
 
-**Deployment Transition Policy:** Any future DMZ runtime rollout must be introduced through new reviewed runtime artifacts. No Epic 12-specific runtime overlay or drill automation is currently active in this repository.
+**Deployment Transition Policy:** Any future DMZ runtime rollout must be introduced through reviewed runtime artifacts. Story 12.6 is the currently approved runtime re-entry artifact; drill automation and promotion evidence remain gated by Story 12.5.
+
+**Execution Sequence:** Story 12.4 -> Story 12.6 -> Story 0.15 -> Story 12.5
 
 **Priority Policy (planning metadata):** Default Medium. Move to Low only with an explicit risk-acceptance record in `docs/ops/risk-acceptance/<YYYYMMDD>-epic12.md`.
 
@@ -300,6 +304,7 @@ Defines the documentation package for future finance-grade DMZ boundary controls
 - Story 12.2: BE/OPS Edge Perimeter Policy Hardening
 - Story 12.3: BE/OPS Service Boundary Trust Hardening (Internal Secret Rotation + mTLS Readiness)
 - Story 12.4: OPS Admin Access Control Path for DMZ Operations
+- Story 12.6: BE/OPS/CH Canonical Public Edge Route Enablement
 - Story 12.5: BE/OPS DMZ Security Drill and Evidence Gate
 
 ---
@@ -743,9 +748,9 @@ So that simulator workflows stay fast while shared QA and physical-device traffi
 - **Given** shared QA, edge-validation, or physical-device flows
   **When** `MOB_API_INGRESS_MODE=edge` is configured and `MOB_EDGE_BASE_URL` is provided
   **Then** MOB resolves an HTTPS edge base URL instead of plain `http://<LAN_IP>:8080`.
-- **Given** physical-device startup uses a non-localhost base URL
+- **Given** physical-device startup or any explicit base-URL override resolves to a non-localhost base URL
   **When** session-cookie policy would otherwise require `SameSite=None; Secure`
-  **Then** MOB fails fast on unsafe plaintext transport unless an explicit dev-only override is set and documented.
+  **Then** MOB fails fast on unsafe plaintext transport unless `MOB_ALLOW_INSECURE_DEV_BASE_URL=true` is set in a development runtime and documented.
 - **Given** MOB runs in edge mode
   **When** it performs CSRF bootstrap, login, logout, session refresh, order-session APIs, and notification APIs
   **Then** cookie-session and CSRF behavior remain functional without a separate non-canonical client contract.
@@ -1339,6 +1344,7 @@ So that order decisions can be made safely.
 - Corebank internal path: `GET /internal/v1/accounts/{accountId}/positions?symbol={symbol}&memberId={memberId}`.
 - Canonical fields: `quantity`, `availableQuantity`, `balance`.
 - Compatibility aliases: `availableQty == availableQuantity`, `availableBalance == balance`.
+- Valuation/PnL expansion is intentionally outside Story 2.2 scope and is owned by Story 2.7.
 
 ### Story 2.3: [BE][AC] Order History API
 
@@ -1431,6 +1437,64 @@ So that freeze/close lifecycle and order eligibility can be governed consistentl
 - **Given** status transition event  
   **When** status changes  
   **Then** account-domain status event is emitted.
+
+### Story 2.7: [BE][AC] Position Valuation & PnL Contract
+
+As an **authenticated user**,  
+I want position inquiry responses to include valuation and PnL with explicit freshness semantics,  
+So that I can interpret portfolio performance without trusting stale market data.
+
+**Depends On:** Story 2.2, Story 5.2
+
+**Acceptance Criteria:**
+
+- **Given** valid owned account inquiry and fresh valuation inputs  
+  **When** position or portfolio inquiry is requested  
+  **Then** the response includes `avgPrice`, `marketPrice`, `quoteSnapshotId`, `quoteAsOf`, `quoteSourceMode`, `unrealizedPnl`, `realizedPnlDaily`, and `valuationStatus=FRESH` alongside existing quantity/balance fields.
+- **Given** BUY and SELL executions already exist for the symbol  
+  **When** valuation fields are computed  
+  **Then** `avgPrice`, `unrealizedPnl`, and `realizedPnlDaily` follow the documented MVP formulas and use deterministic DECIMAL scale consistent with the account inquiry contract.
+- **Given** the latest quote snapshot is stale or unavailable for valuation  
+  **When** the inquiry is processed  
+  **Then** the API still returns `200 OK`, preserves non-market-derived fields (`quantity`, `availableQuantity`, `balance`, `availableBalance`, `currency`, `asOf`, `avgPrice`), returns `marketPrice`, `unrealizedPnl`, and `realizedPnlDaily` as `null`, sets `valuationStatus` to `STALE` or `UNAVAILABLE`, and populates `valuationUnavailableReason` with a canonical reason code.
+- **Given** a non-owned account request  
+  **When** authorization is evaluated using server-owned member/session identity  
+  **Then** the API returns deterministic `403 AUTH-005` and discloses no position, valuation, or PnL fields.
+- **Given** concurrent executions or position mutations are in progress  
+  **When** inquiry reads occur  
+  **Then** quantity, balance, average price, and valuation-state fields are returned from one transactionally coherent snapshot without contradictory cash/position/PnL combinations.
+- **Given** the valuation contract is changed or extended  
+  **When** OpenAPI generation and compatibility verification run  
+  **Then** channel/corebank specs remain aligned on nullable stale behavior and canonical enum values for `valuationStatus` and `valuationUnavailableReason`.
+
+### Story 2.8: [FE/MOB][CH] Portfolio PnL Visibility & Stale Valuation Guidance
+
+As an **authenticated investor**,  
+I want portfolio screens to show server-owned valuation and PnL only when the backend marks it trustworthy,  
+So that I do not mistake stale valuation for live portfolio truth.
+
+**Depends On:** Story 2.4, Story 2.5, Story 2.7
+
+**Acceptance Criteria:**
+
+- **Given** portfolio data is returned with `valuationStatus=FRESH`  
+  **When** the portfolio screen renders on web and mobile  
+  **Then** both clients display `avgPrice`, `marketPrice`, `unrealizedPnl`, `realizedPnlDaily`, `quoteAsOf`, and `quoteSourceMode` using the server response without client-side recalculation.
+- **Given** portfolio data is returned with `valuationStatus=STALE` or `valuationStatus=UNAVAILABLE`  
+  **When** the portfolio screen renders  
+  **Then** web and mobile do not invent, recompute, or cache synthetic PnL values, hide or neutralize unavailable valuation numbers consistently, and show clear stale/unavailable guidance derived from `valuationStatus` and `valuationUnavailableReason`.
+- **Given** positive, negative, zero, and `null` valuation values are returned by the backend  
+  **When** clients render PnL and valuation rows  
+  **Then** formatting, sign treatment, emphasis, placeholder handling, and copy remain parity-safe across web and mobile for the same payload.
+- **Given** quote freshness metadata is returned by the backend  
+  **When** the user views portfolio valuation context  
+  **Then** the UI shows `quoteAsOf`, `quoteSourceMode`, and a user-facing freshness/status label that makes it clear whether displayed valuation is trustworthy, stale, or unavailable.
+- **Given** the user transitions from portfolio inquiry toward order-related flows  
+  **When** valuation freshness is stale or unavailable  
+  **Then** the client carries only server-owned freshness metadata and guidance forward while leaving actual order-validation enforcement to the backend contract.
+- **Given** FE/MOB contract, fixture, or screen behavior regresses  
+  **When** unit/integration/E2E verification runs  
+  **Then** tests prove fresh rendering, stale rendering, unavailable rendering, null-field handling, and cross-client parity for all server-owned valuation states.
 
 ---
 
@@ -3011,8 +3075,9 @@ So that future changes cannot silently break deterministic matching behavior.
 
 ## Epic 12: Financial DMZ Boundary and Perimeter Hardening
 
-> **Scope note:** Story 0.7 remains the active runtime baseline. Epic 12 is currently documentation-only and exists to preserve a complete DMZ design package without keeping partial runtime code in the repository.
-> **Transition note:** Future Epic 12 implementation must reintroduce runtime assets through a new reviewed change set that updates the design documents at the same time.
+> **Scope note:** Story 0.7 remains the active runtime baseline. Within Epic 12, Stories 12.1 through 12.5 own design documents, governance, and release-gate rules, while Story 12.6 is the reviewed runtime re-entry story for canonical public edge routing.
+> **Transition note:** Runtime re-entry is only allowed through reviewed artifacts that update the design package at the same time. Story 12.6 is the active runtime re-entry lane, and Story 12.5 defines the post-re-entry drill evidence required before promotion.
+> **Execution sequence note:** Story 12.4 -> Story 12.6 -> Story 0.15 -> Story 12.5
 
 ### Story 12.1: [BE/OPS][CH] DMZ Network Segmentation Profile
 
@@ -3130,22 +3195,22 @@ So that privileged operations are restricted, temporary, and fully auditable.
 ### Story 12.5: [BE/OPS][INT] DMZ Security Drill and Evidence Gate
 
 As a **release governance owner**,  
-I want repeatable DMZ security drills as a delivery gate,  
-So that perimeter controls are proven before deployment promotion.
+I want repeatable DMZ security drills and evidence gates aligned to the reviewed edge runtime path,  
+So that promotion only proceeds after perimeter controls are proven against the canonical public edge and edge-mode clients.
 
-**Depends On:** Story 10.1, Story 10.4, Story 12.1, Story 12.2, Story 12.3, Story 12.4
+**Depends On:** Story 10.1, Story 10.4, Story 12.1, Story 12.2, Story 12.3, Story 12.4, Story 12.6, Story 0.15
 
 **Acceptance Criteria:**
 
-- **Given** DMZ drill scenarios (`blocked direct internal access`, `route-method deny`, `abuse rate-limit`, `trusted proxy untrusted spoof rejected`, `trusted proxy malformed-chain fallback`, `trusted proxy right-most hop selection`, `stale-secret rejection`, `admin credential TTL expiry`)
+- **Given** DMZ drill scenarios covering perimeter policy, trusted-proxy handling, secret-rotation rejection, admin access TTL expiry, canonical public edge route behavior, and Story 0.15 edge-mode client parity  
   **When** scheduled validation runs  
-  **Then** any failed or not-yet-implemented required scenario blocks promotion with explicit failure reason and owner assignment.
+  **Then** any failed or not-yet-implemented required live-external scenario blocks promotion with explicit failure reason, owner assignment, and mapped prerequisite story.
 - **Given** drill evidence packaging  
   **When** artifacts are generated  
-  **Then** artifacts follow `docs/ops/evidence/dmz/README.md` exactly, including execution mode, environment, control state, and `review_window_id`.
-- **Given** first DMZ promotion gate  
-  **When** release readiness is reviewed  
-  **Then** at least one full successful DMZ drill result within the last 7 days and unresolved findings with owner, disposition, and reviewer evidence are linked from the release checklist.
+  **Then** artifacts follow `docs/ops/evidence/dmz/README.md` exactly, including execution mode, environment, control state, `review_window_id`, and enough linkage to show whether the evidence exercised Story 12.6 runtime routes and Story 0.15 edge-mode validation.
+- **Given** the first DMZ promotion review after Stories 12.6 and 0.15 are completed  
+  **When** release readiness is assessed  
+  **Then** at least one full successful live-external DMZ drill result from the same target environment within the last 7 days, plus unresolved-finding records with owner, disposition, and reviewer evidence, are linked from the release checklist.
 - **Given** steady-state DMZ operation after first promotion  
   **When** periodic governance review runs  
   **Then** rolling last four weekly drill results are retained and linked.
@@ -3157,7 +3222,7 @@ So that perimeter controls are proven before deployment promotion.
   **Then** the checklist template records `review_window_id`, `supersedes_drill_set_id` when applicable, and links the rolling last four consecutive weekly same-environment drill sets using the latest non-superseded set for each week.
 - **Given** DMZ drill governance ownership
   **When** operations controls are reviewed
-  **Then** `docs/ops/dmz-drill-governance.md` defines owner `SEC`, intended cadence, and promotion semantics.
+  **Then** `docs/ops/dmz-drill-governance.md` defines owner `SEC`, intended cadence, promotion semantics, prerequisite mapping to Stories 12.2, 12.3, 12.4, 12.6, and 0.15, and the rule that `planning-review` can support preparation but can never satisfy promotion evidence.
 
 ### Story 12.6: [BE/OPS][CH] Canonical Public Edge Route Enablement
 
@@ -3170,8 +3235,11 @@ So that web and mobile can validate against the intended hardened ingress instea
 **Acceptance Criteria:**
 
 - **Given** the public edge receives requests for canonical channel routes
-  **When** the path matches the Story 12.6 route inventory (`GET /api/v1/auth/csrf`, `POST /api/v1/auth/register`, `POST /api/v1/auth/login`, `GET /api/v1/auth/session`, `POST /api/v1/auth/logout`, `POST /api/v1/auth/otp/verify`, `POST /api/v1/auth/password/forgot`, `POST /api/v1/auth/password/forgot/challenge`, `POST /api/v1/auth/password/forgot/challenge/fail-closed`, `POST /api/v1/auth/password/reset`, `POST /api/v1/auth/mfa-recovery/rebind`, `POST /api/v1/auth/mfa-recovery/rebind/confirm`, `POST /api/v1/orders/sessions`, `GET /api/v1/orders/sessions/{orderSessionId}`, `POST /api/v1/orders/sessions/{orderSessionId}/otp/verify`, `POST /api/v1/orders/sessions/{orderSessionId}/extend`, `POST /api/v1/orders/sessions/{orderSessionId}/execute`, `GET /api/v1/notifications`, `PATCH /api/v1/notifications/{notificationId}/read`, `GET /api/v1/notifications/stream`)
+  **When** the request path and method match the Story 12.6 route inventory (`GET /api/v1/auth/csrf`, `POST /api/v1/auth/register`, `POST /api/v1/auth/login`, `GET /api/v1/auth/session`, `POST /api/v1/auth/logout`, `POST /api/v1/auth/otp/verify`, `POST /api/v1/auth/password/forgot`, `POST /api/v1/auth/password/forgot/challenge`, `POST /api/v1/auth/password/forgot/challenge/fail-closed`, `POST /api/v1/auth/password/reset`, `POST /api/v1/auth/mfa-recovery/rebind`, `POST /api/v1/auth/mfa-recovery/rebind/confirm`, `POST /api/v1/members/me/totp/enroll`, `POST /api/v1/members/me/totp/confirm`, `POST /api/v1/members/me/totp/rebind`, `POST /api/v1/orders/sessions`, `GET /api/v1/orders/sessions/{orderSessionId}`, `POST /api/v1/orders/sessions/{orderSessionId}/otp/verify`, `POST /api/v1/orders/sessions/{orderSessionId}/extend`, `POST /api/v1/orders/sessions/{orderSessionId}/execute`, `GET /api/v1/notifications`, `PATCH /api/v1/notifications/{notificationId}/read`, `GET /api/v1/notifications/stream`)
   **Then** `edge-gateway` proxies them to `channel-service` while preserving forwarded headers, request IDs, cookie transport, CSRF headers, and current upstream-failure behavior.
+- **Given** a request targets a Story 12.6 allowlisted path with a method outside the fixed route inventory
+  **When** the edge evaluates the request
+  **Then** it returns `404 EDGE_METHOD_NOT_ALLOWED` without forwarding the request upstream.
 - **Given** a client connects to `/api/v1/notifications/stream` through edge
   **When** the SSE stream is established
   **Then** proxy buffering is disabled, long-lived reads are allowed, and reconnect behavior remains compatible with the current notification contract.
@@ -3182,11 +3250,11 @@ So that web and mobile can validate against the intended hardened ingress instea
   **When** Story 12.6 is implemented
   **Then** the alias migration state is explicit: either canonical routes become primary while the alias is retained temporarily under a documented migration contract, or the alias is denied with synchronized docs/tests and a cutoff plan.
 - **Given** canonical route parity is implemented
-  **When** order-session paths are reviewed
-  **Then** edge routing matches the currently shipped controller/client contract, including `/api/v1/orders/sessions/{orderSessionId}/otp/verify`, unless a reviewed cross-lane API migration updates BE, FE, MOB, and design docs in the same change.
+  **When** order-session and MFA paths are reviewed
+  **Then** edge routing matches the currently shipped controller and client contract, including `/api/v1/orders/sessions/{orderSessionId}/otp/verify` and `/api/v1/members/me/totp/*`, unless a reviewed cross-lane API migration updates BE, FE, MOB, and design docs in the same change.
 - **Given** edge validation runs
   **When** CI or scripted gateway validation executes
-  **Then** canonical auth, order-session, notification-list, notification-read, and notification-stream paths are covered together with deterministic deny behavior for disallowed namespaces and methods.
+  **Then** canonical auth, MFA, order-session, notification-list, notification-read, and notification-stream paths are covered together with deterministic deny behavior for disallowed namespaces and methods.
 - **Given** DMZ design and runbook artifacts are reviewed
   **When** Story 12.6 is completed
   **Then** `docs/ops/dmz-route-policy.md`, `docs/ops/dmz-network-mapping.md`, edge validation scripts, and related implementation records reflect canonical route support and the current alias policy.
