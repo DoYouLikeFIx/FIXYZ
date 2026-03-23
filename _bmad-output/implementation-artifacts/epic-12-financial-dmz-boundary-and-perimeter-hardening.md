@@ -1,6 +1,7 @@
 # Epic 12: Financial DMZ Boundary and Perimeter Hardening
 
 > Documentation-only package. On 2026-03-07, repository-local Epic 12 runtime assets were removed; the active runtime baseline for topology and ingress ownership remains Story 0.7.
+> Runtime re-entry note: Story 12.6 is the reviewed exception that may reintroduce a narrowly scoped public-edge runtime change, but only together with synchronized DMZ docs, tests, and validation updates.
 
 ## Purpose
 
@@ -24,6 +25,7 @@ It exists so Epic 12 can remain fully specified without keeping partial or misle
   - `_bmad-output/implementation-artifacts/12-3-service-boundary-trust-hardening-secret-rotation-mtls-readiness.md`
   - `_bmad-output/implementation-artifacts/12-4-admin-access-control-path-for-dmz-operations.md`
   - `_bmad-output/implementation-artifacts/12-5-dmz-security-drill-and-evidence-gate.md`
+  - `_bmad-output/implementation-artifacts/12-6-canonical-public-edge-route-enablement.md`
 
 ## Priority and Scope Controls
 

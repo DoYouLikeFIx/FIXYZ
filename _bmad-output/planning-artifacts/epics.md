@@ -727,6 +727,38 @@ So that non-local Vault operations are proven under outage, rotation, and audit-
   **When** completion is assessed
   **Then** only `live-external` rehearsal evidence from the target staging-like environment can satisfy this story, while local simulation, planning review, or historical baseline evidence may support preparation but cannot mark the story done.
 
+### Story 0.15: [MOB][CH] Mobile Edge Parity and Physical-Device Transport Hardening
+
+As a **mobile release owner**,
+I want mobile runtime modes that distinguish local direct-connect convenience from edge-first validation,
+So that simulator workflows stay fast while shared QA and physical-device traffic can move toward the intended public ingress safely.
+
+**Depends On:** Story 0.4, Story 0.7, Story 12.6
+
+**Acceptance Criteria:**
+
+- **Given** local simulator or emulator development
+  **When** no explicit edge profile or base-URL override is configured
+  **Then** MOB may continue to use the current direct `channel-service:8080` host matrix for developer convenience.
+- **Given** shared QA, edge-validation, or physical-device flows
+  **When** `MOB_API_INGRESS_MODE=edge` is configured and `MOB_EDGE_BASE_URL` is provided
+  **Then** MOB resolves an HTTPS edge base URL instead of plain `http://<LAN_IP>:8080`.
+- **Given** physical-device startup uses a non-localhost base URL
+  **When** session-cookie policy would otherwise require `SameSite=None; Secure`
+  **Then** MOB fails fast on unsafe plaintext transport unless an explicit dev-only override is set and documented.
+- **Given** MOB runs in edge mode
+  **When** it performs CSRF bootstrap, login, logout, session refresh, order-session APIs, and notification APIs
+  **Then** cookie-session and CSRF behavior remain functional without a separate non-canonical client contract.
+- **Given** MOB subscribes to notifications through edge mode
+  **When** transient disconnects or app resume events occur
+  **Then** SSE reconnect, missed-notification backfill, and stream recovery continue to follow the existing mobile notification contract.
+- **Given** mobile verification runs
+  **When** CI or release-readiness validation executes
+  **Then** at least one automated lane or scripted verification path covers edge mode in addition to the existing direct-connect simulator lane.
+- **Given** mobile runtime documentation is reviewed
+  **When** Story 0.15 is completed
+  **Then** `MOB/README.md` and runtime-option docs explicitly distinguish direct-dev mode, edge mode, and physical-device prerequisites.
+
 ---
 
 ## Epic 1: Channel Auth & Session Platform
@@ -3126,3 +3158,35 @@ So that perimeter controls are proven before deployment promotion.
 - **Given** DMZ drill governance ownership
   **When** operations controls are reviewed
   **Then** `docs/ops/dmz-drill-governance.md` defines owner `SEC`, intended cadence, and promotion semantics.
+
+### Story 12.6: [BE/OPS][CH] Canonical Public Edge Route Enablement
+
+As a **platform security owner**,
+I want `edge-gateway` to expose the canonical public channel routes used by clients,
+So that web and mobile can validate against the intended hardened ingress instead of relying on legacy `/api/v1/channel/*` aliases or direct `channel-service:8080` access.
+
+**Depends On:** Story 0.7, Story 7.7, Story 12.1, Story 12.2
+
+**Acceptance Criteria:**
+
+- **Given** the public edge receives requests for canonical channel routes
+  **When** the path matches the Story 12.6 route inventory (`GET /api/v1/auth/csrf`, `POST /api/v1/auth/register`, `POST /api/v1/auth/login`, `GET /api/v1/auth/session`, `POST /api/v1/auth/logout`, `POST /api/v1/auth/otp/verify`, `POST /api/v1/auth/password/forgot`, `POST /api/v1/auth/password/forgot/challenge`, `POST /api/v1/auth/password/forgot/challenge/fail-closed`, `POST /api/v1/auth/password/reset`, `POST /api/v1/auth/mfa-recovery/rebind`, `POST /api/v1/auth/mfa-recovery/rebind/confirm`, `POST /api/v1/orders/sessions`, `GET /api/v1/orders/sessions/{orderSessionId}`, `POST /api/v1/orders/sessions/{orderSessionId}/otp/verify`, `POST /api/v1/orders/sessions/{orderSessionId}/extend`, `POST /api/v1/orders/sessions/{orderSessionId}/execute`, `GET /api/v1/notifications`, `PATCH /api/v1/notifications/{notificationId}/read`, `GET /api/v1/notifications/stream`)
+  **Then** `edge-gateway` proxies them to `channel-service` while preserving forwarded headers, request IDs, cookie transport, CSRF headers, and current upstream-failure behavior.
+- **Given** a client connects to `/api/v1/notifications/stream` through edge
+  **When** the SSE stream is established
+  **Then** proxy buffering is disabled, long-lived reads are allowed, and reconnect behavior remains compatible with the current notification contract.
+- **Given** internal-only namespaces remain outside the public perimeter
+  **When** a request targets `/api/v1/corebank/*`, `/api/v1/fep/*`, `/_edge/*`, `/internal/*`, or `/admin/*`
+  **Then** the edge continues to return the documented deterministic deny behavior from Story 12.2.
+- **Given** the active baseline still exposes `/api/v1/channel/*`
+  **When** Story 12.6 is implemented
+  **Then** the alias migration state is explicit: either canonical routes become primary while the alias is retained temporarily under a documented migration contract, or the alias is denied with synchronized docs/tests and a cutoff plan.
+- **Given** canonical route parity is implemented
+  **When** order-session paths are reviewed
+  **Then** edge routing matches the currently shipped controller/client contract, including `/api/v1/orders/sessions/{orderSessionId}/otp/verify`, unless a reviewed cross-lane API migration updates BE, FE, MOB, and design docs in the same change.
+- **Given** edge validation runs
+  **When** CI or scripted gateway validation executes
+  **Then** canonical auth, order-session, notification-list, notification-read, and notification-stream paths are covered together with deterministic deny behavior for disallowed namespaces and methods.
+- **Given** DMZ design and runbook artifacts are reviewed
+  **When** Story 12.6 is completed
+  **Then** `docs/ops/dmz-route-policy.md`, `docs/ops/dmz-network-mapping.md`, edge validation scripts, and related implementation records reflect canonical route support and the current alias policy.

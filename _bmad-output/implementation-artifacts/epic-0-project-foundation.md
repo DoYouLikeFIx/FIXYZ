@@ -2,14 +2,14 @@
 
 ## Sync Note
 
-This document is synchronized to `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/epics.md` (Epic 0 section) and is the execution companion for Story 0.1 through Story 0.14.
+This document is synchronized to `/Users/yeongjae/fixyz/_bmad-output/planning-artifacts/epics.md` (Epic 0 section) and is the execution companion for Story 0.1 through Story 0.15.
 
 Primary source of truth for story decomposition remains `epics.md`.
 
-Current implementation status as of 2026-03-20:
-- Completed: Story 0.1 through Story 0.10, plus Story 0.12
-- Remaining open: Story 0.11, Story 0.13, and Story 0.14
-- Epic 0 closeout status: in progress until those three stories are completed
+Current implementation status as of 2026-03-24:
+- Completed: Story 0.1 through Story 0.14
+- Remaining open: Story 0.15
+- Epic 0 closeout status: in progress until Story 0.15 is completed
 
 ---
 
@@ -28,12 +28,13 @@ Completed stories:
 - `0.8` Vault Secrets Foundation
 - `0.9` Additional Infrastructure Bootstrap
 - `0.10` Database High Availability and Replication Baseline
-- `0.12` Redis Recovery and Self-Healing Baseline
-
-Remaining stories before Epic 0 can be fully closed:
 - `0.11` Supply Chain Security Baseline
+- `0.12` Redis Recovery and Self-Healing Baseline
 - `0.13` Vault Production Separation and External Operations
 - `0.14` Vault External Cutover Rehearsal and Audit Evidence
+
+Remaining stories before Epic 0 can be fully closed:
+- `0.15` Mobile Edge Parity and Physical-Device Transport Hardening
 
 ---
 
@@ -46,7 +47,7 @@ Epic 0 establishes the common platform foundation required before feature epics:
 - Web and mobile scaffolds aligned to backend contracts
 - Team collaboration notification baseline (GitHub/Jira -> MatterMost)
 - Shared platform infrastructure hardening for edge, secrets, and data availability
-- Operational self-healing baseline for release safety, with supply-chain security, external Vault guardrails, and external Vault cutover/evidence hardening still open
+- Operational self-healing baseline for release safety, with mobile edge-ingress parity and physical-device transport hardening remaining as the final Epic 0 follow-on
 
 ---
 

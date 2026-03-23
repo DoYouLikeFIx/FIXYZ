@@ -32,6 +32,7 @@ development_status:
   0-12-redis-recovery-and-self-healing-baseline: done
   0-13-vault-production-separation-and-external-operations: done
   0-14-vault-external-cutover-rehearsal-and-audit-evidence: done
+  0-15-mobile-edge-parity-and-physical-device-transport-hardening: ready-for-dev
   epic-0-retrospective: optional
 
   epic-1: in-progress
@@ -159,7 +160,8 @@ development_status:
   epic-12: backlog
   12-1-dmz-network-segmentation-profile: done
   12-2-edge-perimeter-policy-hardening: done
-  12-3-service-boundary-trust-hardening-secret-rotation-mtls-readiness: ready-for-dev
+  12-3-service-boundary-trust-hardening-secret-rotation-mtls-readiness: done
   12-4-admin-access-control-path-for-dmz-operations: ready-for-dev
   12-5-dmz-security-drill-and-evidence-gate: ready-for-dev
+  12-6-canonical-public-edge-route-enablement: ready-for-dev
   epic-12-retrospective: optional
