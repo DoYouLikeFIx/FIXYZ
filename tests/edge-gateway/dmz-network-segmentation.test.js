@@ -75,7 +75,8 @@ test("DMZ mapping documents the active baseline host exposure and edge-visible e
   mustInclude(dmzDoc, "- Host-exposed services:");
   mustInclude(dmzDoc, "- `channel-service:8080`");
   mustInclude(dmzDoc, "- `edge-gateway:80/443`");
-  mustInclude(dmzDoc, "- Services without direct host port exposure:");
+  mustInclude(dmzDoc, "- Always-on services without direct host port exposure:");
+  mustInclude(dmzDoc, "- Profile-scoped baseline services without direct host port exposure:");
 
   for (const serviceName of [
     "corebank-service",
@@ -117,20 +118,21 @@ test("DMZ mapping documents target zones, explicit lane decisions, and future ro
   const dmzDoc = readText(dmzDocPath);
 
   mustInclude(dmzDoc, "## Target DMZ Design");
-  mustInclude(dmzDoc, "| Edge zone | `edge-gateway` or successor ingress tier | `80/443` only | External clients -> edge; edge -> application zone |");
-  mustInclude(dmzDoc, "| Application zone | `channel-service` | None directly on host in DMZ mode | Edge -> channel; channel -> core private dependencies |");
-  mustInclude(dmzDoc, "| Core private zone | `corebank-service`, `fep-gateway`, `fep-simulator`, stateful dependencies, Vault services | None | Channel -> private services; service-to-service east-west traffic only |");
+  mustInclude(dmzDoc, "| Edge zone | `edge-gateway` | `80/443` only | External clients -> `edge-gateway`; `edge-gateway` -> `channel-service` |");
+  mustInclude(dmzDoc, "| Application zone | `channel-service` | None directly on host | `edge-gateway` -> `channel-service`; `channel-service` -> `corebank-service`, `mysql`, `redis`, Vault boundary |");
+  mustInclude(dmzDoc, "| Core private zone | `corebank-service`, `fep-gateway`, `fep-simulator`, `mysql`, `redis`, `vault`, `vault-init`, `redis-recovery-probe` | None | `channel-service` -> private dependencies; `corebank-service` -> `fep-gateway`; `fep-gateway` -> `fep-simulator`; profile-scoped drill/bootstrap traffic stays private-only |");
   mustInclude(dmzDoc, "## Canonical Lane Reconciliation");
   mustInclude(dmzDoc, "| Edge zone | `external-net` |");
   mustInclude(dmzDoc, "| Application zone | `external-net` and `core-net` |");
   mustInclude(dmzDoc, "| Core private zone | `core-net`, `gateway-net`, and `fep-net` |");
-  mustInclude(dmzDoc, "No canonical architecture lane is collapsed or renamed by the current single `fix-net` compose baseline.");
-  mustInclude(dmzDoc, "## Rollback Triggers");
-  mustInclude(dmzDoc, "unexpected public exposure beyond `edge-gateway:80/443`");
-  mustInclude(dmzDoc, "loss of the `edge-gateway -> channel-service` path");
-  mustInclude(dmzDoc, "loss of `channel-service` reachability to any documented core-private dependency");
-  mustInclude(dmzDoc, "undocumented dependence on local `vault` or `vault-init` in a non-local DMZ rollout");
-  mustInclude(dmzDoc, "rollback restores the reviewed Story 0.7 baseline (`docker-compose.yml` plus the active edge template)");
+  mustInclude(dmzDoc, "The `edge` and `application` review zones intentionally share `external-net`;");
+  mustInclude(dmzDoc, "Epic 12 intentionally collapses `core-net`, `gateway-net`, and `fep-net` into one `core-private` review zone");
+  mustInclude(dmzDoc, "## Future Implementation Requirements");
+  mustInclude(dmzDoc, "`channel-service` or any private service is reachable on an unintended direct host port");
+  mustInclude(dmzDoc, "`edge-gateway` cannot reach `channel-service` for approved public routes or `/health/channel`");
+  mustInclude(dmzDoc, "any required private dependency flow (`channel-service` -> `corebank-service`/`mysql`/`redis`/Vault boundary, `corebank-service` -> `fep-gateway`, `fep-gateway` -> `fep-simulator`) fails validation");
+  mustInclude(dmzDoc, "Story 0.13 external-Vault assumptions for non-local environments are missing, stale, or contradicted by the runtime change");
+  mustInclude(dmzDoc, "Rollback action: remove the reviewed DMZ overlay or replacement manifest from deployment, restore the plain Story 0.7 runtime invocation, and confirm the baseline host exposure and edge route inventory match this document again.");
 });
 
 test("Architecture and PRD keep Story 12.1 governance and future runtime boundaries explicit", () => {
