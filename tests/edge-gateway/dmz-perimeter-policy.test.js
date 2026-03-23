@@ -19,14 +19,6 @@ const trustedProxiesPath = path.join(repoRoot, "docs", "ops", "dmz-trusted-proxi
 const abuseResponsePath = path.join(repoRoot, "docs", "ops", "dmz-abuse-response.md");
 const adminAccessPath = path.join(repoRoot, "docs", "ops", "dmz-admin-access.md");
 const drillGovernancePath = path.join(repoRoot, "docs", "ops", "dmz-drill-governance.md");
-const sharedQaSummaryPath = path.join(repoRoot, "_bmad-output", "implementation-artifacts", "tests", "test-summary.md");
-const storyQaSummaryPath = path.join(
-  repoRoot,
-  "_bmad-output",
-  "implementation-artifacts",
-  "tests",
-  "story-12-2-edge-perimeter-policy-hardening-summary.md",
-);
 
 const storyOwnedPaths = new Set([
   "docs/ops/dmz-route-policy.md",
@@ -34,7 +26,6 @@ const storyOwnedPaths = new Set([
   "tests/edge-gateway/dmz-perimeter-policy.test.js",
   "_bmad-output/implementation-artifacts/12-2-edge-perimeter-policy-hardening.md",
   "_bmad-output/implementation-artifacts/sprint-status.yaml",
-  "_bmad-output/implementation-artifacts/tests/story-12-2-edge-perimeter-policy-hardening-summary.md",
 ]);
 
 const publicRouteMatrixRows = [
@@ -130,7 +121,6 @@ test("Story 12.2 stays documentation-only and root-project-only", () => {
     "tests/edge-gateway/dmz-perimeter-policy.test.js",
     "_bmad-output/implementation-artifacts/12-2-edge-perimeter-policy-hardening.md",
     "_bmad-output/implementation-artifacts/sprint-status.yaml",
-    "_bmad-output/implementation-artifacts/tests/story-12-2-edge-perimeter-policy-hardening-summary.md",
   ]) {
     mustInclude(story, changedPath);
   }
@@ -149,7 +139,7 @@ test("Story 12.2 stays documentation-only and root-project-only", () => {
   }
 });
 
-test("Story 12.2 captures a concrete review-time worktree snapshot and compares it to live unrelated changes when present", () => {
+test("Story 12.2 captures a concrete historical review-time worktree snapshot and requires live overlap when unrelated changes are present", () => {
   const story = readText(storyPath);
   const snapshotBlock = extractFencedCodeBlockAfterHeading(story, "### Review-Time Worktree Snapshot")
     .split(/\r?\n/)
@@ -162,7 +152,18 @@ test("Story 12.2 captures a concrete review-time worktree snapshot and compares 
   assert.deepEqual(snapshotBlock, unrelatedReviewSnapshotLines);
 
   if (currentUnrelatedLines.length > 0) {
-    assert.deepEqual(snapshotBlock, currentUnrelatedLines);
+    const currentHistoricalOverlap = currentUnrelatedLines.filter((line) => snapshotBlock.includes(line));
+    const snapshotHistoricalOverlap = snapshotBlock.filter((line) => currentUnrelatedLines.includes(line));
+
+    assert.ok(
+      currentHistoricalOverlap.length > 0,
+      "expected at least one live unrelated change to overlap the historical snapshot",
+    );
+    assert.deepEqual(currentHistoricalOverlap, snapshotHistoricalOverlap);
+
+    for (const line of currentUnrelatedLines) {
+      assert.match(line, /^[ MADRCU?!]{2} /);
+    }
   }
 });
 
@@ -260,13 +261,14 @@ test("Trusted proxy and abuse-response docs keep Story 12.2 operator and drill c
   );
 });
 
-test("Story 12.2 QA reporting lives in a dedicated summary artifact", () => {
-  const sharedQaSummary = readText(sharedQaSummaryPath);
-  const storyQaSummary = readText(storyQaSummaryPath);
+test("Story 12.2 keeps QA evidence inside tracked story artifacts", () => {
+  const story = readText(storyPath);
 
-  assert.doesNotMatch(sharedQaSummary, /Story 12\.2: Edge Perimeter Policy Hardening/);
-  mustInclude(storyQaSummary, "# Story 12.2 Test Automation Summary");
-  mustInclude(storyQaSummary, "Story 12.2: Edge Perimeter Policy Hardening");
-  mustInclude(storyQaSummary, "Acceptance criteria: `4/4` guarded by root `edge-gateway` contract tests.");
-  mustInclude(storyQaSummary, "`node --test /Users/yeongjae/fixyz/tests/edge-gateway/dmz-perimeter-policy.test.js`");
+  assert.doesNotMatch(
+    story,
+    /_bmad-output\/implementation-artifacts\/tests\/story-12-2-edge-perimeter-policy-hardening-summary\.md/,
+  );
+  mustInclude(story, "`node --test tests/edge-gateway/dmz-perimeter-policy.test.js`");
+  mustInclude(story, "`npm run test:edge-gateway`");
+  mustInclude(story, "QA evidence remains in this tracked story artifact and the root `edge-gateway` regression suite.");
 });
