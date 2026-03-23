@@ -1,6 +1,6 @@
 # Story 12.1: DMZ Network Segmentation Profile
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -16,20 +16,20 @@ so that public ingress, channel traffic, and private dependencies are isolated b
 
 1. Given the active Story 0.7 baseline, when `docs/ops/dmz-network-mapping.md` is reviewed, then current host exposure, services without direct host ports, and current edge-visible baseline exceptions are explicitly documented.
 2. Given the target Epic 12 topology, when the design is reviewed, then edge/application/core-private zones, allowed flows, and owner services are explicitly documented.
-3. Given future implementation planning, when the story is reviewed, then the required future runtime artifact type, verification points, and rollback triggers are documented.
+3. Given future implementation planning, when the story is reviewed, then the required future runtime artifact type, default compose filename if Compose is used, verification points, and rollback triggers are documented.
 4. Given architecture lane mapping, when the design is reviewed, then any lane split or lane collapse decisions are explicit instead of implied by deployment config.
 
 ## Tasks / Subtasks
 
-- [ ] Finalize current baseline exposure inventory (AC: 1)
-  - [ ] Record `edge-gateway:80/443` as the intended ingress contract and `channel-service:8080` as local/dev convenience exposure
-  - [ ] Record every current edge-visible baseline exception route, not just host ports
-- [ ] Finalize target zone membership and allowed flows (AC: 2)
-  - [ ] Reconcile 3-zone Epic 12 view with the 4-lane architecture model using only canonical lane names
-- [ ] Define future implementation artifact and rollback expectations (AC: 3)
-  - [ ] Define the repository-owned runtime specification type and the default compose filename only if Compose is used
-- [ ] Reconcile architecture lane mapping decisions (AC: 4)
-  - [ ] Record Story 0.13 impact for non-local Vault boundaries
+- [x] Finalize current baseline exposure inventory (AC: 1)
+  - [x] Record `edge-gateway:80/443` as the intended ingress contract and `channel-service:8080` as local/dev convenience exposure
+  - [x] Record every current edge-visible baseline exception route, not just host ports
+- [x] Finalize target zone membership and allowed flows (AC: 2)
+  - [x] Reconcile 3-zone Epic 12 view with the 4-lane architecture model using only canonical lane names
+- [x] Define future implementation artifact and rollback expectations (AC: 3)
+  - [x] Define the repository-owned runtime specification type and the default compose filename only if Compose is used
+- [x] Reconcile architecture lane mapping decisions (AC: 4)
+  - [x] Record Story 0.13 impact for non-local Vault boundaries
 
 ## Dev Notes
 
@@ -72,8 +72,8 @@ so that public ingress, channel traffic, and private dependencies are isolated b
 
 ### Story Completion Status
 
-- Status set to `ready-for-dev`.
-- Completion note: Story 12.1 is now documented with an explicit runtime-spec strategy and lane reconciliation rules.
+- Status set to `done`.
+- Completion note: Story 12.1 documentation, review follow-up fixes, and second-pass adversarial verification are complete.
 
 ### References
 
@@ -91,6 +91,7 @@ GPT-5 Codex (Codex desktop)
 ### Completion Notes List
 
 - Story documentation created after removing repository-local Epic 12 runtime assets.
+- 2026-03-24: Closed the documentation review by correcting baseline inventory scope, explicit allowed flows, lane-collapse decisions, runtime artifact naming, and rollback triggers.
 
 ### File List
 

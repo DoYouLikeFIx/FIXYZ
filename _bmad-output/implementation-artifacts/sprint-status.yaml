@@ -149,7 +149,7 @@ development_status:
   11-2-quote-snapshot-freshness-guard: ready-for-dev
   11-3-replay-timeline-controller: ready-for-dev
   11-4-market-order-sweep-matching-validation: ready-for-dev
-  11-5-web-mob-quote-freshness-and-source-visibility-ux: ready-for-dev
+  11-5-web-mob-quote-freshness-and-source-visibility-ux: review
   11-6-be-orderbook-query-and-sorting-contract: ready-for-dev
   11-7-be-matching-engine-core-limit-market-rules: ready-for-dev
   11-8-be-multi-execution-persistence-and-order-state-transitions: ready-for-dev
@@ -157,7 +157,7 @@ development_status:
   epic-11-retrospective: optional
 
   epic-12: backlog
-  12-1-dmz-network-segmentation-profile: ready-for-dev
+  12-1-dmz-network-segmentation-profile: done
   12-2-edge-perimeter-policy-hardening: ready-for-dev
   12-3-service-boundary-trust-hardening-secret-rotation-mtls-readiness: ready-for-dev
   12-4-admin-access-control-path-for-dmz-operations: ready-for-dev
