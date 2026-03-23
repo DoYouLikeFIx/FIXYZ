@@ -132,6 +132,8 @@ Namespace-prefix interpretation rule:
 - Internal-only namespace requests return `403 EDGE_INTERNAL_NAMESPACE_DENIED`.
 - Unknown paths, malformed encodings, encoded traversal attempts, and encoded slash/backslash variants return `404 EDGE_ROUTE_NOT_ALLOWED`.
 - Disallowed methods on allowlisted paths return `404 EDGE_METHOD_NOT_ALLOWED`.
+- `HEAD` is not implicitly allowed by a `GET` entry on the `public-edge` contract. Unless a future reviewed runtime change documents a route-specific exception, `HEAD` requests on allowlisted paths also return `404 EDGE_METHOD_NOT_ALLOWED`.
+- `OPTIONS` is not implicitly allowed on allowlisted paths. A route may permit `OPTIONS` only when the public contract adds an explicit entry or a reviewed CORS/preflight ADR; otherwise `OPTIONS` requests return `404 EDGE_METHOD_NOT_ALLOWED`.
 - Every deny response body includes stable error code and `request_id`.
 - Internal-only namespace checks are applied after the canonical normalization rules above so encoded variants (for example `%61dmin`) cannot bypass the deny contract.
 - Legacy `/api/v1/channel/*` edge aliases are not part of the hardened public allowlist. If a reviewed migration exception is not active, they must be denied on `public-edge` with the same deterministic route-deny contract.
