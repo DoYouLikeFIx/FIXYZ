@@ -273,12 +273,15 @@ Passes the quality gate just before release and completes the release evidence.
 
 Defines simulator-grade market data contracts (LIVE/DELAYED/REPLAY), quote freshness policy, and deterministic valuation/execution behavior.
 
+**Post-MVP follow-on note:** A future WebSocket-based client quote distribution lane may extend Epic 11 after the BE market-data adapter, freshness guard, and replay determinism contracts are stable. That future lane must remain BE-owned at the distribution-contract level and preserve `quoteSnapshotId`, `quoteAsOf`, and `quoteSourceMode` on pushed payloads rather than weakening source/freshness visibility.
+
 **Story Hints:**
 - Story 11.1: BE Market Data Source Adapter (LIVE/DELAYED/REPLAY)
 - Story 11.2: BE Quote Snapshot Freshness Guard
 - Story 11.3: BE Replay Timeline Controller
 - Story 11.4: BE MARKET Order Sweep Matching Validation
 - Story 11.5: FE/MOB Quote Freshness & Source Visibility UX
+- Post-MVP candidate: BE/FE/MOB WebSocket Quote Distribution & Stream Client Parity
 
 ### Epic 12: Financial DMZ Boundary and Perimeter Hardening
 
@@ -2894,6 +2897,8 @@ So that I understand valuation confidence before execution.
 - **Given** replay mode demo  
   **When** screen capture reviewed  
   **Then** source-mode visibility is clear in both web and mobile clients.
+
+> **Post-MVP note:** The current MVP assumes FE/MOB consume backend quote freshness through the existing account/valuation contract and near-real-time polling on Step A market ticker surfaces. A future Epic 11 follow-on may replace that client polling with a BE-owned WebSocket quote stream, but only if the pushed payload preserves `quoteSnapshotId`, `quoteAsOf`, and `quoteSourceMode`, and only after replay/disconnect/backfill semantics are specified explicitly.
 
 ### Story 11.6: [BE][AC] OrderBook Query and Sorting Contract
 

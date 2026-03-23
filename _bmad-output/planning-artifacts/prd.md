@@ -175,6 +175,10 @@ All seven must pass in CI before the MVP is considered complete:
 - Grafana alert tuning + Alertmanager integration (pager/webhook routing)
 - Keycloak SSO integration (demonstrates enterprise IDP awareness)
 - Advanced rate limiting and fraud detection simulation
+- WebSocket-based quote distribution for FE/MOB market-data surfaces:
+  - Add a BE-owned quote stream fan-out contract for client delivery rather than relying only on near-real-time polling
+  - Keep `quoteSnapshotId`, `quoteAsOf`, and `quoteSourceMode` on the pushed payload so `LIVE` / `DELAYED` / `REPLAY` honesty survives the transport upgrade
+  - Treat the current Step A market ticker polling as the MVP baseline and defer true client streaming to post-MVP
 - DMZ perimeter hardening design package and promotion evidence gate for future hardened ingress mode
 - Mobile order trust-hardening follow-up:
   - Revisit whether mobile continuity should prioritize trusted device/app state over the current shared login-context continuity model
@@ -943,19 +947,22 @@ PUT    /fep-internal/rules
 | FEP Gateway <-> FEP Simulator | FIX 4.2 TCP session | QuickFIX/J initiator / acceptor pair with heartbeat policy |
 | Step-up auth | TOTP (RFC 6238) | 6-digit code, 30-second window, 3-attempt lockout, Vault-stored secret |
 
-**Docker Compose network isolation (two-layer defense):**
+**Canonical hardened lane model for reviewed DMZ isolation:**
 
 ```yaml
 networks:
-  external-net:  # Channel only; port 8080 exposed
-  core-net:      # Channel <-> CoreBanking
+  external-net:  # external clients <-> edge-gateway <-> channel-service
+  core-net:      # channel-service <-> corebank-service/private dependencies
   gateway-net:   # CoreBanking <-> FEP Gateway
   fep-net:       # FEP Gateway <-> FEP Simulator
 
 services:
+  edge-gateway:
+    networks: [external-net]
+    ports: ["80:80", "443:443"]
   channel-service:
     networks: [external-net, core-net]
-    ports: ["8080:8080"]
+    # no direct host port in hardened mode
   corebank-service:
     networks: [core-net, gateway-net]
   fep-gateway:
@@ -966,7 +973,15 @@ services:
     networks: [core-net]
   redis:
     networks: [core-net]
+  vault:
+    networks: [core-net]
+  vault-init:
+    networks: [core-net]
 ```
+
+Current Story 0.7 local/dev baseline remains less strict than the hardened model above: it still runs on `fix-net`, exposes `channel-service:8080` directly for convenience, and preserves the edge-first hardened migration as Epic 12 design work until a reviewed runtime change is reintroduced.
+
+If `fep-gateway` or `fep-simulator` retain direct MySQL or Vault-boundary dependencies in the reviewed hardened runtime, that same change must document the additional internal lane attachment explicitly instead of hiding it behind an implied network shortcut.
 
 **CSRF:** use the Synchronizer Token pattern with `HttpSessionCsrfTokenRepository`. The client fetches `GET /api/v1/auth/csrf` and sends `X-CSRF-TOKEN` on all non-GET requests.
 
@@ -1278,6 +1293,7 @@ All seven must pass in CI before MVP is complete:
 - More advanced Bucket4j policies beyond IP-based defaults
 - Richer admin / operational dashboards beyond the baseline admin console
 - SSE polling fallback option
+- WebSocket quote streaming for market-data UX, with BE-owned client fan-out semantics and preserved `quoteSnapshotId` / `quoteAsOf` / `quoteSourceMode` fields
 
 **Phase 3 - Vision**
 
