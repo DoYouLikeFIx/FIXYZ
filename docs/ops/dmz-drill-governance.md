@@ -79,6 +79,7 @@ Only `manual-runtime` and `automated-runtime` can be used for release-promotion 
 ## Evidence Contract
 
 - Evidence files must follow `docs/ops/evidence/dmz/README.md`.
+- Any Story 12.4-derived field in drill evidence must reuse the canonical snake_case names from `docs/ops/dmz-admin-access.md`.
 - Release checklist entry must capture:
   - `drill_set_id`
   - `review_window_id`
@@ -92,6 +93,8 @@ Only `manual-runtime` and `automated-runtime` can be used for release-promotion 
   - open findings, if any
   - unresolved-finding review record, if any
   - scenario linkage for each unresolved finding
+- Scenario-specific minimum evidence:
+  - `admin-credential-ttl-expiry`: linked evidence proving `requester`, `approved_by` or a linked emergency-review record, `environment`, `scope`, `lease_id`, `issued_at`, `expires_at`, expiry confirmation or explicit revocation result, auto-revocation within 60 seconds of TTL expiry, post-expiry denial sample proving deterministic `403 DMZ_ACCESS_DENIED`, `status`, `actor`, `bootstrap_identity_type`, `operator_surface`, and `listener_scope`.
 
 ## Release Checklist Template
 

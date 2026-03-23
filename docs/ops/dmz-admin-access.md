@@ -8,11 +8,18 @@ This document is planning-only. No Epic 12 DMZ administration access path is cur
 
 Define the intended Story 12.4 contract for privileged DMZ operations.
 
+## Documentation-Only Boundary
+
+Story 12.4 outputs are planning artifacts and root regression coverage only.
+
+Future runtime work must update this document, `docs/ops/dmz-abuse-response.md`, `docs/ops/dmz-drill-governance.md`, and `docs/ops/dmz-release-checklist-template.md` in the same change.
+
 ## Dependencies
 
 - Story 0.13 for external Vault operations and non-local guardrails
 - Story 7.5 for admin session and audit API contracts
 - Story 8.1 for audit/security event schema ownership
+- Story 0.13 is the upstream gate: non-local `issue`, `inspect`, and `revoke` flows must use the external Vault contract from `docs/ops/vault-external-operations.md` and cannot be satisfied by the local bootstrap in `docs/ops/vault-secrets-foundation.md`.
 
 ## Access Issuance Contract
 
@@ -39,6 +46,7 @@ Define the intended Story 12.4 contract for privileged DMZ operations.
 ## Issuance Workflow
 
 1. Requester submits:
+   - requester identity
    - ticket id
    - reason
    - requested scope
@@ -49,6 +57,7 @@ Define the intended Story 12.4 contract for privileged DMZ operations.
    - a human `SEC` operator authenticated through the existing Story 7.5 admin control surface
    - approved automation or CI authenticated with a reviewed workload identity
 4. The operator interface issues a credential lease and returns:
+   - `requester`
    - `lease_id`
    - `issued_at`
    - `expires_at`
@@ -66,21 +75,23 @@ Define the intended Story 12.4 contract for privileged DMZ operations.
 
 ## Mandatory Audit Fields
 
+Canonical audit and evidence field names use snake_case and must be reused verbatim across task-specific operator surfaces, drill evidence, and release checklists.
+
 Every privileged action must record:
 
 - actor
 - action
 - target
 - timestamp
-- correlation-id
+- correlation_id
 - reason
-- ticket-id
-- source IP or trusted client identity
-- credential lease/reference id
-- approved-by
+- ticket_id
+- source_identity
+- lease_id
+- approved_by
 - environment
-- bootstrap identity type
-- operator surface
+- bootstrap_identity_type
+- operator_surface
 - listener_scope
 
 ## Operator Interface Contract
@@ -106,8 +117,10 @@ Every privileged action must record:
   - `environment`
   - `scope`
   - `bootstrap_identity_type`
+  - `operator_surface`
   - `listener_scope`
 - Request-bound fields when the operation required them:
+  - `requester`
   - `ticket_id`
   - `approved_by`
 - Time-bounded record fields when the operation creates, returns, or mutates a time-bounded record:
@@ -116,6 +129,13 @@ Every privileged action must record:
 - Operation-specific minimum fields:
   - `issue`:
     - `lease_id`
+  - `inspect`:
+    - `lease_id`
+    - `requester`
+  - `revoke`:
+    - `lease_id`
+    - `revoked_at`
+    - `revocation_reason`
   - task-specific control surfaces (for example deny management):
     - surface-specific record id such as `deny_record_id`
     - target selector such as `target`
@@ -125,8 +145,11 @@ Every privileged action must record:
 ## Evidence Requirements
 
 - issuance record
-- revocation or expiry confirmation
-- audit query sample proving mandatory fields
+- issuance record must include `requester`, `approved_by`, `environment`, `scope`, `lease_id`, `issued_at`, and `expires_at`.
+- expiry confirmation must prove auto-revocation within 60 seconds of TTL expiry.
+- manual revocation confirmation, when the emergency path is used, must include `lease_id`, `actor`, `revoked_at`, and `revocation_reason`.
+- post-expiry or post-revocation denial sample proving deterministic `403 DMZ_ACCESS_DENIED`
+- audit query sample proving the mandatory fields above under the same canonical snake_case names
 - runbook or control-plane reference for operator flow
 - approval record or emergency-review record
 - bootstrap identity record

@@ -4,6 +4,7 @@ Use this template when Epic 12 controls are implemented and a hardened ingress m
 
 ## Required Fields
 
+- Any Story 12.4-derived field in this checklist must reuse the canonical snake_case names from `docs/ops/dmz-admin-access.md`.
 - release candidate identifier
 - environment
 - `drill_set_id`
@@ -23,6 +24,22 @@ Use this template when Epic 12 controls are implemented and a hardened ingress m
   - `trusted-proxy-rightmost-hop-selection`
   - `stale-secret-rejection`
   - `admin-credential-ttl-expiry`
+- For the `admin-credential-ttl-expiry` scenario, linked evidence must prove:
+  - `requester`
+  - `approved_by` or linked emergency-review record
+  - `environment`
+  - `scope`
+  - `lease_id`
+  - `issued_at`
+  - `expires_at`
+  - expiry confirmation or explicit revocation result
+  - auto-revocation within 60 seconds of TTL expiry
+  - post-expiry denial sample proving deterministic `403 DMZ_ACCESS_DENIED`
+  - `status`
+  - `actor`
+  - `bootstrap_identity_type`
+  - `operator_surface`
+  - `listener_scope`
 - rolling four-week drill history table containing the four most recent consecutive weekly governance windows for the promotion environment, using the latest non-superseded drill set for each week, with:
   - `week_of`
   - `review_window_id`

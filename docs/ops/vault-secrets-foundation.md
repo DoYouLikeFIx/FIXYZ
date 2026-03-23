@@ -6,6 +6,10 @@ Story `0-8-vault-secrets-foundation` baseline for centralized secret management.
 
 For staging/prod separation and operator-managed external Vault flows, continue with `docs/ops/vault-external-operations.md`.
 
+Story `12.4` DMZ privileged operator access is not satisfied by this local bootstrap baseline.
+
+Non-local `issue`, `inspect`, and `revoke` flows must follow `docs/ops/vault-external-operations.md` and `docs/ops/dmz-admin-access.md`.
+
 For a low-cost non-local dev server that still keeps persistent `raft` storage in Docker, continue with `docs/ops/vault-external-dev-server.md`.
 
 - Vault engine: `KV v2` at `secret/`

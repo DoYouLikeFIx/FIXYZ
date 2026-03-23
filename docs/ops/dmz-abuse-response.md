@@ -24,25 +24,27 @@ Application-layer throttle note:
 1. Record the incident window, request-id samples, suspected client identity, and analyst/operator owner.
    Record whether the triggering control was edge-layer perimeter enforcement or an upstream application limit.
 2. Apply a temporary 10-minute deny through the private Story 12.4 operator interface only when the trigger remains an edge/perimeter `source_identity` event. The operator interface may be exposed as CLI or API, but it must implement the same audited contract and accept:
+   - requester
    - source identity
    - TTL in seconds
    - reason code
    - ticket id
    - idempotency key
+   - `approved_by` or linked emergency-review record when the deny action or manual revoke path requires secondary approval
 3. Emit a security event with:
    - actor
    - action (`DMZ_TEMP_DENY_APPLY`)
    - target
    - timestamp (UTC)
-   - source identity
+   - source_identity
    - reason
-   - ticket-id
-   - correlation-id
-   - credential lease/reference id
-   - approved-by
+   - ticket_id
+   - correlation_id
+   - lease_id
+   - approved_by
    - environment
-   - bootstrap identity type
-   - operator surface
+   - bootstrap_identity_type
+   - operator_surface
    - listener_scope
    - enforcement_layer
    - limit_key_type
@@ -53,14 +55,26 @@ Application-layer throttle note:
 
 - Authentication: short-lived privileged credential issued through Story 12.4 controls
 - Authorization: operator must hold the shared Story 12.4 task scopes `dmz:access:deny:read` and `dmz:access:deny:write`
+- Deny-management credentials must never carry `dmz:access:issue`.
 - Required operations:
   - `apply`
   - `list`
   - `revoke`
   - `expire-sweep`
+- Production deny writes and manual deny revocations require `approved_by` distinct from `requester` unless an emergency break-glass review is recorded within 24 hours.
 - `apply` idempotency rule:
   - duplicate requests with the same `(target, reason, ticket-id, idempotency-key)` tuple must return the existing deny record instead of creating a second record
 - This deny-management surface is a task-specific Story 12.4 control plane and must return the common privileged operator response envelope from `docs/ops/dmz-admin-access.md`.
+- Common response envelope fields inherited from Story 12.4 and required in deny-management responses:
+  - `status`
+  - `actor`
+  - `environment`
+  - `scope`
+  - `bootstrap_identity_type`
+  - `operator_surface`
+  - `listener_scope`
+- When the request required them, deny-management responses and evidence must also preserve `requester`, `ticket_id`, and `approved_by`.
+- When a response returns or mutates a time-bounded operator record, it must also preserve `issued_at` and `expires_at`.
 - Additional deny-management response fields:
   - `deny_record_id`
   - `target`
@@ -76,9 +90,10 @@ Application-layer throttle note:
 - Include:
   - deny action record
   - verification record
-  - expiry confirmation record
+  - expiry confirmation record proving auto-expiry within 60 seconds of TTL completion
+  - post-expiry denial sample proving deterministic `403 DMZ_ACCESS_DENIED`
   - summary index update
-  - full privileged-action audit fields from `docs/ops/dmz-admin-access.md` and the Response Workflow security event schema above, including `credential lease/reference id`, `approved-by`, `environment`, `bootstrap identity type`, `operator surface`, and `listener_scope`
+  - full privileged-action audit fields from `docs/ops/dmz-admin-access.md` and the Response Workflow security event schema above, including `lease_id`, `approved_by`, `environment`, `bootstrap_identity_type`, `operator_surface`, and `listener_scope`
   - `enforcement_layer`
   - `limit_key_type`
   - `source_identity`
