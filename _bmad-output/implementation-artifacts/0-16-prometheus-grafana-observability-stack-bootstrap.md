@@ -1,6 +1,6 @@
 # Story 0.16: [OPS][INT] Prometheus/Grafana Observability Stack Bootstrap
 
-Status: in-progress
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -21,24 +21,24 @@ so that admin monitoring and release smoke checks run against a real observabili
 
 ## Tasks / Subtasks
 
-- [ ] Provision repo-owned observability services and storage in Docker assets (AC: 1, 2, 3, 6)
-  - [ ] Add Prometheus and Grafana services, persistent volumes, and an `observability` profile or equivalent opt-in compose wiring that does not weaken the existing public edge contract.
-  - [ ] Keep operator access deterministic for local development, preferably via loopback-bound host access for Grafana, and avoid publishing internal application management ports on the host by default.
-  - [ ] Preserve the existing cold-start expectations or document and verify any intentional startup-profile split if observability is not part of the default `docker compose up` path.
-- [ ] Wire scrape accessibility and security boundaries for all required services (AC: 2, 3)
-  - [ ] Make CoreBank, FEP Gateway, and FEP Simulator management endpoints reachable from Prometheus on the Docker network without broadening host or edge exposure.
-  - [ ] Resolve Channel scrape access cleanly by adding the smallest internal-safe allowance for `/actuator/prometheus` or by moving metrics to a dedicated management port with documented security implications.
-  - [ ] If one of the required monitoring cards lacks a canonical exported series, add the smallest BE-owned Micrometer metric contract needed to make the panel real in this story rather than leaving a dependency gap behind.
-- [ ] Provision Grafana datasource and dashboard assets from version-controlled files (AC: 1, 4, 5, 6)
-  - [ ] Add datasource provisioning with stable naming and `prune` semantics so stale datasource entries do not drift across restarts.
-  - [ ] Add dashboard provisioning YAML and dashboard JSON files with stable dashboard UIDs and panel IDs aligned to the descriptor keys defined below: `executionVolume`, `pendingSessions`, and `marketDataIngest`.
-  - [ ] Keep dashboard definitions in repo-owned files; do not rely on manual UI-only Grafana configuration as the source of truth.
-- [ ] Align FE/operator configuration and runbooks to the real observability stack (AC: 5, 6)
-  - [ ] Add or update root `.env.example`, `FE/.env.example`, and operator docs so the local Grafana base URL and `VITE_ADMIN_MONITORING_PANELS_JSON` contract are reproducible from checked-in assets.
-  - [ ] Document startup, verification, dashboard URL mapping, and restart/recovery steps in an ops runbook that can be followed without guessing hidden dashboard IDs.
-- [ ] Add machine-checkable validation for observability bring-up and provisioning (AC: 1, 2, 4, 5, 6)
-  - [ ] Add a smoke script or automated check that proves Prometheus target health, Grafana health, and dashboard reachability by stable UID.
-  - [ ] Add a regression proof for restart/idempotency so datasource/dashboard provisioning survives container recreation without manual repair.
+- [x] Provision repo-owned observability services and storage in Docker assets (AC: 1, 2, 3, 6)
+  - [x] Add Prometheus and Grafana services, persistent volumes, and an `observability` profile or equivalent opt-in compose wiring that does not weaken the existing public edge contract.
+  - [x] Keep operator access deterministic for local development, preferably via loopback-bound host access for Grafana, and avoid publishing internal application management ports on the host by default.
+  - [x] Preserve the existing cold-start expectations or document and verify any intentional startup-profile split if observability is not part of the default `docker compose up` path.
+- [x] Wire scrape accessibility and security boundaries for all required services (AC: 2, 3)
+  - [x] Make CoreBank, FEP Gateway, and FEP Simulator management endpoints reachable from Prometheus on the Docker network without broadening host or edge exposure.
+  - [x] Resolve Channel scrape access cleanly by adding the smallest internal-safe allowance for `/actuator/prometheus` or by moving metrics to a dedicated management port with documented security implications.
+  - [x] If one of the required monitoring cards lacks a canonical exported series, add the smallest BE-owned Micrometer metric contract needed to make the panel real in this story rather than leaving a dependency gap behind.
+- [x] Provision Grafana datasource and dashboard assets from version-controlled files (AC: 1, 4, 5, 6)
+  - [x] Add datasource provisioning with stable naming and `prune` semantics so stale datasource entries do not drift across restarts.
+  - [x] Add dashboard provisioning YAML and dashboard JSON files with stable dashboard UIDs and panel IDs aligned to the descriptor keys defined below: `executionVolume`, `pendingSessions`, and `marketDataIngest`.
+  - [x] Keep dashboard definitions in repo-owned files; do not rely on manual UI-only Grafana configuration as the source of truth.
+- [x] Align FE/operator configuration and runbooks to the real observability stack (AC: 5, 6)
+  - [x] Add or update root `.env.example`, `FE/.env.example`, and operator docs so the local Grafana base URL and `VITE_ADMIN_MONITORING_PANELS_JSON` contract are reproducible from checked-in assets.
+  - [x] Document startup, verification, dashboard URL mapping, and restart/recovery steps in an ops runbook that can be followed without guessing hidden dashboard IDs.
+- [x] Add machine-checkable validation for observability bring-up and provisioning (AC: 1, 2, 4, 5, 6)
+  - [x] Add a smoke script or automated check that proves Prometheus target health, Grafana health, and dashboard reachability by stable UID.
+  - [x] Add a regression proof for restart/idempotency so datasource/dashboard provisioning survives container recreation without manual repair.
 
 ## Dev Notes
 
@@ -87,7 +87,7 @@ so that admin monitoring and release smoke checks run against a real observabili
   - `marketDataIngest`
 - Required stable mapping:
   - `executionVolume` -> dashboard/panel provisioned in Grafana + admin audit drill-down `/admin?auditEventType=ORDER_EXECUTE`
-  - `pendingSessions` -> dashboard/panel provisioned in Grafana + admin audit drill-down `/admin?auditEventType=ORDER_SESSION_CREATE`
+  - `pendingSessions` -> dashboard/panel provisioned in Grafana + admin audit drill-down `/admin?auditEventType=ORDER_RECOVERY`
   - `marketDataIngest` -> dashboard/panel provisioned in Grafana + Grafana-only drill-down unless a canonical admin audit shortcut is later defined
 - `VITE_ADMIN_MONITORING_PANELS_JSON` examples added by this story must be valid against the FE parser and use safe absolute `http(s)` Grafana URLs plus valid `/admin` drill-down routes.
 
@@ -244,21 +244,54 @@ GPT-5 Codex (Codex desktop)
 
 ### Debug Log References
 
-- Created new canonical Story 0.16 because artifact analysis showed a real Prometheus/Grafana provisioning gap: no stack entries in `docker-compose.yml`, no repo-owned observability asset tree, and no existing Epic 0 story dedicated to provisioning the monitoring surface consumed by Story 7.8 and verified by Story 10.4.
-- Confirmed the current runtime scrape blockers:
-  - `corebank-service`, `fep-gateway`, and `fep-simulator` bind management ports to `127.0.0.1`
-  - `channel-service` currently keeps `/actuator/**` admin-only except health/info
-- Reviewed current FE monitoring contract and live-test notes to ensure the new story provisions real URLs rather than changing Story 7.8 semantics.
-- Reviewed current official Grafana and Prometheus docs for Docker startup, provisioning, scrape configuration, and target-health semantics.
+- Added an opt-in `observability` compose profile with repo-owned Prometheus/Grafana services, persistent volumes, provisioning mounts, loopback-bound operator ports, and stable runtime health checks.
+- Added repo-owned Grafana datasource/dashboard provisioning plus a generator that emits a valid `VITE_ADMIN_MONITORING_PANELS_JSON` contract for Story 7.8 from stable dashboard UID and panel IDs.
+- Added a validation script that checks compose config, Prometheus target health, Grafana health, dashboard reachability by UID, generated panel-link safety, and internal-only management-port exposure constraints.
+- Added minimal backend metric wiring for `channel.order.execution.completed` and `channel.order.sessions.recovery.backlog`, and confirmed existing market-data metrics satisfy the third monitoring card.
+- Resolved the channel scrape blocker by exposing only `/actuator/prometheus` as a public management endpoint while preserving the broader `/actuator/**` admin-only posture.
+- While validating live bring-up, discovered and repaired a pre-existing local bootstrap gap: `scripts/infra-bootstrap/repair-service-databases.sh` was a directory, not an executable script, which broke `mysql-grant-repair` during compose startup.
 
 ### Completion Notes List
 
-- Story drafted as a ready-for-dev Epic 0 foundation follow-up to convert Story 7.8's placeholder/ops-owned monitoring contract into a repo-owned observability baseline.
-- Story scope explicitly covers compose wiring, internal scrape accessibility, Grafana provisioning, FE env contract alignment, and machine-checkable smoke/runbook validation.
-- Story scope explicitly excludes Alertmanager routing, broader LGTM expansion, and FE-owned charting semantics.
+- Runtime observability bring-up now succeeds with `COMPOSE_PROFILES=observability`, and the validator confirms all required Prometheus targets are `UP`, Grafana is healthy, and the provisioned dashboard UID is reachable.
+- FE/operator contract is reproducible from checked-in assets through `.env.example`, `FE/.env.example`, `FE/README.md`, the generator script, and the new observability runbook.
+- Regression coverage now includes static observability contract tests, runtime validator coverage, a dedicated `ChannelSecurityPathsTest`, and infra baseline tests that prove MySQL repair-script compatibility.
+- Story 7.8 can now be pointed at a real repo-owned Grafana surface instead of placeholders once the generated descriptor is placed in the target environment.
 
 ### File List
 
-- /Users/yeongjae/fixyz/_bmad-output/planning-artifacts/epics.md
+- /Users/yeongjae/fixyz/.env.example
+- /Users/yeongjae/fixyz/docker-compose.yml
+- /Users/yeongjae/fixyz/package.json
+- /Users/yeongjae/fixyz/FE/.env.example
+- /Users/yeongjae/fixyz/FE/README.md
+- /Users/yeongjae/fixyz/BE/channel-service/src/main/resources/application.yml
+- /Users/yeongjae/fixyz/BE/corebank-service/src/main/resources/application.yml
+- /Users/yeongjae/fixyz/BE/fep-gateway/src/main/resources/application.yml
+- /Users/yeongjae/fixyz/BE/fep-simulator/src/main/resources/application.yml
+- /Users/yeongjae/fixyz/BE/channel-service/src/main/java/com/fix/channel/config/ChannelSecurityPaths.java
+- /Users/yeongjae/fixyz/BE/channel-service/src/main/java/com/fix/channel/repository/OrderSessionRepository.java
+- /Users/yeongjae/fixyz/BE/channel-service/src/main/java/com/fix/channel/service/OrderSessionMonitoringMetrics.java
+- /Users/yeongjae/fixyz/BE/channel-service/src/main/java/com/fix/channel/service/OrderSessionPersistenceService.java
+- /Users/yeongjae/fixyz/BE/channel-service/src/test/java/com/fix/channel/config/ChannelSecurityPathsTest.java
+- /Users/yeongjae/fixyz/BE/channel-service/src/test/java/com/fix/channel/service/OrderSessionMonitoringMetricsTest.java
+- /Users/yeongjae/fixyz/BE/channel-service/src/test/java/com/fix/channel/compliance/LogPiiComplianceTest.java
+- /Users/yeongjae/fixyz/BE/channel-service/src/test/java/com/fix/channel/service/OrderSessionServiceTest.java
+- /Users/yeongjae/fixyz/docker/observability/prometheus/prometheus.yml
+- /Users/yeongjae/fixyz/docker/observability/grafana/provisioning/datasources/datasource.yaml
+- /Users/yeongjae/fixyz/docker/observability/grafana/provisioning/dashboards/dashboard-provider.yaml
+- /Users/yeongjae/fixyz/docker/observability/grafana/dashboards/ops-monitoring-overview.json
+- /Users/yeongjae/fixyz/scripts/observability/generate-monitoring-panels.mjs
+- /Users/yeongjae/fixyz/scripts/observability/validate-observability-stack.sh
+- /Users/yeongjae/fixyz/scripts/infra-bootstrap/repair-service-databases.sh
+- /Users/yeongjae/fixyz/tests/observability/observability-baseline.test.js
+- /Users/yeongjae/fixyz/tests/observability/observability-runtime.test.js
+- /Users/yeongjae/fixyz/docs/ops/observability-stack-runbook.md
 - /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/sprint-status.yaml
 - /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/0-16-prometheus-grafana-observability-stack-bootstrap.md
+
+### Change Log
+
+- Added repo-owned Prometheus/Grafana stack provisioning, dashboard assets, generator/validator tooling, and operator documentation for observability bootstrap.
+- Added backend metric and security wiring needed for live Prometheus scraping, including a narrow channel-service `/actuator/prometheus` allowance.
+- Repaired the MySQL grant-repair bootstrap script discovered during live compose validation so the observability profile can start cleanly end to end.

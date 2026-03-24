@@ -111,7 +111,7 @@ so that I can understand system health at a glance during demo and operations re
     - Admin shortcut: `/admin?auditEventType=ORDER_EXECUTE`
   - `pendingSessions`
     - Grafana drill-down: pending-sessions panel descriptor `grafanaUrl`
-    - Admin shortcut: `/admin?auditEventType=ORDER_SESSION_CREATE`
+    - Admin shortcut: `/admin?auditEventType=ORDER_RECOVERY`
   - `marketDataIngest`
     - Grafana drill-down: market-data-ingest panel descriptor `grafanaUrl`
     - Admin shortcut: omit when no canonical admin audit view exists; do not invent a fake audit filter
@@ -166,7 +166,7 @@ so that I can understand system health at a glance during demo and operations re
 - Validate stale-state or unavailable-state messaging uses the descriptor-declared Grafana freshness source and includes a user-visible last-updated or freshness clue without FE-derived timer heuristics.
 - Validate operator drill-down actions lead to the correct Grafana panel or relevant admin audit context using the fixed anomaly mapping:
   - `executionVolume` -> Grafana panel + `/admin?auditEventType=ORDER_EXECUTE`
-  - `pendingSessions` -> Grafana panel + `/admin?auditEventType=ORDER_SESSION_CREATE`
+  - `pendingSessions` -> Grafana panel + `/admin?auditEventType=ORDER_RECOVERY`
   - `marketDataIngest` -> Grafana panel only unless a canonical admin audit target is later defined
 - Validate monitoring additions do not regress Story 7.6 force-logout and audit-search interactions on the same admin surface.
 - Validate invalid or partial `VITE_ADMIN_MONITORING_PANELS_JSON` config yields deterministic guidance instead of blank cards or uncaught exceptions.
