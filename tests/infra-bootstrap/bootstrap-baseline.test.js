@@ -15,6 +15,14 @@ const integrationValidationPath = path.join(
   "infra-bootstrap",
   "validate-nginx-vault.sh",
 );
+const mysqlInitPath = path.join(repoRoot, "docker", "mysql", "init", "01-init-databases.sh");
+const composePath = path.join(repoRoot, "docker-compose.yml");
+const mysqlRepairScriptPath = path.join(
+  repoRoot,
+  "scripts",
+  "infra-bootstrap",
+  "repair-service-databases.sh",
+);
 const runbookPath = path.join(repoRoot, "docs", "ops", "infrastructure-bootstrap-runbook.md");
 const drillEvidencePath = path.join(
   repoRoot,
@@ -75,6 +83,41 @@ test("nginx and vault integration validation script checks both baselines", () =
   mustInclude(validationScript, "EDGE_COMPOSE_FILE");
   mustInclude(validationScript, "VAULT_COMPOSE_FILE");
   mustInclude(validationScript, "validate-nonlocal-profile.sh");
+});
+
+test("local mysql bootstrap pre-provisions every service database with app grants", () => {
+  assert.ok(fs.existsSync(mysqlInitPath), `missing mysql init script: ${mysqlInitPath}`);
+  const mysqlInit = readText(mysqlInitPath);
+
+  for (const statement of [
+    "CREATE DATABASE IF NOT EXISTS channel_db;",
+    "CREATE DATABASE IF NOT EXISTS core_db;",
+    "CREATE DATABASE IF NOT EXISTS fep_gateway_db;",
+    "CREATE DATABASE IF NOT EXISTS fep_simulator_db;",
+    "GRANT ALL PRIVILEGES ON channel_db.* TO '${MYSQL_USER}'@'%';",
+    "GRANT ALL PRIVILEGES ON core_db.* TO '${MYSQL_USER}'@'%';",
+    "GRANT ALL PRIVILEGES ON fep_gateway_db.* TO '${MYSQL_USER}'@'%';",
+    "GRANT ALL PRIVILEGES ON fep_simulator_db.* TO '${MYSQL_USER}'@'%';",
+  ]) {
+    mustInclude(mysqlInit, statement);
+  }
+});
+
+test("local compose auto-reconciles legacy mysql volumes before app services start", () => {
+  assert.ok(fs.existsSync(composePath), `missing compose file: ${composePath}`);
+  assert.ok(fs.existsSync(mysqlRepairScriptPath), `missing mysql repair script: ${mysqlRepairScriptPath}`);
+
+  const compose = readText(composePath);
+  const mysqlRepairScript = readText(mysqlRepairScriptPath);
+
+  mustInclude(compose, "mysql-grant-repair:");
+  mustInclude(compose, "MYSQL_HOST: mysql");
+  mustInclude(compose, "repair-service-databases.sh");
+  mustInclude(compose, "condition: service_completed_successfully");
+  mustInclude(mysqlRepairScript, "CREATE DATABASE IF NOT EXISTS fep_gateway_db;");
+  mustInclude(mysqlRepairScript, "CREATE DATABASE IF NOT EXISTS fep_simulator_db;");
+  mustInclude(mysqlRepairScript, "GRANT ALL PRIVILEGES ON fep_gateway_db.* TO '${MYSQL_USER}'@'%';");
+  mustInclude(mysqlRepairScript, "GRANT ALL PRIVILEGES ON fep_simulator_db.* TO '${MYSQL_USER}'@'%';");
 });
 
 test("parity check script detects missing and mismatched baseline components", () => {
