@@ -1,6 +1,6 @@
 # Story 7.8: [FE][CH] Operations Monitoring Dashboard MVP
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -19,19 +19,21 @@ so that I can understand system health at a glance during demo and operations re
 
 ## Tasks / Subtasks
 
-- [ ] Extend the existing admin FE surface with a monitoring section or route (AC: 1, 3, 4)
-  - [ ] Reuse `AdminRoute`, the existing `/admin` entry point, and the current `AdminConsolePage` shell instead of introducing a separate admin security model.
-  - [ ] Decide whether the monitoring MVP lives as a third panel in `AdminConsolePage` or as a nested admin route under the same guard, and keep drill-down navigation consistent with current admin UX.
-- [ ] Add config-driven Grafana panel integration for the fixed MVP metrics (AC: 1, 4)
-  - [ ] Wire environment-safe Grafana URLs or panel descriptors for execution volume, pending session count, and market-data ingest status.
-  - [ ] Reuse signed internal links as the default integration shape and allow iframe embed only when the target Grafana deployment and access model support it.
-  - [ ] Expose operator drill-down actions that open the relevant Grafana panel or focus the related admin audit view without inventing a new backend admin API.
-- [ ] Implement freshness and unavailable-state handling for operations review (AC: 2)
-  - [ ] Render stale or unavailable messaging and last-updated metadata from Prometheus or Grafana freshness signals rather than custom FE heuristics.
-  - [ ] Keep the dashboard useful when panel config is missing or the observability stack is unavailable by showing deterministic guidance instead of a broken blank state.
-- [ ] Add regression coverage for admin-only monitoring behavior (AC: 1, 2, 3, 4)
-  - [ ] Add FE tests for admin guard enforcement, configured panel rendering, stale-state messaging, unavailable-state handling, and drill-down navigation.
-  - [ ] Add one integration-level proof that the monitoring MVP coexists with the existing force-logout and audit-search admin console behavior.
+- [x] Extend the existing admin FE surface with a monitoring section or route (AC: 1, 3, 4)
+  - [x] Reuse `AdminRoute`, the existing `/admin` entry point, and the current `AdminConsolePage` shell instead of introducing a separate admin security model.
+  - [x] Decide whether the monitoring MVP lives as a third panel in `AdminConsolePage` or as a nested admin route under the same guard, and keep drill-down navigation consistent with current admin UX.
+- [x] Add config-driven Grafana panel integration for the fixed MVP metrics (AC: 1, 4)
+  - [x] Wire environment-safe Grafana URLs or panel descriptors for execution volume, pending session count, and market-data ingest status.
+  - [x] Standardize on one FE config contract (`VITE_ADMIN_MONITORING_PANELS_JSON`) so panel URLs, embed capability, freshness behavior, and drill-down targets are declared together instead of scattered hard-coded constants.
+  - [x] Reuse signed internal links as the default integration shape and allow iframe embed only when the target Grafana deployment and access model support it.
+  - [x] Expose operator drill-down actions that open the relevant Grafana panel or focus the related admin audit view without inventing a new backend admin API.
+- [x] Implement freshness and unavailable-state handling for operations review (AC: 2)
+  - [x] Render stale or unavailable messaging and last-updated metadata from Prometheus or Grafana freshness signals rather than custom FE heuristics.
+  - [x] Treat Grafana-backed freshness metadata as the single source of truth. Do not derive "live" or "stale" labels from browser timers, local polling intervals, or FE-only age calculations.
+  - [x] Keep the dashboard useful when panel config is missing or the observability stack is unavailable by showing deterministic guidance instead of a broken blank state.
+- [x] Add regression coverage for admin-only monitoring behavior (AC: 1, 2, 3, 4)
+  - [x] Add FE tests for admin guard enforcement, configured panel rendering, stale-state messaging, unavailable-state handling, and drill-down navigation.
+  - [x] Add one integration-level proof that the monitoring MVP coexists with the existing force-logout and audit-search admin console behavior.
 
 ## Dev Notes
 
@@ -53,15 +55,68 @@ so that I can understand system health at a glance during demo and operations re
   - Architecture defines Grafana panels plus selected Actuator endpoints as the demo observability surface.
   - Prometheus scrape semantics should drive freshness interpretation; use documented scrape-health signals rather than FE-only timers.
   - Market-data ingest status can reuse existing `fep.marketdata.*` Micrometer metrics already exposed by `MarketDataMetrics`.
+  - Freshness source of truth must be Grafana-backed panel metadata or a companion Grafana freshness panel that is itself derived from Prometheus scrape signals such as `up` / scrape-health. FE must not synthesize freshness from `Date.now()` or refresh cadence.
 - Scope guardrails:
   - Execution volume and pending-session panels must consume existing or pre-provisioned observability signals. If the required metric contract is missing, capture it as an explicit dependency gap instead of inventing a shadow metric in FE.
   - The existing admin APIs remain canonical:
     - `GET /api/v1/admin/audit-logs`
     - `DELETE /api/v1/admin/members/{memberUuid}/sessions`
   - Story 7.8 must not create a second admin backend contract just to support dashboard chrome.
+  - If Ops cannot provide Grafana panel descriptors that satisfy AC 1 / AC 2, stop at an explicit dependency-gap note rather than silently inventing FE-owned monitoring semantics.
 - Suggested FE configuration contract:
-  - Add explicit Vite env typing for the monitoring dashboard URLs if they do not already exist.
+  - Add explicit Vite env typing for `VITE_ADMIN_MONITORING_PANELS_JSON`.
   - Keep Grafana link or embed URLs out of hard-coded component markup.
+  - Use one JSON env contract with this shape:
+    ```ts
+    type AdminMonitoringPanelKey =
+      | 'executionVolume'
+      | 'pendingSessions'
+      | 'marketDataIngest';
+
+    type AdminMonitoringPanelDescriptor = {
+      key: AdminMonitoringPanelKey;
+      title: string;
+      description: string;
+      mode: 'link' | 'embed';
+      linkUrl: string;
+      embedUrl?: string;
+      dashboardUid: string;
+      panelId: number;
+      sourceMetricHint: string;
+      freshness: {
+        source: 'grafana-panel' | 'grafana-companion-panel';
+        indicatorLabel: string;
+        lastUpdatedLabel: string;
+        companionPanelUrl?: string;
+      };
+      drillDown: {
+        grafanaUrl: string;
+        adminAuditUrl?: string;
+      };
+    };
+    ```
+  - Required descriptor keys:
+    - `executionVolume`
+    - `pendingSessions`
+    - `marketDataIngest`
+  - FE must treat missing env, invalid JSON, or incomplete descriptors as a deterministic configuration-unavailable state, not a render crash.
+  - `mode='link'` is the default safe deployment mode. `mode='embed'` is allowed only when the target Grafana deployment explicitly supports embedding for the operator access model.
+  - AC 2 is satisfied only when the descriptor's `freshness` block points to a Grafana-backed source that exposes stale/live semantics and a visible last-updated label.
+
+### Drill-down Mapping Contract
+
+- Use fixed anomaly-to-drill-down mapping so operators do not guess where each card leads:
+  - `executionVolume`
+    - Grafana drill-down: execution-volume panel descriptor `grafanaUrl`
+    - Admin shortcut: `/admin?auditEventType=ORDER_EXECUTE`
+  - `pendingSessions`
+    - Grafana drill-down: pending-sessions panel descriptor `grafanaUrl`
+    - Admin shortcut: `/admin?auditEventType=ORDER_SESSION_CREATE`
+  - `marketDataIngest`
+    - Grafana drill-down: market-data-ingest panel descriptor `grafanaUrl`
+    - Admin shortcut: omit when no canonical admin audit view exists; do not invent a fake audit filter
+- Reuse the existing `/admin` route for audit drill-down prefills instead of creating a separate monitoring-only admin path.
+- Audit-prefill navigation is FE-owned routing glue only; it must still load data through the canonical `GET /api/v1/admin/audit-logs` contract.
 
 ### Architecture Compliance
 
@@ -108,9 +163,13 @@ so that I can understand system health at a glance during demo and operations re
 
 - Validate admin-only access control for the monitoring surface.
 - Validate configured Grafana links or embeds render deterministically and fail gracefully when absent or unavailable.
-- Validate stale-state or unavailable-state messaging includes a user-visible last-updated or freshness clue and does not silently show misleading live status.
-- Validate operator drill-down actions lead to the correct Grafana panel or relevant admin audit context.
+- Validate stale-state or unavailable-state messaging uses the descriptor-declared Grafana freshness source and includes a user-visible last-updated or freshness clue without FE-derived timer heuristics.
+- Validate operator drill-down actions lead to the correct Grafana panel or relevant admin audit context using the fixed anomaly mapping:
+  - `executionVolume` -> Grafana panel + `/admin?auditEventType=ORDER_EXECUTE`
+  - `pendingSessions` -> Grafana panel + `/admin?auditEventType=ORDER_SESSION_CREATE`
+  - `marketDataIngest` -> Grafana panel only unless a canonical admin audit target is later defined
 - Validate monitoring additions do not regress Story 7.6 force-logout and audit-search interactions on the same admin surface.
+- Validate invalid or partial `VITE_ADMIN_MONITORING_PANELS_JSON` config yields deterministic guidance instead of blank cards or uncaught exceptions.
 
 ### Previous Story Intelligence
 
@@ -163,8 +222,8 @@ so that I can understand system health at a glance during demo and operations re
 
 ### Story Completion Status
 
-- Status set to `ready-for-dev`.
-- Completion note: Backfilled omitted Story 7.8 with FE admin monitoring scope, Grafana integration guardrails, and observability-source constraints.
+- Status set to `done` after follow-up fixes and a clean second senior developer review pass.
+- Completion note: Backfilled omitted Story 7.8 with FE admin monitoring scope, explicit Grafana panel config contract, fixed drill-down mapping, and observability-source constraints.
 
 ## Dev Agent Record
 
@@ -176,13 +235,89 @@ GPT-5 Codex (Codex desktop)
 
 - Generated from canonical Epic 7 planning artifact for the omitted Story 7.8 entry.
 - Cross-checked against current FE admin console implementation, observability architecture notes, and existing Micrometer metric sources.
+- Implemented monitoring descriptors, audit-query drill-down helpers, and admin console UI extensions in the existing FE `/admin` surface.
+- Validation completed with `pnpm -C FE type-check`, `pnpm -C FE test -- --runInBand`, and `pnpm -C FE lint`.
 
 ### Completion Notes List
 
 - Created Story 7.8 as a lightweight FE admin monitoring follow-on rather than a new full observability product lane.
-- Captured Grafana link/embed deployment constraints and Prometheus freshness semantics so implementation does not assume unsupported browser access patterns.
+- Captured Grafana link/embed deployment constraints, explicit FE panel-descriptor config, fixed anomaly drill-down mapping, and Prometheus-backed freshness semantics so implementation does not assume unsupported browser access patterns.
 - Anchored the story to the existing `/admin` surface and current admin API contract to prevent duplicate route or backend work.
+- Added a config-driven monitoring section to `AdminConsolePage` with Grafana open/drill-down actions, freshness metadata rendering, and deterministic placeholder guidance for missing or invalid panel config.
+- Reused the existing `/admin` route guard and audit API by introducing query-param-based audit drill-down shortcuts instead of adding a new backend admin contract.
+- Added unit and integration coverage to prove monitoring cards coexist with force-logout and audit-search workflows and updated the shared axios test harness to record serialized query params.
 
 ### File List
 
 - /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/7-8-web-operations-monitoring-dashboard-mvp.md
+- /Users/yeongjae/fixyz/FE/src/index.css
+- /Users/yeongjae/fixyz/FE/playwright.config.ts
+- /Users/yeongjae/fixyz/FE/e2e/admin-monitoring.spec.ts
+- /Users/yeongjae/fixyz/FE/src/pages/AdminConsolePage.tsx
+- /Users/yeongjae/fixyz/FE/src/router/navigation.ts
+- /Users/yeongjae/fixyz/FE/src/types/admin.ts
+- /Users/yeongjae/fixyz/FE/src/types/adminMonitoring.ts
+- /Users/yeongjae/fixyz/FE/src/vite-env.d.ts
+- /Users/yeongjae/fixyz/FE/tests/fixtures/mockAxiosModule.ts
+- /Users/yeongjae/fixyz/FE/tests/integration/admin-console-monitoring-support.test.tsx
+- /Users/yeongjae/fixyz/FE/tests/unit/pages/AdminConsolePage.test.tsx
+- /Users/yeongjae/fixyz/FE/tests/unit/types/adminMonitoring.test.ts
+- /Users/yeongjae/fixyz/FE/tests/unit/router/AdminRoute.test.tsx
+- /Users/yeongjae/fixyz/FE/tests/unit/router/navigation.test.ts
+- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/sprint-status.yaml
+
+## Change Log
+
+- 2026-03-24: Implemented the FE operations monitoring dashboard MVP on the existing `/admin` console, added config-driven Grafana panel support plus audit drill-down shortcuts, expanded admin regression coverage, and moved story status to `review`.
+- 2026-03-24: Senior developer code review requested changes, recorded three functional/contract findings, and moved story status to `in-progress`.
+- 2026-03-24: Fixed the review findings by honoring descriptor-driven audit drill-downs, enforcing freshness/url config contracts, adding parser regression tests, and moving story status to `done`.
+- 2026-03-24: QA automation pass added Playwright admin-monitoring E2E coverage, stabilized Playwright monitoring config for deterministic FE browser runs, and refreshed the shared QA summary artifact.
+
+## QA Update - 2026-03-24
+
+- Automated QA completed for Story 7.8 admin monitoring route coverage, monitoring-card rendering, audit drill-down behavior, and admin-route access blocking.
+- Added browser-level coverage in `/Users/yeongjae/fixyz/FE/e2e/admin-monitoring.spec.ts`.
+- Stabilized Playwright runtime config for this story by injecting a deterministic monitoring panel descriptor fixture in `/Users/yeongjae/fixyz/FE/playwright.config.ts`.
+- Verified the new Playwright suite passes against the FE Vite server with mocked admin/auth contracts.
+- QA outcome: pass
+
+## Senior Developer Review (AI)
+
+### Reviewer
+
+- yeongjae
+
+### Outcome
+
+- Changes requested
+
+### Git / Story Notes
+
+- Story File List matched the reviewed FE change set.
+- Repository root also has unrelated dirty entries in `BE` and `MOB`; they were excluded from this story review.
+- No `project-context.md` file was present.
+
+### Findings
+
+1. `FE/src/pages/AdminConsolePage.tsx`: the monitoring audit drill-down handler updates the URL from `drillDown.adminAuditUrl` but then overwrites the actual filter state with the hard-coded fallback event type for `executionVolume` and `pendingSessions`. If Ops changes the descriptor target, the URL and fetched audit results can diverge.
+2. `FE/src/types/adminMonitoring.ts`: the descriptor parser accepts `freshness.status` and `freshness.lastUpdatedAt` as optional, so a config can be marked `ready` even though AC2 requires a visible stale/live indicator and last-updated timestamp.
+3. `FE/src/types/adminMonitoring.ts`: Grafana/admin URLs are validated only as non-empty strings. Malformed or unsafe values can pass config parsing and then be rendered directly into `href` / `iframe src`, which breaks the "environment-safe" contract and can cause runtime failures.
+
+### Validation Evidence
+
+- `pnpm -C FE type-check`
+- `pnpm -C FE test -- --runInBand`
+- `pnpm -C FE lint`
+
+### Follow-up Review (Round 2)
+
+- Outcome: Approved
+- Result: No remaining HIGH or MEDIUM findings after re-review.
+- Resolved:
+  - Audit drill-down now prefers the descriptor-declared admin target before falling back to the canonical panel mapping.
+  - Monitoring config now requires explicit freshness status and timestamp fields before a panel can enter the `ready` state.
+  - Grafana/admin URLs are validated as safe absolute http(s) URLs or `/admin` drill-down routes with valid audit event types.
+- Validation evidence:
+  - `pnpm -C FE type-check`
+  - `pnpm -C FE test -- --runInBand`
+  - `pnpm -C FE lint`
