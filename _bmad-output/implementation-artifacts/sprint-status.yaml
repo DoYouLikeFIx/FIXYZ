@@ -37,7 +37,7 @@ development_status:
   0-13-vault-production-separation-and-external-operations: done
   0-14-vault-external-cutover-rehearsal-and-audit-evidence: done
   0-15-mobile-edge-parity-and-physical-device-transport-hardening: blocked
-  0-16-prometheus-grafana-observability-stack-bootstrap: ready-for-dev
+  0-16-prometheus-grafana-observability-stack-bootstrap: in-progress
   epic-0-retrospective: optional
 
   epic-1: in-progress
