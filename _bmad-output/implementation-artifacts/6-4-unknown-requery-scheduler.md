@@ -41,6 +41,7 @@ So that ambiguous orders can converge to terminal states.
 - Implement only the scope defined in this story's acceptance criteria.
 - Keep API, error, and ownership semantics consistent with architecture and PRD contracts.
 - Avoid cross-lane coupling outside required integration boundaries.
+- The scheduler ops surface must expose running/idle state, last-run summary, and pending recovery visibility for operators.
 
 ### Architecture Compliance
 
@@ -51,6 +52,7 @@ So that ambiguous orders can converge to terminal states.
 
 - Validate all acceptance criteria with automated tests (unit/integration/e2e as appropriate).
 - Ensure negative paths and validation/authorization/error flows are covered.
+- Validate the scheduler state/last-run visibility contract if the ops surface is enabled for this lane.
 
 ### Story Completion Status
 

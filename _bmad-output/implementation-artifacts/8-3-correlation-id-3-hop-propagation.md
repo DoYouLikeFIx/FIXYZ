@@ -16,6 +16,7 @@ So that end-to-end traces are reconstructable.
 2. Given internal downstream calls on the business path When `channel-service` calls `corebank-service` and `corebank-service` calls `fep-gateway` Then the same `X-Correlation-Id` and `traceparent` are propagated unchanged.
 3. Given an explicit internal diagnostic probe from `fep-gateway` to `fep-simulator` When the probe runs with supplied tracing headers Then the simulator internal boundary preserves those exact values and emits operator-readable receipt logs.
 4. Given propagation regression tests When CI runs Then hop-by-hop business-path assertions and the explicit gateway-to-simulator diagnostic-boundary assertions pass.
+5. Given backend service logs for the same request chain When observability evidence is reviewed Then each backend service emits valid JSON logs containing `traceId` and `correlationId` so the chain is reconstructable without ad-hoc parsing.
 
 ## Tasks / Subtasks
 
@@ -33,6 +34,9 @@ So that end-to-end traces are reconstructable.
 - [x] Add trace-reconstruction evidence for observability validation (AC: 3)
   - [x] Document one reproducible operator path for the business-path hop-by-hop gate plus the gateway-to-simulator diagnostic probe
   - [x] Ensure the evidence path is suitable for CI or release-verification use
+- [x] Preserve structured JSON log linkage for observability evidence (AC: 5)
+  - [x] Keep backend log output parseable as JSON with `traceId` and `correlationId` fields on the same request chain
+  - [x] Keep the operator evidence path searchable by one correlation identifier across services without ad-hoc text parsing
 
 ## Dev Notes
 
@@ -69,6 +73,7 @@ So that end-to-end traces are reconstructable.
   - `CommonHeaders.TRACEPARENT`
 - `channel-service` remains the external ingress owner for correlation-id generation when the header is absent.
 - Downstream services must reuse the incoming value. They must not mint a new correlation id once the request is already inside the CH -> AC -> FEP chain.
+- Structured backend logs for this evidence path must remain valid JSON and include `traceId` plus `correlationId` for every participating service.
 - Treat the existing per-service `CorrelationIdFilter` classes as the current implementation baseline. Do not move correlation responsibilities into `InternalSecretFilter` unless a failing test proves a concrete bug.
 - The business-path proof for this story is limited to the existing runtime chain that actually traverses:
   - `channel-service`
@@ -110,6 +115,7 @@ So that end-to-end traces are reconstructable.
 
 - Validate all acceptance criteria with automated tests (unit/integration/e2e as appropriate).
 - Ensure negative paths and validation/authorization/error flows are covered.
+- Validate the observability evidence path against JSON-log parsing plus `traceId`/`correlationId` field presence, not header propagation alone.
 - Existing regression anchors that must remain green:
   - `BE/channel-service/src/test/java/com/fix/channel/filter/CorrelationIdFilterTest.java`
   - `BE/corebank-service/src/test/java/com/fix/corebank/filter/CorrelationIdFilterTest.java`

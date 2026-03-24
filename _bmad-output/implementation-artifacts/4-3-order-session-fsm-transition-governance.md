@@ -14,7 +14,7 @@ So that invalid state progression cannot occur.
 
 1. Given the order-session FSM definition, when a transition command is applied, then only allowed transitions are accepted.
 2. Given an invalid transition request, when it is attempted, then a deterministic conflict or validation error is returned.
-3. Given a valid state persistence event, when the transition completes, then status and timestamps are stored consistently.
+3. Given a valid state persistence or authenticated-session invalidation event, when the transition completes, then status and timestamps are stored consistently, including forced expiry of stale client-owned `PENDING_NEW` or `AUTHED` sessions.
 4. Given API status serialization, when a session is returned, then optional fields follow the status-specific response contract.
 
 ## Tasks / Subtasks
@@ -24,6 +24,7 @@ So that invalid state progression cannot occur.
   - [x] Reject impossible or out-of-order transitions deterministically
 - [x] Persist status and transition timestamps consistently (AC: 3)
   - [x] Reconcile active-session expiry using the canonical `3600s` TTL plus `expiresAt` contract rather than older `10 minute` shorthand references
+  - [x] Maintain forced parent-session invalidation path that converges stale client-owned `PENDING_NEW` or `AUTHED` sessions to `EXPIRED`
   - [x] Ensure expiration and failure transitions remain auditable
 - [x] Implement status-specific serialization rules for API consumers (AC: 4)
   - [x] Use explicit order-session DTO mapping for documented nullable fields instead of inheriting ambiguous global JSON omission behavior
@@ -45,6 +46,7 @@ So that invalid state progression cannot occur.
 - `PENDING_NEW -> AUTHED` is reserved for successful conditional step-up verification on sessions where `challengeRequired=true`.
 - The canonical active order-session TTL for this story is `3600s`. `expiresAt` plus Redis TTL are the source of truth; any legacy `10 minute` wording in older artifacts is non-canonical for Story `4.3`.
 - Expiry reconciliation must persist `EXPIRED` using the same `3600s` rule for both live TTL loss and scheduled recovery paths.
+- If the authenticated parent session is force-invalidated while the order session remains client-owned and non-terminal, `PENDING_NEW` or `AUTHED` must converge to `EXPIRED` via the same cleanup policy.
 - Order-session status responses must use an explicit status-specific DTO contract: documented nullable fields are returned as explicit `null` when applicable, while fields outside the current status contract remain omitted.
 - Terminal states must not re-open without an explicit documented recovery path.
 - State-specific optional fields must stay consistent across persistence and API response layers.

@@ -12,7 +12,7 @@ So that security incidents can be handled quickly.
 
 ## Acceptance Criteria
 
-1. Given admin role request When invalidate-session API called Then target member sessions are removed.
+1. Given admin role request When invalidate-session API called Then target member sessions are removed and stale member-owned non-terminal order sessions enter the documented cleanup path.
 2. Given audit query filters When endpoint executes Then paginated and filterable audit list is returned.
 3. Given non-admin caller When admin API is called Then forbidden response is returned.
 4. Given privileged action executed When operation completes Then admin identity is recorded.
@@ -21,6 +21,8 @@ So that security incidents can be handled quickly.
 
 - [x] Implement acceptance-criteria scope 1 (AC: 1)
   - [x] Add test coverage for AC 1
+- [x] Keep force-logout aligned with the order-session cleanup policy (AC: 1)
+  - [x] Ensure stale client-owned `PENDING_NEW` or `AUTHED` order sessions converge through the session-expiry cleanup path after admin invalidation
 - [x] Implement acceptance-criteria scope 2 (AC: 2)
   - [x] Add test coverage for AC 2
 - [x] Implement acceptance-criteria scope 3 (AC: 3)
@@ -56,6 +58,7 @@ So that security incidents can be handled quickly.
 - Do not introduce a second force-logout API contract. The older PRD summary line `POST /api/v1/admin/sessions/force-invalidate` is treated as historical shorthand until the PRD is amended; implementation and tests should follow the detailed `DELETE /api/v1/admin/members/{memberUuid}/sessions` contract.
 - Audit-log query must support `page`, `size`, `from`, `to`, `memberId`, and `eventType`. `size` default = 20, max = 100.
 - Force logout must be idempotent: if the target member exists but has no active sessions, return `200 OK` with `invalidatedCount: 0` and still record the `ADMIN_FORCE_LOGOUT` audit event.
+- Force logout must reuse the order-session cleanup policy so stale client-owned `PENDING_NEW` or `AUTHED` order sessions converge to `EXPIRED` instead of lingering active.
 - Admin identity, caller IP, and user agent must be persisted for privileged actions.
 - Error contract is fixed: `AUTH-003`, `AUTH-006`, `CHANNEL-001`, `AUTH-005`, `RATE-001`, `SYS-001`.
 - Rate limiting is fixed at 20 req/min per admin session with `Retry-After` response header.
@@ -83,6 +86,7 @@ So that security incidents can be handled quickly.
 - Ensure negative paths and validation/authorization/error flows are covered.
 - Verify non-admin callers receive deterministic `403 AUTH-006`.
 - Verify valid admin force logout removes active sessions and stale sessions fail on the next protected request.
+- Verify forced logout also drives stale client-owned `PENDING_NEW` / `AUTHED` order sessions through the documented cleanup policy.
 - Verify idempotent force logout (`invalidatedCount: 0`) still records the privileged audit event.
 - Verify audit filtering, pagination, and canonical `eventType` handling match the API spec.
 - Verify OpenAPI/contract coverage reflects the chosen canonical endpoints.
