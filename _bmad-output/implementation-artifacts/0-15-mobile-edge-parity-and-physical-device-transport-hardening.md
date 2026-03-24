@@ -1,6 +1,6 @@
 # Story 0.15: Mobile Edge Parity and Physical-Device Transport Hardening
 
-Status: blocked
+Status: ready-for-dev
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -139,8 +139,8 @@ so that simulator workflows stay fast while shared QA and physical-device traffi
 
 ### Story Completion Status
 
-- Status set to `blocked` until Story 12.6 is completed.
-- Completion note: Story 0.15 now defines the mobile runtime split between direct-dev convenience and safe edge-first validation, but implementation should not start before canonical public edge routing from Story 12.6 is available.
+- Status set to `ready-for-dev`.
+- Completion note: Story 0.15 now defines the mobile runtime split between direct-dev convenience and safe edge-first validation, and implementation is unblocked because canonical public edge routing from Story 12.6 is now complete.
 
 ### References
 
