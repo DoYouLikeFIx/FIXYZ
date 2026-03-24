@@ -7,15 +7,15 @@ This document is synchronized to `/Users/yeongjae/fixyz/_bmad-output/planning-ar
 Primary source of truth for story decomposition remains `epics.md`.
 
 Current implementation status as of 2026-03-24:
-- Completed: Story 0.1 through Story 0.14
-- Remaining open: Story 0.15
-- Epic 0 closeout status: in progress until Story 0.15 is completed
+- Completed: Story 0.1 through Story 0.15
+- Remaining open: none
+- Epic 0 closeout status: done
 
 ---
 
 ## Current Execution Status
 
-Epic 0 is substantially complete, but it is not closed yet.
+Epic 0 is complete.
 
 Completed stories:
 - `0.1` Core Platform Baseline
@@ -32,8 +32,6 @@ Completed stories:
 - `0.12` Redis Recovery and Self-Healing Baseline
 - `0.13` Vault Production Separation and External Operations
 - `0.14` Vault External Cutover Rehearsal and Audit Evidence
-
-Remaining stories before Epic 0 can be fully closed:
 - `0.15` Mobile Edge Parity and Physical-Device Transport Hardening
 
 ---
@@ -47,7 +45,7 @@ Epic 0 establishes the common platform foundation required before feature epics:
 - Web and mobile scaffolds aligned to backend contracts
 - Team collaboration notification baseline (GitHub/Jira -> MatterMost)
 - Shared platform infrastructure hardening for edge, secrets, and data availability
-- Operational self-healing baseline for release safety, with mobile edge-ingress parity and physical-device transport hardening remaining as the final Epic 0 follow-on
+- Operational self-healing baseline for release safety, including mobile edge-ingress parity and physical-device transport hardening as the completed Epic 0 closeout follow-on
 
 ---
 

@@ -1,6 +1,6 @@
 # Story 0.15: Mobile Edge Parity and Physical-Device Transport Hardening
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -171,8 +171,8 @@ so that simulator workflows stay fast while shared QA and physical-device traffi
 
 ### Story Completion Status
 
-- Status set to `ready-for-dev`.
-- Completion note: Story 0.15 now defines the mobile runtime split between direct-dev convenience and safe edge-first validation, and implementation is unblocked because canonical public edge routing from Story 12.6 is now complete.
+- Status set to `done`.
+- Completion note: Story 0.15 implementation, QA validation, and review-fix follow-ups are complete, so edge-mode mobile/client parity is now an active prerequisite lane for Story 12.5 promotion evidence.
 
 ### References
 
@@ -208,6 +208,7 @@ GPT-5 Codex (Codex desktop)
 - Validation: `npm.cmd test -- tests/unit/config/environment.test.ts tests/unit/config/runtime-options.test.ts tests/unit/network/create-mobile-network-runtime.test.ts tests/e2e/live-runtime-config.test.ts tests/e2e/mobile-auth-live.e2e.test.ts tests/e2e/mobile-order-live.e2e.test.ts tests/e2e/mobile-mfa-recovery-live.e2e.test.ts` passed with live suites skipped when env was unset; previous `npm.cmd test -- tests/unit/bootstrap/app-bootstrap.test.ts` validation still stands; `npm.cmd run lint` passed.
 - QA follow-up validation restored declared dev dependencies with `npm.cmd ci` and then passed `npm.cmd test` (`309 passed`, `5 skipped` live-env-gated tests), `npm.cmd run typecheck`, and `npm.cmd run lint` in `MOB`.
 - Final review-fix validation passed `npm.cmd test -- tests/unit/config/environment.test.ts tests/unit/config/runtime-options.test.ts tests/unit/auth/create-mobile-auth-runtime.test.ts tests/e2e/live-runtime-config.test.ts tests/unit/network/create-mobile-network-runtime.test.ts`, `npm.cmd test` (`319 passed`, `5 skipped` live-env-gated tests), `npm.cmd run typecheck`, and `npm.cmd run lint`.
+- Story status advanced to `done` after QA `PASS`, closed adversarial follow-up findings, and final review-fix verification confirmed no remaining blockers.
 
 ### File List
 
@@ -234,6 +235,7 @@ GPT-5 Codex (Codex desktop)
 - 2026-03-24: Implemented mobile direct/edge ingress selection, deterministic transport-safety failures, edge-aware live verification helpers, and updated runtime documentation for Story 0.15.
 - 2026-03-24: Addressed review feedback for Story 0.15 by fixing launch-arg/env precedence for the plaintext bypass, requiring HTTPS origin-only edge URLs, and locking the live harness so edge mode is not masked by `LIVE_API_BASE_URL`.
 - 2026-03-24: Added QA wiring coverage for edge-mode auth/notification runtime construction and re-verified the full MOB test, typecheck, and lint gates after restoring declared dev dependencies.
+- 2026-03-24: Promoted Story 0.15 to `done` after the QA `PASS` gate and final review-fix verification closed the remaining readiness blocker for Story 12.5.
 
 ## QA Results
 
