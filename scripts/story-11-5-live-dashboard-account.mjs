@@ -265,11 +265,12 @@ const createLiveIdentity = ({
   };
 };
 
-const waitForDashboardQuoteData = async (
+const waitForDashboardData = async (
   cookieJar,
   baseUrl,
   accountId,
   timeoutMs,
+  readinessMode = 'quoteReady',
 ) => {
   const startedAt = Date.now();
 
@@ -297,10 +298,17 @@ const waitForDashboardQuoteData = async (
       },
     ));
 
+    const hasPositions = Array.isArray(positions) && positions.length > 0;
+    const hasChartReadyPosition =
+      isChartReadyPosition(summary)
+      || positions.some((position) => isChartReadyPosition(position));
+
     if (
-      Array.isArray(positions)
-      && positions.length > 0
-      && (isChartReadyPosition(summary) || positions.some((position) => isChartReadyPosition(position)))
+      hasPositions
+      && (
+        readinessMode === 'holdingReady'
+        || (readinessMode === 'quoteReady' && hasChartReadyPosition)
+      )
     ) {
       return {
         summary,
@@ -321,7 +329,11 @@ export const createProvisionedStory115DashboardAccount = async ({
   namePrefix = 'Story 11.5 Live',
   requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
   pollTimeoutMs = DEFAULT_POLL_TIMEOUT_MS,
+  waitForDashboardQuoteDataEnabled = true,
+  dashboardReadinessMode,
 } = {}) => {
+  const effectiveDashboardReadinessMode = dashboardReadinessMode
+    ?? (waitForDashboardQuoteDataEnabled ? 'quoteReady' : 'none');
   const identity = createLiveIdentity({
     prefix: emailPrefix,
     password,
@@ -477,12 +489,15 @@ export const createProvisionedStory115DashboardAccount = async ({
     requestTimeoutMs,
   ));
 
-  const dashboardData = await waitForDashboardQuoteData(
-    cookieJar,
-    baseUrl,
-    accountId,
-    pollTimeoutMs,
-  );
+  const dashboardData = effectiveDashboardReadinessMode !== 'none'
+    ? await waitForDashboardData(
+      cookieJar,
+      baseUrl,
+      accountId,
+      pollTimeoutMs,
+      effectiveDashboardReadinessMode,
+    )
+    : null;
 
   return {
     identity,
