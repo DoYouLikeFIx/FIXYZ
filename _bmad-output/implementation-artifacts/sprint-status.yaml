@@ -36,7 +36,7 @@ development_status:
   0-12-redis-recovery-and-self-healing-baseline: done
   0-13-vault-production-separation-and-external-operations: done
   0-14-vault-external-cutover-rehearsal-and-audit-evidence: done
-  0-15-mobile-edge-parity-and-physical-device-transport-hardening: ready-for-dev
+  0-15-mobile-edge-parity-and-physical-device-transport-hardening: review
   epic-0-retrospective: optional
 
   epic-1: in-progress
