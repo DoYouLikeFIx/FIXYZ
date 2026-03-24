@@ -29,21 +29,30 @@ const storyOwnedPaths = new Set([
 ]);
 
 const publicRouteMatrixRows = [
-  ["`/health/channel`", "`GET`", "none", "none", "Health probe through edge"],
-  ["`/api/v1/auth/register`", "`POST`", "none", "required", "Public registration"],
+  ["`/health/channel`", "`GET`", "none", "none", "Public edge health probe"],
   ["`/api/v1/auth/csrf`", "`GET`", "none", "none", "CSRF bootstrap"],
+  ["`/api/v1/auth/register`", "`POST`", "none", "required", "Public registration"],
   ["`/api/v1/auth/login`", "`POST`", "none", "required", "Public login"],
-  ["`/api/v1/auth/logout`", "`POST`", "authenticated session", "required", "Authenticated logout"],
   ["`/api/v1/auth/session`", "`GET`", "authenticated session", "none", "Session status check"],
+  ["`/api/v1/auth/logout`", "`POST`", "authenticated session", "required", "Authenticated logout"],
+  ["`/api/v1/auth/otp/verify`", "`POST`", "none", "required", "Login OTP verify"],
+  ["`/api/v1/auth/password/forgot`", "`POST`", "none", "required", "Password recovery start"],
+  ["`/api/v1/auth/password/forgot/challenge`", "`POST`", "none", "required", "Password recovery challenge bootstrap"],
+  ["`/api/v1/auth/password/forgot/challenge/fail-closed`", "`POST`", "none", "required", "Client fail-closed telemetry"],
+  ["`/api/v1/auth/password/reset`", "`POST`", "none", "required", "Password reset continuation"],
+  ["`/api/v1/auth/mfa-recovery/rebind`", "`POST`", "none", "required", "Recovery TOTP rebind bootstrap"],
+  ["`/api/v1/auth/mfa-recovery/rebind/confirm`", "`POST`", "none", "required", "Recovery TOTP rebind confirm"],
+  ["`/api/v1/members/me/totp/enroll`", "`POST`", "authenticated session", "required", "Authenticated TOTP enroll"],
+  ["`/api/v1/members/me/totp/confirm`", "`POST`", "authenticated session", "required", "Authenticated TOTP confirm"],
+  ["`/api/v1/members/me/totp/rebind`", "`POST`", "authenticated session", "required", "Authenticated TOTP rebind bootstrap"],
   ["`/api/v1/orders/sessions`", "`POST`", "authenticated session", "required", "Order session create"],
-  ["`/api/v1/orders/sessions/{orderSessionId}/otp`", "`POST`", "authenticated session", "required", "OTP verify"],
+  ["`/api/v1/orders/sessions/{orderSessionId}`", "`GET`", "authenticated session", "none", "Order session status"],
+  ["`/api/v1/orders/sessions/{orderSessionId}/otp/verify`", "`POST`", "authenticated session", "required", "Order session OTP verify"],
+  ["`/api/v1/orders/sessions/{orderSessionId}/extend`", "`POST`", "authenticated session", "required", "Order session extend"],
   ["`/api/v1/orders/sessions/{orderSessionId}/execute`", "`POST`", "authenticated session", "required", "Execute order"],
-  ["`/api/v1/orders/sessions/{orderSessionId}/cancel`", "`POST`", "authenticated session", "required", "Session cancel"],
-  ["`/api/v1/orders/sessions/{orderSessionId}`", "`GET`", "authenticated session", "none", "Session status polling"],
-  ["`/api/v1/orders`", "`GET`", "authenticated session", "none", "Order history list"],
-  ["`/api/v1/orders/cb-status`", "`GET`", "authenticated session", "none", "Circuit-breaker status poll after reconnect"],
-  ["`/api/v1/notifications/stream`", "`GET`", "authenticated session", "none", "Notification stream"],
   ["`/api/v1/notifications`", "`GET`", "authenticated session", "none", "Notification list"],
+  ["`/api/v1/notifications/{notificationId}/read`", "`PATCH`", "authenticated session", "required", "Notification read"],
+  ["`/api/v1/notifications/stream`", "`GET`", "authenticated session", "none", "Notification stream"],
 ];
 
 const unrelatedReviewSnapshotLines = [
@@ -167,12 +176,15 @@ test("Story 12.2 captures a concrete historical review-time worktree snapshot an
   }
 });
 
-test("DMZ route policy anchors the hardened contract to the current edge baseline without changing runtime", () => {
+test("DMZ route policy documents the active Story 12.6 public-edge contract and the deterministic deny surface", () => {
   const edgeTemplate = readText(edgeTemplatePath);
   const routePolicy = readText(routePolicyPath);
 
-  mustInclude(routePolicy, "This is a target-state design document only.");
-  mustInclude(routePolicy, "The active runtime baseline remains Story 0.7.");
+  mustInclude(routePolicy, "Story 12.6 activates the canonical public-edge route contract in the current `edge-gateway` runtime.");
+  mustInclude(routePolicy, "Local/dev host exposure from Story 0.7 still exists for convenience, but that path is outside the reviewed public ingress contract.");
+  mustInclude(routePolicy, "`/health/channel` is the only public edge-owned health path.");
+  mustInclude(routePolicy, "The active runtime scope today is limited to the allowlisted route surface, deterministic method deny, internal-namespace deny, `request_id` propagation in edge-generated responses, and upstream-failure handling.");
+  mustInclude(routePolicy, "The normalization, trusted-proxy, rate-limit, and temporary-deny controls documented below remain planned hardening requirements and are not yet enforced by the shipped edge configuration.");
   mustHaveTableRow(routePolicy, [
     "Route Prefix",
     "Allowed Methods",
@@ -180,41 +192,77 @@ test("DMZ route policy anchors the hardened contract to the current edge baselin
     "CSRF Requirement",
     "Notes",
   ]);
-  mustInclude(routePolicy, "The active Story 0.7 channel-service scaffold currently exposes only this subset of direct public controller paths:");
-  mustInclude(routePolicy, "`POST /api/v1/auth/otp/verify`");
-  mustInclude(routePolicy, "`GET /api/v1/notifications/stream`");
-  mustInclude(routePolicy, "`/api/v1/channel/*` is a baseline-only edge alias, not a canonical product API path.");
-  mustInclude(routePolicy, "Future hardened public-edge policy must remove and deny `/api/v1/channel/*` by default.");
-  mustInclude(routePolicy, "current edge does not expose canonical auth namespace");
-  mustInclude(routePolicy, "current edge does not expose canonical order namespace");
-  mustInclude(routePolicy, "canonical path missing on edge baseline");
+
+  for (const row of publicRouteMatrixRows) {
+    mustHaveTableRow(routePolicy, row);
+  }
+
+  for (const deniedPath of [
+    "/health/corebank",
+    "/health/fep-gateway",
+    "/health/fep-simulator",
+    "/api/v1/corebank/",
+    "/api/v1/fep/",
+    "/_edge/",
+    "/internal/",
+    "/admin/",
+    "/api/v1/admin/",
+    "/ops/dmz/",
+  ]) {
+    mustInclude(routePolicy, `- \`${deniedPath}\``);
+  }
+
+  mustInclude(routePolicy, "Legacy `/api/v1/channel/*` edge aliases are not part of the active allowlist.");
+  mustInclude(routePolicy, "Temporary retention requires a reviewed migration contract with exact descendant mappings, synchronized docs/tests, and a cutoff plan.");
+  mustInclude(routePolicy, "The remaining sections capture Story 12.2/12.4 design requirements for later hardening work.");
+  mustInclude(routePolicy, "They are not active runtime guarantees in the shipped Story 12.6 edge configuration.");
   mustInclude(routePolicy, "`404 EDGE_ROUTE_NOT_ALLOWED`");
   mustInclude(routePolicy, "`404 EDGE_METHOD_NOT_ALLOWED`");
   mustInclude(routePolicy, "`403 EDGE_INTERNAL_NAMESPACE_DENIED`");
-  mustInclude(routePolicy, "`403`, stable error code `EDGE_DMZ_TEMP_DENY`");
-  mustInclude(routePolicy, "`429`, `Retry-After: 60`, stable error code `EDGE_RATE_LIMITED`");
   mustInclude(routePolicy, "percent-decode unreserved characters exactly once before route matching");
+  mustInclude(routePolicy, "malformed percent-encoding is rejected by the current Nginx parser with native `400 Bad Request`");
   mustInclude(routePolicy, "Encoded slash or backslash characters (`%2F`, `%5C`, case-insensitive) are rejected before allowlist evaluation with `404 EDGE_ROUTE_NOT_ALLOWED`.");
-  mustInclude(routePolicy, "Public edge must continue to deny `/api/v1/admin/`, `/ops/dmz/*`, and any equivalent privileged namespace on the `public-edge` listener.");
   mustMatch(routePolicy, /`HEAD` is not implicitly allowed by a `GET` entry on the `public-edge` contract\./);
   mustMatch(routePolicy, /`OPTIONS` is not implicitly allowed on allowlisted paths\./);
   mustMatch(routePolicy, /Unknown routes: `60 req\/min\/source_identity` with `burst 20`\./);
   mustMatch(routePolicy, /Sensitive routes .* `20 req\/min\/source_identity` with `burst 5`\./);
   mustMatch(routePolicy, /Temporary deny window: apply 10-minute block when the same normalized `source_identity` triggers 5 or more rate-limit violations within 5 minutes\./);
   mustMatch(routePolicy, /Edge-generated deny\/rate-limit decisions must be written to structured logs or evidence records with `enforcement_layer`, `limit_key_type`, `request_id`, and `source_identity`/);
-  for (const row of publicRouteMatrixRows) {
-    mustHaveTableRow(routePolicy, row);
+  mustInclude(routePolicy, "Public edge must continue to deny `/api/v1/admin/`, `/ops/dmz/*`, and any equivalent privileged namespace on the `public-edge` listener.");
+  mustInclude(routePolicy, "Malformed percent-encoding currently returns the native Nginx `400 Bad Request` response before the FIXYZ route contract is reached.");
+
+  for (const route of [
+    "location = /api/v1/auth/csrf",
+    "location = /api/v1/auth/login",
+    "location = /api/v1/auth/password/reset",
+    "location = /api/v1/members/me/totp/rebind",
+    "location = /api/v1/orders/sessions",
+    "location ~ ^/api/v1/orders/sessions/[^/]+/otp/verify$",
+    "location ~ ^/api/v1/orders/sessions/[^/]+/extend$",
+    "location ~ ^/api/v1/orders/sessions/[^/]+/execute$",
+    "location = /api/v1/notifications",
+    "location ~ ^/api/v1/notifications/[^/]+/read$",
+    "location = /api/v1/notifications/stream",
+  ]) {
+    mustInclude(edgeTemplate, route);
   }
 
-  mustInclude(edgeTemplate, "location /api/v1/channel/notifications/stream");
-  mustInclude(edgeTemplate, "location /api/v1/channel/");
-  mustInclude(edgeTemplate, "location /api/v1/corebank/");
-  mustInclude(edgeTemplate, "location /api/v1/fep/gateway/");
-  mustInclude(edgeTemplate, "location /api/v1/fep/simulator/");
-  mustInclude(edgeTemplate, "return 404 '{\"error\":\"EDGE_ROUTE_NOT_ALLOWED\",\"status\":404}'");
-  assert.doesNotMatch(edgeTemplate, /location\s+(?:=|\^~|~\*|~)?\s*(?:\^)?\/api\/v1\/auth(?:\/|\b)/);
-  assert.doesNotMatch(edgeTemplate, /location\s+(?:=|\^~|~\*|~)?\s*(?:\^)?\/api\/v1\/orders(?:\/|\b)/);
-  assert.doesNotMatch(edgeTemplate, /location\s+(?:=|\^~|~\*|~)?\s*(?:\^)?\/api\/v1\/notifications(?:\/|\b)/);
+  mustInclude(edgeTemplate, "location = /health/corebank");
+  mustInclude(edgeTemplate, "location = /health/fep-gateway");
+  mustInclude(edgeTemplate, "location = /health/fep-simulator");
+  mustInclude(edgeTemplate, "location ^~ /api/v1/channel/");
+  mustInclude(edgeTemplate, "location ^~ /api/v1/corebank/");
+  mustInclude(edgeTemplate, "location ^~ /api/v1/fep/");
+  mustInclude(edgeTemplate, "location ^~ /_edge/");
+  mustInclude(edgeTemplate, "location ^~ /internal/");
+  mustInclude(edgeTemplate, "location ^~ /admin/");
+  mustInclude(edgeTemplate, "EDGE_ROUTE_NOT_ALLOWED");
+  mustInclude(edgeTemplate, "EDGE_METHOD_NOT_ALLOWED");
+  mustInclude(edgeTemplate, "EDGE_INTERNAL_NAMESPACE_DENIED");
+  assert.doesNotMatch(edgeTemplate, /location \/api\/v1\/channel\/notifications\/stream \{\s*proxy_pass http:\/\/channel_service;/);
+  assert.doesNotMatch(edgeTemplate, /proxy_pass http:\/\/corebank_service\/actuator\/health;/);
+  assert.doesNotMatch(edgeTemplate, /proxy_pass http:\/\/fep_gateway\/actuator\/health;/);
+  assert.doesNotMatch(edgeTemplate, /proxy_pass http:\/\/fep_simulator\/actuator\/health;/);
 });
 
 test("Trusted proxy and abuse-response docs keep Story 12.2 operator and drill contracts explicit", () => {

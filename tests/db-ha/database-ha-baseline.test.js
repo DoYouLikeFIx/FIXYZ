@@ -11,6 +11,13 @@ const repoRoot = path.resolve(__dirname, "..", "..");
 
 const composeHaPath = path.join(repoRoot, "docker-compose.ha.yml");
 const scriptsRoot = path.join(repoRoot, "docker", "mysql", "ha", "scripts");
+const initPrimaryPath = path.join(repoRoot, "docker", "mysql", "ha", "init-primary", "01-init-primary.sh");
+const mysqlRepairScriptPath = path.join(
+  repoRoot,
+  "scripts",
+  "infra-bootstrap",
+  "repair-service-databases.sh",
+);
 const bootstrapReplicationScript = path.join(scriptsRoot, "bootstrap-replication.sh");
 const healthScript = path.join(scriptsRoot, "collect-replication-health.sh");
 const alertScript = path.join(scriptsRoot, "evaluate-replication-alerts.sh");
@@ -109,6 +116,39 @@ test("Replication baseline scripts exist and encode required thresholds/formulas
   const restore = readText(restoreScript);
   mustInclude(restore, "SHA-256");
   mustInclude(restore, "deterministic export");
+});
+
+test("HA primary init pre-provisions every service database before replication bootstrap", () => {
+  assert.ok(fs.existsSync(initPrimaryPath), `missing HA init script: ${initPrimaryPath}`);
+  const initPrimary = readText(initPrimaryPath);
+
+  for (const statement of [
+    "CREATE DATABASE IF NOT EXISTS channel_db;",
+    "CREATE DATABASE IF NOT EXISTS core_db;",
+    "CREATE DATABASE IF NOT EXISTS fep_gateway_db;",
+    "CREATE DATABASE IF NOT EXISTS fep_simulator_db;",
+    "GRANT ALL PRIVILEGES ON channel_db.* TO '${MYSQL_USER}'@'%';",
+    "GRANT ALL PRIVILEGES ON core_db.* TO '${MYSQL_USER}'@'%';",
+    "GRANT ALL PRIVILEGES ON fep_gateway_db.* TO '${MYSQL_USER}'@'%';",
+    "GRANT ALL PRIVILEGES ON fep_simulator_db.* TO '${MYSQL_USER}'@'%';",
+  ]) {
+    mustInclude(initPrimary, statement);
+  }
+});
+
+test("HA compose auto-reconciles primary grants before replica bootstrap", () => {
+  assert.ok(fs.existsSync(composeHaPath), `missing HA compose profile: ${composeHaPath}`);
+  assert.ok(fs.existsSync(mysqlRepairScriptPath), `missing mysql repair script: ${mysqlRepairScriptPath}`);
+
+  const compose = readText(composeHaPath);
+  const mysqlRepairScript = readText(mysqlRepairScriptPath);
+
+  mustInclude(compose, "mysql-primary-grant-repair:");
+  mustInclude(compose, "MYSQL_HOST: mysql-primary");
+  mustInclude(compose, "repair-service-databases.sh");
+  mustInclude(compose, "condition: service_completed_successfully");
+  mustInclude(mysqlRepairScript, "CREATE DATABASE IF NOT EXISTS fep_gateway_db;");
+  mustInclude(mysqlRepairScript, "CREATE DATABASE IF NOT EXISTS fep_simulator_db;");
 });
 
 test("Replication bootstrap script supports MySQL 8.4 source status and legacy fallback", () => {

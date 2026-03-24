@@ -18,10 +18,6 @@ upstream fep_simulator {
   keepalive 32;
 }
 
-upstream edge_blackhole {
-  server 127.0.0.1:9;
-}
-
 log_format edge_json escape=json '{'
   '"time":"$time_iso8601",'
   '"remote_addr":"$remote_addr",'
@@ -76,30 +72,293 @@ server {
 
   location @upstream_failure {
     default_type application/json;
-    return 503 '{"error":"EDGE_UPSTREAM_UNAVAILABLE","status":503}';
-  }
-
-  location ~* ^/(internal|admin)/ {
-    return 403;
+    return 503 '{"error":"EDGE_UPSTREAM_UNAVAILABLE","status":503,"request_id":"$request_id"}';
   }
 
   location = /health/channel {
+    default_type application/json;
+    if ($request_method != GET) {
+      return 404 '{"error":"EDGE_METHOD_NOT_ALLOWED","status":404,"request_id":"$request_id"}';
+    }
     proxy_pass http://channel_service/actuator/health;
   }
 
   location = /health/corebank {
-    proxy_pass http://corebank_service/actuator/health;
+    default_type application/json;
+    return 403 '{"error":"EDGE_INTERNAL_NAMESPACE_DENIED","status":403,"request_id":"$request_id"}';
   }
 
   location = /health/fep-gateway {
-    proxy_pass http://fep_gateway/actuator/health;
+    default_type application/json;
+    return 403 '{"error":"EDGE_INTERNAL_NAMESPACE_DENIED","status":403,"request_id":"$request_id"}';
   }
 
   location = /health/fep-simulator {
-    proxy_pass http://fep_simulator/actuator/health;
+    default_type application/json;
+    return 403 '{"error":"EDGE_INTERNAL_NAMESPACE_DENIED","status":403,"request_id":"$request_id"}';
   }
 
-  location /api/v1/channel/notifications/stream {
+  location = /api/v1/channel {
+    default_type application/json;
+    return 404 '{"error":"EDGE_ROUTE_NOT_ALLOWED","status":404,"request_id":"$request_id"}';
+  }
+
+  location ^~ /api/v1/channel/ {
+    default_type application/json;
+    return 404 '{"error":"EDGE_ROUTE_NOT_ALLOWED","status":404,"request_id":"$request_id"}';
+  }
+
+  location = /api/v1/corebank {
+    default_type application/json;
+    return 403 '{"error":"EDGE_INTERNAL_NAMESPACE_DENIED","status":403,"request_id":"$request_id"}';
+  }
+
+  location ^~ /api/v1/corebank/ {
+    default_type application/json;
+    return 403 '{"error":"EDGE_INTERNAL_NAMESPACE_DENIED","status":403,"request_id":"$request_id"}';
+  }
+
+  location = /api/v1/fep {
+    default_type application/json;
+    return 403 '{"error":"EDGE_INTERNAL_NAMESPACE_DENIED","status":403,"request_id":"$request_id"}';
+  }
+
+  location ^~ /api/v1/fep/ {
+    default_type application/json;
+    return 403 '{"error":"EDGE_INTERNAL_NAMESPACE_DENIED","status":403,"request_id":"$request_id"}';
+  }
+
+  location = /_edge {
+    default_type application/json;
+    return 403 '{"error":"EDGE_INTERNAL_NAMESPACE_DENIED","status":403,"request_id":"$request_id"}';
+  }
+
+  location ^~ /_edge/ {
+    default_type application/json;
+    return 403 '{"error":"EDGE_INTERNAL_NAMESPACE_DENIED","status":403,"request_id":"$request_id"}';
+  }
+
+  location = /internal {
+    default_type application/json;
+    return 403 '{"error":"EDGE_INTERNAL_NAMESPACE_DENIED","status":403,"request_id":"$request_id"}';
+  }
+
+  location ^~ /internal/ {
+    default_type application/json;
+    return 403 '{"error":"EDGE_INTERNAL_NAMESPACE_DENIED","status":403,"request_id":"$request_id"}';
+  }
+
+  location = /admin {
+    default_type application/json;
+    return 403 '{"error":"EDGE_INTERNAL_NAMESPACE_DENIED","status":403,"request_id":"$request_id"}';
+  }
+
+  location ^~ /admin/ {
+    default_type application/json;
+    return 403 '{"error":"EDGE_INTERNAL_NAMESPACE_DENIED","status":403,"request_id":"$request_id"}';
+  }
+
+  location = /api/v1/admin {
+    default_type application/json;
+    return 403 '{"error":"EDGE_INTERNAL_NAMESPACE_DENIED","status":403,"request_id":"$request_id"}';
+  }
+
+  location ^~ /api/v1/admin/ {
+    default_type application/json;
+    return 403 '{"error":"EDGE_INTERNAL_NAMESPACE_DENIED","status":403,"request_id":"$request_id"}';
+  }
+
+  location = /ops/dmz {
+    default_type application/json;
+    return 403 '{"error":"EDGE_INTERNAL_NAMESPACE_DENIED","status":403,"request_id":"$request_id"}';
+  }
+
+  location ^~ /ops/dmz/ {
+    default_type application/json;
+    return 403 '{"error":"EDGE_INTERNAL_NAMESPACE_DENIED","status":403,"request_id":"$request_id"}';
+  }
+
+  location = /api/v1/auth/csrf {
+    default_type application/json;
+    if ($request_method != GET) {
+      return 404 '{"error":"EDGE_METHOD_NOT_ALLOWED","status":404,"request_id":"$request_id"}';
+    }
+    proxy_pass http://channel_service;
+  }
+
+  location = /api/v1/auth/register {
+    default_type application/json;
+    if ($request_method != POST) {
+      return 404 '{"error":"EDGE_METHOD_NOT_ALLOWED","status":404,"request_id":"$request_id"}';
+    }
+    proxy_pass http://channel_service;
+  }
+
+  location = /api/v1/auth/login {
+    default_type application/json;
+    if ($request_method != POST) {
+      return 404 '{"error":"EDGE_METHOD_NOT_ALLOWED","status":404,"request_id":"$request_id"}';
+    }
+    proxy_pass http://channel_service;
+  }
+
+  location = /api/v1/auth/session {
+    default_type application/json;
+    if ($request_method != GET) {
+      return 404 '{"error":"EDGE_METHOD_NOT_ALLOWED","status":404,"request_id":"$request_id"}';
+    }
+    proxy_pass http://channel_service;
+  }
+
+  location = /api/v1/auth/logout {
+    default_type application/json;
+    if ($request_method != POST) {
+      return 404 '{"error":"EDGE_METHOD_NOT_ALLOWED","status":404,"request_id":"$request_id"}';
+    }
+    proxy_pass http://channel_service;
+  }
+
+  location = /api/v1/auth/otp/verify {
+    default_type application/json;
+    if ($request_method != POST) {
+      return 404 '{"error":"EDGE_METHOD_NOT_ALLOWED","status":404,"request_id":"$request_id"}';
+    }
+    proxy_pass http://channel_service;
+  }
+
+  location = /api/v1/auth/password/forgot {
+    default_type application/json;
+    if ($request_method != POST) {
+      return 404 '{"error":"EDGE_METHOD_NOT_ALLOWED","status":404,"request_id":"$request_id"}';
+    }
+    proxy_pass http://channel_service;
+  }
+
+  location = /api/v1/auth/password/forgot/challenge {
+    default_type application/json;
+    if ($request_method != POST) {
+      return 404 '{"error":"EDGE_METHOD_NOT_ALLOWED","status":404,"request_id":"$request_id"}';
+    }
+    proxy_pass http://channel_service;
+  }
+
+  location = /api/v1/auth/password/forgot/challenge/fail-closed {
+    default_type application/json;
+    if ($request_method != POST) {
+      return 404 '{"error":"EDGE_METHOD_NOT_ALLOWED","status":404,"request_id":"$request_id"}';
+    }
+    proxy_pass http://channel_service;
+  }
+
+  location = /api/v1/auth/password/reset {
+    default_type application/json;
+    if ($request_method != POST) {
+      return 404 '{"error":"EDGE_METHOD_NOT_ALLOWED","status":404,"request_id":"$request_id"}';
+    }
+    proxy_pass http://channel_service;
+  }
+
+  location = /api/v1/auth/mfa-recovery/rebind {
+    default_type application/json;
+    if ($request_method != POST) {
+      return 404 '{"error":"EDGE_METHOD_NOT_ALLOWED","status":404,"request_id":"$request_id"}';
+    }
+    proxy_pass http://channel_service;
+  }
+
+  location = /api/v1/auth/mfa-recovery/rebind/confirm {
+    default_type application/json;
+    if ($request_method != POST) {
+      return 404 '{"error":"EDGE_METHOD_NOT_ALLOWED","status":404,"request_id":"$request_id"}';
+    }
+    proxy_pass http://channel_service;
+  }
+
+  location = /api/v1/members/me/totp/enroll {
+    default_type application/json;
+    if ($request_method != POST) {
+      return 404 '{"error":"EDGE_METHOD_NOT_ALLOWED","status":404,"request_id":"$request_id"}';
+    }
+    proxy_pass http://channel_service;
+  }
+
+  location = /api/v1/members/me/totp/confirm {
+    default_type application/json;
+    if ($request_method != POST) {
+      return 404 '{"error":"EDGE_METHOD_NOT_ALLOWED","status":404,"request_id":"$request_id"}';
+    }
+    proxy_pass http://channel_service;
+  }
+
+  location = /api/v1/members/me/totp/rebind {
+    default_type application/json;
+    if ($request_method != POST) {
+      return 404 '{"error":"EDGE_METHOD_NOT_ALLOWED","status":404,"request_id":"$request_id"}';
+    }
+    proxy_pass http://channel_service;
+  }
+
+  location = /api/v1/orders/sessions {
+    default_type application/json;
+    if ($request_method != POST) {
+      return 404 '{"error":"EDGE_METHOD_NOT_ALLOWED","status":404,"request_id":"$request_id"}';
+    }
+    proxy_pass http://channel_service;
+  }
+
+  location ~ ^/api/v1/orders/sessions/[^/]+$ {
+    default_type application/json;
+    if ($request_method != GET) {
+      return 404 '{"error":"EDGE_METHOD_NOT_ALLOWED","status":404,"request_id":"$request_id"}';
+    }
+    proxy_pass http://channel_service;
+  }
+
+  location ~ ^/api/v1/orders/sessions/[^/]+/otp/verify$ {
+    default_type application/json;
+    if ($request_method != POST) {
+      return 404 '{"error":"EDGE_METHOD_NOT_ALLOWED","status":404,"request_id":"$request_id"}';
+    }
+    proxy_pass http://channel_service;
+  }
+
+  location ~ ^/api/v1/orders/sessions/[^/]+/extend$ {
+    default_type application/json;
+    if ($request_method != POST) {
+      return 404 '{"error":"EDGE_METHOD_NOT_ALLOWED","status":404,"request_id":"$request_id"}';
+    }
+    proxy_pass http://channel_service;
+  }
+
+  location ~ ^/api/v1/orders/sessions/[^/]+/execute$ {
+    default_type application/json;
+    if ($request_method != POST) {
+      return 404 '{"error":"EDGE_METHOD_NOT_ALLOWED","status":404,"request_id":"$request_id"}';
+    }
+    proxy_pass http://channel_service;
+  }
+
+  location = /api/v1/notifications {
+    default_type application/json;
+    if ($request_method != GET) {
+      return 404 '{"error":"EDGE_METHOD_NOT_ALLOWED","status":404,"request_id":"$request_id"}';
+    }
+    proxy_pass http://channel_service;
+  }
+
+  location ~ ^/api/v1/notifications/[^/]+/read$ {
+    default_type application/json;
+    if ($request_method != PATCH) {
+      return 404 '{"error":"EDGE_METHOD_NOT_ALLOWED","status":404,"request_id":"$request_id"}';
+    }
+    proxy_pass http://channel_service;
+  }
+
+  location = /api/v1/notifications/stream {
+    default_type application/json;
+    if ($request_method != GET) {
+      return 404 '{"error":"EDGE_METHOD_NOT_ALLOWED","status":404,"request_id":"$request_id"}';
+    }
     proxy_pass http://channel_service;
     proxy_http_version 1.1;
     proxy_buffering off;
@@ -107,28 +366,8 @@ server {
     proxy_set_header Connection "";
   }
 
-  location /api/v1/channel/ {
-    proxy_pass http://channel_service;
-  }
-
-  location /api/v1/corebank/ {
-    proxy_pass http://corebank_service;
-  }
-
-  location /api/v1/fep/gateway/ {
-    proxy_pass http://fep_gateway;
-  }
-
-  location /api/v1/fep/simulator/ {
-    proxy_pass http://fep_simulator;
-  }
-
-  location = /_edge/upstream-probe {
-    proxy_pass http://edge_blackhole;
-  }
-
   location / {
     default_type application/json;
-    return 404 '{"error":"EDGE_ROUTE_NOT_ALLOWED","status":404}';
+    return 404 '{"error":"EDGE_ROUTE_NOT_ALLOWED","status":404,"request_id":"$request_id"}';
   }
 }

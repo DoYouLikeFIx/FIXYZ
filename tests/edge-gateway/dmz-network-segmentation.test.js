@@ -45,7 +45,7 @@ function extractServiceBlockBeforeTopLevelSection(compose, serviceName, nextSect
   return match[1];
 }
 
-test("DMZ mapping documents the active baseline host exposure and edge-visible exceptions", () => {
+test("DMZ mapping documents the current topology together with the active canonical public-edge contract", () => {
   const compose = readText(composePath);
   const edgeTemplate = readText(edgeTemplatePath);
   const dmzDoc = readText(dmzDocPath);
@@ -72,6 +72,7 @@ test("DMZ mapping documents the active baseline host exposure and edge-visible e
     assert.doesNotMatch(block, /\n\s*ports:\s*\n/);
   }
 
+  mustInclude(dmzDoc, "Story 12.6 updates the public edge route surface, but the full Epic 12 network segmentation overlay is not yet shipped.");
   mustInclude(dmzDoc, "- Host-exposed services:");
   mustInclude(dmzDoc, "- `channel-service:8080`");
   mustInclude(dmzDoc, "- `edge-gateway:80/443`");
@@ -91,30 +92,44 @@ test("DMZ mapping documents the active baseline host exposure and edge-visible e
     mustInclude(dmzDoc, `- \`${serviceName}\``);
   }
 
-  for (const exceptionPath of [
-    "/health/corebank",
-    "/health/fep-gateway",
-    "/health/fep-simulator",
-    "/api/v1/corebank/*",
-    "/api/v1/fep/gateway/*",
-    "/api/v1/fep/simulator/*",
-    "/_edge/upstream-probe",
-    "/api/v1/channel/*",
+  for (const publicSurface of [
+    "| `/health/channel` | only public edge-owned health path | proxied to `channel-service` health |",
+    "| `/api/v1/auth/*` | canonical public auth surface | proxied to `channel-service` with route-specific method enforcement |",
+    "| `/api/v1/members/me/totp/*` | canonical public MFA surface | proxied to `channel-service` with route-specific method enforcement |",
+    "| `/api/v1/orders/sessions*` | canonical public order-session surface | proxied to `channel-service` with route-specific method enforcement |",
+    "| `/api/v1/notifications*` | canonical public notification surface | proxied to `channel-service`; SSE remains enabled on `/api/v1/notifications/stream` |",
   ]) {
-    mustInclude(dmzDoc, `| \`${exceptionPath}\` |`);
+    mustInclude(dmzDoc, publicSurface);
   }
 
-  mustInclude(edgeTemplate, "location = /health/corebank");
-  mustInclude(edgeTemplate, "location = /health/fep-gateway");
-  mustInclude(edgeTemplate, "location = /health/fep-simulator");
-  mustInclude(edgeTemplate, "location /api/v1/channel/");
-  mustInclude(edgeTemplate, "location /api/v1/corebank/");
-  mustInclude(edgeTemplate, "location /api/v1/fep/gateway/");
-  mustInclude(edgeTemplate, "location /api/v1/fep/simulator/");
-  mustInclude(edgeTemplate, "location = /_edge/upstream-probe");
+  for (const deniedSurface of [
+    "| `/health/corebank` | deterministic public-edge deny | internal-only service probe |",
+    "| `/health/fep-gateway` | deterministic public-edge deny | internal-only service probe |",
+    "| `/health/fep-simulator` | deterministic public-edge deny | internal-only service probe |",
+    "| `/api/v1/channel/*` | deterministic public-edge deny by default | legacy alias; temporary retention requires a reviewed migration contract |",
+    "| `/api/v1/corebank/*` | deterministic public-edge deny | internal CoreBank API namespace |",
+    "| `/api/v1/fep/*` | deterministic public-edge deny | internal FEP API namespace |",
+    "| `/_edge/*` | deterministic public-edge deny | edge-private diagnostics stay non-public |",
+    "| `/internal/*` | deterministic public-edge deny | internal operator namespace |",
+    "| `/admin/*` | deterministic public-edge deny | privileged namespace |",
+    "| `/api/v1/admin/*` | deterministic public-edge deny | versioned privileged namespace |",
+    "| `/ops/dmz/*` | deterministic public-edge deny | operator control-plane namespace |",
+  ]) {
+    mustInclude(dmzDoc, deniedSurface);
+  }
+
+  mustInclude(edgeTemplate, "location = /health/channel");
+  mustInclude(edgeTemplate, "location = /api/v1/auth/csrf");
+  mustInclude(edgeTemplate, "location = /api/v1/members/me/totp/rebind");
+  mustInclude(edgeTemplate, "location = /api/v1/orders/sessions");
+  mustInclude(edgeTemplate, "location = /api/v1/notifications/stream");
+  mustInclude(edgeTemplate, "location ^~ /api/v1/channel/");
+  mustInclude(edgeTemplate, "location ^~ /api/v1/corebank/");
+  mustInclude(edgeTemplate, "location ^~ /api/v1/fep/");
+  mustInclude(edgeTemplate, "location ^~ /_edge/");
 });
 
-test("DMZ mapping documents target zones, explicit lane decisions, and future rollback triggers", () => {
+test("DMZ mapping keeps target zones, explicit lane decisions, and future rollback triggers visible", () => {
   const dmzDoc = readText(dmzDocPath);
 
   mustInclude(dmzDoc, "## Target DMZ Design");

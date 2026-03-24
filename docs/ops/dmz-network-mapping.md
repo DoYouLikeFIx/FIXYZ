@@ -2,11 +2,11 @@
 
 ## Status
 
-This document is a design artifact only. As of 2026-03-07, no Epic 12-specific DMZ runtime profile is shipped in this repository.
+Story 12.6 updates the public edge route surface, but the full Epic 12 network segmentation overlay is not yet shipped.
 
 ## Current Baseline (Active Runtime)
 
-The active runtime baseline remains Story 0.7:
+The current runtime topology still inherits the Story 0.7 local/dev baseline:
 
 - Network: `fix-net`
 - Host-exposed services:
@@ -25,35 +25,45 @@ The active runtime baseline remains Story 0.7:
 
 Profile notes:
 
-- `vault` and `vault-init` are part of the Story 0.7 local baseline only when the `local-vault` profile is enabled.
-- `redis-recovery-probe` is present only when the `ops-drills` profile is enabled for recovery/drill work.
+- `vault` and `vault-init` are part of the local baseline only when the `local-vault` profile is enabled.
+- `redis-recovery-probe` is present only when the `ops-drills` profile is enabled.
 
 Public-ingress note:
 
-- `edge-gateway` is the intended public ingress contract.
-- Direct host exposure of `channel-service:8080` exists in the current local/dev baseline and must be treated as a convenience path, not the future hardened perimeter contract.
-- The current Story 0.7 edge configuration still contains legacy proxy paths for internal health/API namespaces and a gateway-specific `/api/v1/channel/*` path shape. Epic 12 treats both as baseline exceptions, and the `/api/v1/channel/*` alias must be removed from hardened public ingress unless a reviewed migration ADR carries it temporarily with an explicit cutoff plan.
+- `edge-gateway` is the reviewed public ingress contract.
+- Direct host exposure of `channel-service:8080` remains a local/dev convenience path and is not part of the reviewed public ingress contract.
+- Canonical `/api/v1/auth/*`, `/api/v1/members/me/totp/*`, `/api/v1/orders/sessions*`, and `/api/v1/notifications*` routes are now available on the public edge.
+- Legacy `/api/v1/channel/*` forwarding is denied by default on the public edge unless a reviewed migration contract says otherwise.
 
-Current edge-visible baseline paths and exceptions:
+## Current Edge-Visible Public Routes
 
-This inventory is derived from the active Story 0.7 edge configuration in `docker/nginx/templates/fixyz-edge.conf.template`.
-
-| Current edge-visible path | Current behavior in Story 0.7 baseline | Epic 12 treatment |
+| Public edge route family | Current behavior | Runtime target |
 |---|---|---|
-| `/health/channel` | proxied to `channel-service` health | keep as the reviewed edge-owned health path; do not reclassify as an internal namespace route |
-| `/health/corebank` | proxied to `corebank-service` health | remove from public edge in hardened mode |
-| `/health/fep-gateway` | proxied to `fep-gateway` health | remove from public edge in hardened mode |
-| `/health/fep-simulator` | proxied to `fep-simulator` health | remove from public edge in hardened mode |
-| `/api/v1/channel/notifications/stream` | explicit edge alias to channel SSE stream | replace with canonical `/api/v1/notifications/stream` or carry only under an ADR-backed migration exception |
-| `/api/v1/channel/*` | legacy gateway-side alias for remaining channel traffic | deny/remove from hardened public ingress by default; only a reviewed migration ADR may carry it temporarily with synchronized spec updates and cutoff date |
-| `/api/v1/corebank/*` | proxied to internal CoreBank API namespace | remove from public edge in hardened mode |
-| `/api/v1/fep/gateway/*` | proxied to internal FEP Gateway API namespace | remove from public edge in hardened mode |
-| `/api/v1/fep/simulator/*` | proxied to internal FEP Simulator API namespace | remove from public edge in hardened mode |
-| `/_edge/upstream-probe` | diagnostic probe routed by edge only | keep private or remove from public listener |
+| `/health/channel` | only public edge-owned health path | proxied to `channel-service` health |
+| `/api/v1/auth/*` | canonical public auth surface | proxied to `channel-service` with route-specific method enforcement |
+| `/api/v1/members/me/totp/*` | canonical public MFA surface | proxied to `channel-service` with route-specific method enforcement |
+| `/api/v1/orders/sessions*` | canonical public order-session surface | proxied to `channel-service` with route-specific method enforcement |
+| `/api/v1/notifications*` | canonical public notification surface | proxied to `channel-service`; SSE remains enabled on `/api/v1/notifications/stream` |
+
+## Current Edge Deny-Only Surface
+
+| Public edge path | Current behavior | Reason |
+|---|---|---|
+| `/health/corebank` | deterministic public-edge deny | internal-only service probe |
+| `/health/fep-gateway` | deterministic public-edge deny | internal-only service probe |
+| `/health/fep-simulator` | deterministic public-edge deny | internal-only service probe |
+| `/api/v1/channel/*` | deterministic public-edge deny by default | legacy alias; temporary retention requires a reviewed migration contract |
+| `/api/v1/corebank/*` | deterministic public-edge deny | internal CoreBank API namespace |
+| `/api/v1/fep/*` | deterministic public-edge deny | internal FEP API namespace |
+| `/_edge/*` | deterministic public-edge deny | edge-private diagnostics stay non-public |
+| `/internal/*` | deterministic public-edge deny | internal operator namespace |
+| `/admin/*` | deterministic public-edge deny | privileged namespace |
+| `/api/v1/admin/*` | deterministic public-edge deny | versioned privileged namespace |
+| `/ops/dmz/*` | deterministic public-edge deny | operator control-plane namespace |
 
 ## Target DMZ Design
 
-Epic 12 keeps the intended future segmentation model documented even though the runtime assets were removed:
+Epic 12 keeps the intended future segmentation model documented even though the runtime overlay has not shipped yet:
 
 | Review zone | Owner services | Host exposure in hardened mode | Allowed ingress/egress |
 |---|---|---|---|
@@ -87,8 +97,8 @@ Service-level allowed flow inventory for the future hardened topology:
 Epic 12 uses three review zones, but the architecture document still uses four canonical lanes.
 The relationship must stay explicit:
 
-- Decision: Epic 12 does not introduce a new canonical lane between edge and channel. The `edge` and `application` review zones intentionally share `external-net`; that is an explicit governance split over one runtime lane, not an undocumented deployment shortcut.
-- Decision: Epic 12 intentionally collapses `core-net`, `gateway-net`, and `fep-net` into one `core-private` review zone for review and ownership purposes only. Runtime changes must keep the underlying canonical lanes explicit even when the review package groups them together.
+- The `edge` and `application` review zones intentionally share `external-net`; this is a governance split over one runtime lane, not an undocumented shortcut.
+- Epic 12 intentionally collapses `core-net`, `gateway-net`, and `fep-net` into one `core-private` review zone for review and ownership only.
 
 | Epic 12 Review Zone | Canonical Architecture Lane Mapping | Notes |
 |---|---|---|
@@ -118,17 +128,13 @@ Non-local Vault note:
 
 ## Future Implementation Requirements
 
-When Epic 12 implementation resumes, the new runtime change must use the following runtime-spec contract:
+When the runtime overlay is introduced, the reviewed change must:
 
-1. Runtime specification type: a repository-owned DMZ deployment overlay reviewed together with the base runtime definition for the same environment.
-2. If the local/staging path uses Docker Compose, the repository-owned overlay filename defaults to `docker-compose.dmz.yml`; any non-compose runtime surface requires an ADR in the same change that names the replacement manifest type and ownership boundary.
-3. Preserve the current Story 0.7 baseline until the new runtime specification is approved and validated.
+1. Use a repository-owned DMZ deployment overlay reviewed together with the base runtime definition for the same environment.
+2. Default to `docker-compose.dmz.yml` only if the reviewed implementation resumes with Docker Compose; any non-compose runtime surface requires an ADR in the same change.
+3. Preserve the current Story 0.7 topology until the new runtime specification is approved and validated.
 4. Document host-exposure changes, service membership, verification evidence, and rollback behavior in the same change as the runtime specification.
-5. Include explicit verification steps for:
-   - host-exposed surface
-   - east-west connectivity
-   - private dependency reachability
-   - rollback success
+5. Include explicit verification steps for host-exposed surface, east-west connectivity, private dependency reachability, and rollback success.
 6. Use the following rollback triggers for any future DMZ rollout:
    - `channel-service` or any private service is reachable on an unintended direct host port
    - `edge-gateway` cannot reach `channel-service` for approved public routes or `/health/channel`
@@ -140,6 +146,5 @@ When Epic 12 implementation resumes, the new runtime change must use the followi
 
 ## Migration Planning Notes
 
-- Treat this document as the canonical topology design for Story 12.1.
-- Story 12.1 must explicitly name the future repository-owned runtime specification. `docker-compose.dmz.yml` is only the default if the reviewed implementation resumes with Docker Compose.
+- Treat this document as the canonical topology design for Story 12.1 and the current topology reference for Story 12.6.
 - Any future runtime change must update this document together with the implementation change.
