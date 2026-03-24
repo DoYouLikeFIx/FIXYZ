@@ -475,6 +475,8 @@ Matching runs synchronously inside CoreBanking `@Transactional` during MVP. Asyn
 - Unrealized PnL = `(markPrice - avg_cost) * quantity`
 - Realized PnL = `(sellPrice - avg_cost) * soldQty`
 - Fees and taxes are explicitly out of MVP scope
+- Read-only valuation inquiries use the same formulas only when quote freshness is trustworthy; stale or unavailable quotes degrade with `200 OK`, explicit freshness metadata, and `null` market-derived values instead of failing the read.
+- `MARKET` order prepare/execute continues to fail closed on stale or missing quote snapshots.
 
 **ClOrdID Idempotency:** `ClOrdID` is client-generated UUID v4 (FIX Tag 11) and stored under a `UNIQUE INDEX`. Duplicate submission must return the original result with HTTP 200 and must never create a second fill.
 
@@ -1391,7 +1393,7 @@ jobs:
 - **FR-43:** System can protect concurrent position modifications at `(account_id, symbol)` scope such that different symbols do not block each other while no modification can result in negative position quantity (no oversell)
 - **FR-44:** System can guarantee that position updates for a single order are recorded atomically so that either both the fill record and position update exist or neither exists
 - **FR-55:** System can compute and expose unrealized and realized PnL per symbol using documented formulas and timestamped market data snapshots
-- **FR-56:** System can reject order-prepare or valuation requests when quote snapshot freshness exceeds configured staleness threshold
+- **FR-56:** System can reject order-prepare or execute requests when quote snapshot freshness exceeds configured staleness threshold, while read-only valuation inquiries degrade gracefully with explicit freshness semantics
 
 ### Fault Tolerance & Resilience
 
@@ -1570,7 +1572,7 @@ jobs:
   ```
 
 - **NFR-D2:** Market-data-backed valuation and MARKET pre-check must use quote snapshots with bounded staleness.
-  _Measurement: stale snapshot (`now - quoteAsOf > maxQuoteAgeMs`) causes deterministic validation failure; replay mode generates deterministic `quoteAsOf` values in CI._
+  _Measurement: stale snapshot (`now - quoteAsOf > maxQuoteAgeMs`) causes deterministic validation failure for order prepare/execute, while read-only valuation inquiry returns deterministic `STALE` or `UNAVAILABLE` freshness status with the documented nullability contract; replay mode generates deterministic `quoteAsOf` values in CI._
 
 ### UX
 

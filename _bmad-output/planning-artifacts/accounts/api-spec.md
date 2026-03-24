@@ -34,6 +34,14 @@ AI Agent가 즉각적으로 코드를 스캐폴딩(Scaffolding)하고 기능을 
   - retriable: `CORE-901`(timeout), `CORE-902`(dependency unavailable)
   - non-retriable: `AUTH-005`, `CORE_001`, `VALIDATION_001`
 
+### Story 2.7 평가/PnL 계약 명확화 (2026-03-24)
+- Story 2.7은 `[API-CH-04]` / `[API-CH-05]`의 **read-side valuation contract**를 확장한다.
+- 조회 API는 stale/unavailable quote 때문에 `VALIDATION-003`를 반환하지 않는다. 대신 `200 OK`와 explicit freshness semantics를 반환한다.
+- `VALIDATION-003 (STALE_QUOTE)`는 `MARKET` 주문의 prepare/execute 검증에만 계속 적용된다.
+- `valuationStatus`: `FRESH` | `STALE` | `UNAVAILABLE`
+- `valuationUnavailableReason`: `null` on `FRESH`, `STALE_QUOTE` on `STALE`, `QUOTE_MISSING` or `PROVIDER_UNAVAILABLE` on `UNAVAILABLE`
+- Zero-position read (`quantity=0`)에서는 `avgPrice=null`, `unrealizedPnl=0.0000`, `realizedPnlDaily`는 당일 동일 종목 실현손익 또는 `0.0000`을 사용한다.
+
 ---
 
 ## 📱 Part 1. 채널계 호출 API (Inbound from Channel)
@@ -105,10 +113,13 @@ AI Agent가 즉각적으로 코드를 스캐폴딩(Scaffolding)하고 기능을 
     "asOf": "2026-03-04T09:10:00Z",
     "avgPrice": 75000.0000,
     "marketPrice": 70200.0000,
+    "quoteSnapshotId": "qsnap-20260304-091000-005930",
     "quoteAsOf": "2026-03-04T09:10:00Z",
     "quoteSourceMode": "DELAYED",
     "unrealizedPnl": -240000.0000,
-    "realizedPnlDaily": 120000.0000
+    "realizedPnlDaily": 120000.0000,
+    "valuationStatus": "FRESH",
+    "valuationUnavailableReason": null
   }
   ```
 * **Contract Rule (중요):**
@@ -117,6 +128,10 @@ AI Agent가 즉각적으로 코드를 스캐폴딩(Scaffolding)하고 기능을 
   * `balance`는 canonical이다.
   * `availableBalance`는 호환 alias이며 항상 `availableBalance == balance`를 만족해야 한다.
   * `memberId`는 클라이언트 입력값이 아니라 channel-service 세션(`AUTH_MEMBER_ID`)에서 유도된 값만 허용한다.
+  * `valuationStatus=FRESH`일 때 `marketPrice`, `quoteSnapshotId`, `quoteAsOf`, `quoteSourceMode`, `unrealizedPnl`, `realizedPnlDaily`가 모두 존재하고 `valuationUnavailableReason=null`이어야 한다.
+  * `valuationStatus=STALE`일 때 stale snapshot honesty를 위해 `quoteSnapshotId`, `quoteAsOf`, `quoteSourceMode`는 유지하고, `marketPrice`, `unrealizedPnl`, `realizedPnlDaily`는 `null`, `valuationUnavailableReason=STALE_QUOTE`를 반환한다.
+  * `valuationStatus=UNAVAILABLE`일 때 `marketPrice`, `quoteSnapshotId`, `quoteAsOf`, `quoteSourceMode`, `unrealizedPnl`, `realizedPnlDaily`는 `null`이며 `valuationUnavailableReason`은 `QUOTE_MISSING` 또는 `PROVIDER_UNAVAILABLE`이다.
+  * 보유 수량이 `0`이거나 포지션 행이 없으면 `avgPrice=null`, `unrealizedPnl=0.0000`, `realizedPnlDaily`는 동일 종목 당일 실현손익 또는 `0.0000`을 사용한다.
 * **Error Rule (고정):**
   * 소유권 불일치: `403 AUTH-005`
   * downstream timeout/unavailable: `CORE-901`/`CORE-902` (retriable)
@@ -130,7 +145,9 @@ AI Agent가 즉각적으로 코드를 스캐폴딩(Scaffolding)하고 기능을 
 > - 평균단가(`avgPrice`)는 **가중평균** 방식으로 계산한다. (DB 컬럼 매핑: `positions.avg_cost`)
 > - `unrealizedPnl = (marketPrice - avgPrice) * quantity`
 > - `realizedPnlDaily = Σ((sellPrice - avgPrice_at_sell) * soldQty)` (수수료/세금 제외, MVP 가정)
-> - `quoteAsOf`가 stale 임계치(`maxQuoteAgeMs`)를 넘으면 `marketPrice` 기반 계산값은 응답에 포함하지 않고 `VALIDATION-003 (STALE_QUOTE)` 에러로 처리한다.
+> - 조회 API에서 `quoteAsOf`가 stale 임계치(`maxQuoteAgeMs`)를 넘으면 `marketPrice` 기반 계산값은 응답에 포함하지 않고 `valuationStatus=STALE`, `valuationUnavailableReason=STALE_QUOTE`로 반환한다.
+> - 조회 API에서 quote snapshot을 얻지 못하면 `valuationStatus=UNAVAILABLE`, `valuationUnavailableReason=QUOTE_MISSING|PROVIDER_UNAVAILABLE`를 반환한다.
+> - `MARKET` 주문 prepare/execute는 기존대로 stale or missing quote에 대해 `VALIDATION-003 (STALE_QUOTE)`로 fail-closed 한다.
 
 ### 1.3 주문 체결 및 실행
 OTP 검증 통과 후, 로컬 canonical 체결을 먼저 확정하고 외부 동기화를 수행하는 핵심 API입니다.

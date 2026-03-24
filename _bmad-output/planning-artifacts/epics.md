@@ -102,6 +102,7 @@ To avoid over-scoping and to produce a demonstrable working core early, implemen
 
 - Story 5.3 / 6.x: external sync semantics and recovery hardening
 - Story 7.8 (new): operations monitoring dashboard MVP
+- Story 0.16 (new): Prometheus/Grafana observability stack bootstrap
 - Story 10.x: release gates and readiness evidence packaging
 - Story 11.x: market data determinism and quote freshness hardening
 - Story 12.x: DMZ boundary hardening and controlled-exposure operations (planning default Medium; move to Low only with explicit risk-acceptance record)
@@ -127,6 +128,10 @@ Provides the common development foundation (module structure, execution infrastr
 - Story 0.10: Database High Availability and Replication Baseline
 - Story 0.11: Supply Chain Security Baseline
 - Story 0.12: Redis Recovery and Self-Healing Baseline
+- Story 0.13: Vault Production Separation and External Operations
+- Story 0.14: Vault External Cutover Rehearsal and Audit Evidence
+- Story 0.15: Mobile Edge Parity and Physical-Device Transport Hardening
+- Story 0.16: Prometheus/Grafana Observability Stack Bootstrap
 
 ### Epic 1: Channel Auth & Session Platform
 
@@ -763,6 +768,35 @@ So that simulator workflows stay fast while shared QA and physical-device traffi
 - **Given** mobile runtime documentation is reviewed
   **When** Story 0.15 is completed
   **Then** `MOB/README.md` and runtime-option docs explicitly distinguish direct-dev mode, edge mode, and physical-device prerequisites.
+
+### Story 0.16: [OPS][INT] Prometheus/Grafana Observability Stack Bootstrap
+
+As a **platform engineer**,
+I want a repo-owned Prometheus and Grafana stack with provisioned dashboards and stable monitoring URLs,
+So that admin monitoring and release smoke checks run against a real observability surface.
+
+**Depends On:** Story 0.9
+
+**Acceptance Criteria:**
+
+- **Given** the observability profile is enabled
+  **When** the compose stack starts
+  **Then** Prometheus and Grafana containers become healthy with persistent storage and documented local-operator access endpoints.
+- **Given** Channel/CoreBank/FEP services expose Prometheus metrics
+  **When** Prometheus scrapes the compose network
+  **Then** all required scrape targets are reachable over the internal Docker network and report `UP`.
+- **Given** the current services use a mix of same-port and separated management ports
+  **When** scrape access is wired
+  **Then** Prometheus can reach canonical `/actuator/prometheus` endpoints without exposing internal management ports on the public edge or host by default.
+- **Given** Grafana provisioning files are present
+  **When** Grafana starts
+  **Then** the Prometheus datasource and repo-owned operations dashboards are auto-provisioned with stable dashboard UIDs and panel IDs for `executionVolume`, `pendingSessions`, and `marketDataIngest`.
+- **Given** the existing FE monitoring descriptor contract
+  **When** local or deployed environment templates are generated
+  **Then** `VITE_ADMIN_MONITORING_PANELS_JSON` resolves to real Grafana links and drill-down URLs instead of placeholders.
+- **Given** the observability stack is restarted or re-provisioned
+  **When** validation and runbook steps are executed
+  **Then** dashboards, datasource wiring, and recovery guidance remain reproducible with no manual Grafana UI-only setup.
 
 ---
 
@@ -1450,22 +1484,28 @@ So that I can interpret portfolio performance without trusting stale market data
 
 - **Given** valid owned account inquiry and fresh valuation inputs  
   **When** position or portfolio inquiry is requested  
-  **Then** the response includes `avgPrice`, `marketPrice`, `quoteSnapshotId`, `quoteAsOf`, `quoteSourceMode`, `unrealizedPnl`, `realizedPnlDaily`, and `valuationStatus=FRESH` alongside existing quantity/balance fields.
+  **Then** the response includes `avgPrice`, `marketPrice`, `quoteSnapshotId`, `quoteAsOf`, `quoteSourceMode`, `unrealizedPnl`, `realizedPnlDaily`, `valuationStatus=FRESH`, and `valuationUnavailableReason=null` alongside existing quantity/balance fields.
 - **Given** BUY and SELL executions already exist for the symbol  
   **When** valuation fields are computed  
   **Then** `avgPrice`, `unrealizedPnl`, and `realizedPnlDaily` follow the documented MVP formulas and use deterministic DECIMAL scale consistent with the account inquiry contract.
-- **Given** the latest quote snapshot is stale or unavailable for valuation  
+- **Given** the latest quote snapshot is stale for valuation  
   **When** the inquiry is processed  
-  **Then** the API still returns `200 OK`, preserves non-market-derived fields (`quantity`, `availableQuantity`, `balance`, `availableBalance`, `currency`, `asOf`, `avgPrice`), returns `marketPrice`, `unrealizedPnl`, and `realizedPnlDaily` as `null`, sets `valuationStatus` to `STALE` or `UNAVAILABLE`, and populates `valuationUnavailableReason` with a canonical reason code.
+  **Then** the API still returns `200 OK`, preserves non-market-derived fields (`quantity`, `availableQuantity`, `balance`, `availableBalance`, `currency`, `asOf`, `avgPrice`), preserves `quoteSnapshotId`, `quoteAsOf`, and `quoteSourceMode` from the stale snapshot for honesty, returns `marketPrice`, `unrealizedPnl`, and `realizedPnlDaily` as `null`, sets `valuationStatus=STALE`, and sets `valuationUnavailableReason=STALE_QUOTE`.
+- **Given** no quote snapshot is available for valuation or the quote provider is unavailable  
+  **When** the inquiry is processed  
+  **Then** the API still returns `200 OK`, preserves non-market-derived fields (`quantity`, `availableQuantity`, `balance`, `availableBalance`, `currency`, `asOf`, `avgPrice`), returns `marketPrice`, `quoteSnapshotId`, `quoteAsOf`, `quoteSourceMode`, `unrealizedPnl`, and `realizedPnlDaily` as `null`, sets `valuationStatus=UNAVAILABLE`, and sets `valuationUnavailableReason` to `QUOTE_MISSING` or `PROVIDER_UNAVAILABLE`.
 - **Given** a non-owned account request  
   **When** authorization is evaluated using server-owned member/session identity  
   **Then** the API returns deterministic `403 AUTH-005` and discloses no position, valuation, or PnL fields.
 - **Given** concurrent executions or position mutations are in progress  
   **When** inquiry reads occur  
   **Then** quantity, balance, average price, and valuation-state fields are returned from one transactionally coherent snapshot without contradictory cash/position/PnL combinations.
+- **Given** the account has no open position row for the symbol or the symbol quantity is `0` and a fresh quote is available  
+  **When** the inquiry is requested  
+  **Then** `quantity` and `availableQuantity` remain `0`, `avgPrice` is `null`, `marketPrice` plus quote metadata still reflect the fresh snapshot, `unrealizedPnl=0.0000`, and `realizedPnlDaily` remains the deterministic same-day realized PnL for the symbol or `0.0000` when no same-day sell executions exist.
 - **Given** the valuation contract is changed or extended  
   **When** OpenAPI generation and compatibility verification run  
-  **Then** channel/corebank specs remain aligned on nullable stale behavior and canonical enum values for `valuationStatus` and `valuationUnavailableReason`.
+  **Then** channel/corebank specs remain aligned on nullable stale behavior, zero-position behavior, and canonical enum values for `valuationStatus` and `valuationUnavailableReason`.
 
 ### Story 2.8: [FE/MOB][CH] Portfolio PnL Visibility & Stale Valuation Guidance
 
