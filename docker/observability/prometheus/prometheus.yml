@@ -1,0 +1,28 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: channel-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - channel-service:18080
+
+  - job_name: corebank-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - corebank-service:19081
+
+  - job_name: fep-gateway
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - fep-gateway:18083
+
+  - job_name: fep-simulator
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - fep-simulator:18082
