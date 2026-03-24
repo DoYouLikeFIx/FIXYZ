@@ -1,10 +1,10 @@
-# generated: 2026-03-20 20:49
+# generated: 2026-03-24 12:29
 # project: fix
 # project_key: FIX
 # tracking_system: file-system
 # artifact_model: hybrid
 
-generated: 2026-03-20 20:49
+generated: 2026-03-24 12:29
 project: fix
 project_key: FIX
 tracking_system: file-system
@@ -15,14 +15,19 @@ notes:
   - Epic 1 and Epic 5 use standalone story markdown files plus epic companion documents.
   - Epic 1 baseline stories 1.1~1.10 remain done, Google Authenticator rollout scope is tracked through Story 1.11~1.15, and password recovery challenge hardening follow-on is tracked through Story 1.16~1.19.
   - Epic 2 is reopened for Story 2.7 and Story 2.8 so FR-55/FR-56 valuation and PnL scope matches the canonical account inquiry contract.
+<<<<<<< HEAD
   - Story 2.8 now has FE and MOB parity evidence for valuation visibility and stale valuation guidance, so the earlier MOB-first deferment is closed.
   - Story 12.6 is done, and Story 0.15 remains the next edge-mode/mobile parity dependency in the Epic 12 sequence once its blocker is cleared.
+=======
+  - Story 12.6 is done, and Story 0.15 is now done after QA PASS and final review-fix verification closed the edge-mode/mobile parity lane.
+>>>>>>> d3f25c4c56705f7f67df1eefe5cb249338daae65
   - Epic 12 execution sequence is fixed as Story 12.4 -> Story 12.6 -> Story 0.15 -> Story 12.5.
-  - Story 12.5 is blocked until Stories 12.6 and 0.15 are done because its promotion evidence is explicitly post-runtime-re-entry and post-client-parity.
+  - Story 12.5 is no longer blocked because Stories 12.6 and 0.15 are done, and its governance/evidence baseline plus regression coverage are now complete.
+  - Epic 12 core story sequence is complete; actual release promotion still requires fresh same-environment `live-external` drill evidence at execution time.
   - Canonical story scope lives in _bmad-output/planning-artifacts/epics.md.
 
 development_status:
-  epic-0: in-progress
+  epic-0: done
   0-1-be-core-platform-baseline: done
   0-2-be-test-ci-foundation: done
   0-3-fe-frontend-foundation-scaffold: done
@@ -37,8 +42,14 @@ development_status:
   0-12-redis-recovery-and-self-healing-baseline: done
   0-13-vault-production-separation-and-external-operations: done
   0-14-vault-external-cutover-rehearsal-and-audit-evidence: done
+<<<<<<< HEAD
   0-15-mobile-edge-parity-and-physical-device-transport-hardening: blocked
   0-16-prometheus-grafana-observability-stack-bootstrap: review
+=======
+  0-15-mobile-edge-parity-and-physical-device-transport-hardening: done
+  0-16-prometheus-grafana-observability-stack-bootstrap: in-progress
+
+>>>>>>> d3f25c4c56705f7f67df1eefe5cb249338daae65
   epic-0-retrospective: optional
 
   epic-1: in-progress
@@ -57,10 +68,10 @@ development_status:
   1-13-mob-mobile-google-authenticator-enrollment-and-login-mfa-flow: done
   1-14-be-mfa-recovery-rebind-and-session-invalidation: done
   1-15-fe-mob-mfa-recovery-and-error-ux-alignment: done
-  1-16-be-real-password-recovery-challenge-provider-and-verification: review
-  1-17-fe-web-real-password-recovery-challenge-ux: review
-  1-18-mob-mobile-real-password-recovery-challenge-ux: review
-  1-19-recovery-challenge-abuse-defense-validation-and-ops-evidence: review
+  1-16-be-real-password-recovery-challenge-provider-and-verification: done
+  1-17-fe-web-real-password-recovery-challenge-ux: done
+  1-18-mob-mobile-real-password-recovery-challenge-ux: done
+  1-19-recovery-challenge-abuse-defense-validation-and-ops-evidence: done
   epic-1-retrospective: optional
 
   epic-2: in-progress
@@ -140,7 +151,7 @@ development_status:
   9-1-execution-orchestration: done
   9-2-end-state-normalization: done
   9-3-recovery-scheduler-integration: done
-  9-4-cross-system-idempotency-reconciliation: review
+  9-4-cross-system-idempotency-reconciliation: done
   9-5-integrated-final-state-and-retry-ux: done
   9-6-integrated-final-state-and-retry-ux: done
   epic-9-retrospective: optional
@@ -154,23 +165,23 @@ development_status:
   10-6-mobile-release-readiness-pack: ready-for-dev
   epic-10-retrospective: optional
 
-  epic-11: backlog
-  11-1-market-data-source-adapter-live-delayed-replay: ready-for-dev
-  11-2-quote-snapshot-freshness-guard: ready-for-dev
-  11-3-replay-timeline-controller: ready-for-dev
-  11-4-market-order-sweep-matching-validation: ready-for-dev
-  11-5-web-mob-quote-freshness-and-source-visibility-ux: review
-  11-6-be-orderbook-query-and-sorting-contract: ready-for-dev
-  11-7-be-matching-engine-core-limit-market-rules: ready-for-dev
-  11-8-be-multi-execution-persistence-and-order-state-transitions: ready-for-dev
-  11-9-be-matching-contract-and-integration-regression-suite: ready-for-dev
+  epic-11: done
+  11-1-market-data-source-adapter-live-delayed-replay: done
+  11-2-quote-snapshot-freshness-guard: done
+  11-3-replay-timeline-controller: done
+  11-4-market-order-sweep-matching-validation: done
+  11-5-web-mob-quote-freshness-and-source-visibility-ux: done
+  11-6-be-orderbook-query-and-sorting-contract: done
+  11-7-be-matching-engine-core-limit-market-rules: done
+  11-8-be-multi-execution-persistence-and-order-state-transitions: done
+  11-9-be-matching-contract-and-integration-regression-suite: done
   epic-11-retrospective: optional
 
-  epic-12: in-progress
+  epic-12: done
   12-1-dmz-network-segmentation-profile: done
   12-2-edge-perimeter-policy-hardening: done
   12-3-service-boundary-trust-hardening-secret-rotation-mtls-readiness: done
   12-4-admin-access-control-path-for-dmz-operations: done
+  12-5-dmz-security-drill-and-evidence-gate: done
   12-6-canonical-public-edge-route-enablement: done
-  12-5-dmz-security-drill-and-evidence-gate: blocked
   epic-12-retrospective: optional

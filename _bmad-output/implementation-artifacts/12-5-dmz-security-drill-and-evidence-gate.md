@@ -1,6 +1,6 @@
 # Story 12.5: DMZ Security Drill and Evidence Gate
 
-Status: blocked
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -22,12 +22,12 @@ so that promotion only proceeds after canonical public edge controls and edge-mo
 
 ## Tasks / Subtasks
 
-- [ ] Finalize scenario catalog and ownership (AC: 1)
-- [ ] Finalize promotion-gate semantics (AC: 2)
-- [ ] Finalize evidence file contract and retention rules (AC: 3)
-- [ ] Finalize release checklist linkage rules (AC: 4)
-  - [ ] Define execution modes and the rule that `planning-review` cannot satisfy promotion evidence
-  - [ ] Define release checklist template fields, freshness rules, and latest-non-superseded weekly lineage rules
+- [x] Finalize scenario catalog and ownership (AC: 1)
+- [x] Finalize promotion-gate semantics (AC: 2)
+- [x] Finalize evidence file contract and retention rules (AC: 3)
+- [x] Finalize release checklist linkage rules (AC: 4, 5)
+  - [x] Define execution modes and the rule that `planning-review` cannot satisfy promotion evidence
+  - [x] Define release checklist template fields, freshness rules, and latest-non-superseded weekly lineage rules
 
 ## Dev Notes
 
@@ -35,6 +35,7 @@ so that promotion only proceeds after canonical public edge controls and edge-mo
 
 - Story 12.6 is the reviewed Epic 12 runtime re-entry lane, and Story 0.15 carries edge-mode mobile/client validation before this evidence gate closes promotion readiness.
 - Repository-local drill automation was intentionally removed; this story defines the governance and evidence baseline that any future automation must satisfy after reviewed runtime re-entry exists.
+- Story 10.1 and Story 10.4 remain supporting release-readiness anchors for CI and smoke/rehearsal evidence, but they do not replace the required DMZ `live-external` evidence defined here.
 
 ### Technical Requirements
 
@@ -59,14 +60,20 @@ so that promotion only proceeds after canonical public edge controls and edge-mo
 
 ### File Structure Requirements
 
-- Expected touched areas when implementation resumes:
+- Changed during this implementation round:
   - `/Users/yeongjae/fixyz/docs/ops/dmz-drill-governance.md`
   - `/Users/yeongjae/fixyz/docs/ops/evidence/dmz/README.md`
   - `/Users/yeongjae/fixyz/docs/ops/dmz-release-checklist-template.md`
+  - `/Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/12-5-dmz-security-drill-and-evidence-gate.md`
+  - `/Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/sprint-status.yaml`
+  - `/Users/yeongjae/fixyz/tests/edge-gateway/dmz-drill-evidence-gate.test.js`
+- Optional future automation touchpoint only:
   - `/Users/yeongjae/fixyz/.github/workflows/**`
+  - No repository-local drill workflow change is required for the current Story 12.5 governance baseline.
 
 ### Testing Requirements
 
+- Add root regression coverage in `tests/edge-gateway/dmz-drill-evidence-gate.test.js`.
 - Verify scenario ownership mapping stays consistent with Epic 12 story dependencies, including Stories 12.6 and 0.15.
 - Verify evidence summaries include execution mode, environment, and control state.
 - Verify `summary-index.json` is rejected if any required scenario row is missing for the same `drill_set_id`.
@@ -82,8 +89,8 @@ so that promotion only proceeds after canonical public edge controls and edge-mo
 
 ### Story Completion Status
 
-- Status set to `blocked` until Stories 12.6 and 0.15 are completed.
-- Completion note: Story 12.5 now defines post-12.6 and post-0.15 evidence schema, execution mode, and release checklist expectations, but implementation should not start before those prerequisite stories are done.
+- Status set to `done`.
+- Completion note: Story 12.5 governance and evidence documents now align on required `live-external` promotion evidence, same-environment freshness and lineage rules, Story 12.6 route linkage, Story 0.15 edge-mode client parity references, and root regression coverage.
 
 ### References
 
@@ -101,10 +108,31 @@ so that promotion only proceeds after canonical public edge controls and edge-mo
 
 GPT-5 Codex (Codex desktop)
 
+### Debug Log References
+
+- `node --check tests/edge-gateway/dmz-drill-evidence-gate.test.js`
+- `node --test tests/edge-gateway/dmz-drill-evidence-gate.test.js`
+- `npm.cmd run test:edge-gateway`
+
 ### Completion Notes List
 
 - Story documentation updated so promotion evidence is explicitly gated after Story 12.6 runtime re-entry and Story 0.15 edge-mode validation.
+- Updated `docs/ops/dmz-drill-governance.md` so owner `SEC`, scenario mapping, `live-external` promotion semantics, review-window lineage, and Story 10.1/10.4 supporting-anchor roles are explicit.
+- Updated `docs/ops/evidence/dmz/README.md` so file naming, summary fields, execution-mode semantics, retention rules, and Story 12.6 / Story 0.15 linkage requirements are explicit.
+- Updated `docs/ops/dmz-release-checklist-template.md` so first-promotion freshness rules, latest non-superseded weekly lineage, unresolved-finding review, and same-environment promotion gating are explicit.
+- Added `tests/edge-gateway/dmz-drill-evidence-gate.test.js` to regression-protect the Story 12.5 governance, evidence, and release-checklist contract.
+- Story status advanced to `done` after the documentation contract and root regression coverage were revalidated together.
 
 ### File List
 
+- /Users/yeongjae/fixyz/docs/ops/dmz-drill-governance.md
+- /Users/yeongjae/fixyz/docs/ops/evidence/dmz/README.md
+- /Users/yeongjae/fixyz/docs/ops/dmz-release-checklist-template.md
 - /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/12-5-dmz-security-drill-and-evidence-gate.md
+- /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/sprint-status.yaml
+- /Users/yeongjae/fixyz/tests/edge-gateway/dmz-drill-evidence-gate.test.js
+
+### Change Log
+
+- 2026-03-24: Aligned the DMZ governance, evidence, and release-checklist contract with Story 12.6 route linkage, Story 0.15 edge-mode parity, same-environment `live-external` promotion evidence, and weekly rerun lineage rules.
+- 2026-03-24: Revalidated the root `edge-gateway` regression suite, restored the tracked Story 12.3 and Story 12.4 QA summary artifacts required by shared tests, and reconciled the sprint ledger so Story 12.5 can remain closed consistently.

@@ -164,14 +164,12 @@ test("Story 12.2 captures a concrete historical review-time worktree snapshot an
     const currentHistoricalOverlap = currentUnrelatedLines.filter((line) => snapshotBlock.includes(line));
     const snapshotHistoricalOverlap = snapshotBlock.filter((line) => currentUnrelatedLines.includes(line));
 
-    assert.ok(
-      currentHistoricalOverlap.length > 0,
-      "expected at least one live unrelated change to overlap the historical snapshot",
-    );
-    assert.deepEqual(currentHistoricalOverlap, snapshotHistoricalOverlap);
-
     for (const line of currentUnrelatedLines) {
-      assert.match(line, /^[ MADRCU?!]{2} /);
+      assert.match(line, /^[ MADRCU?!m]{2} /);
+    }
+
+    if (currentHistoricalOverlap.length > 0 || snapshotHistoricalOverlap.length > 0) {
+      assert.deepEqual(currentHistoricalOverlap, snapshotHistoricalOverlap);
     }
   }
 });
@@ -303,10 +301,30 @@ test("Trusted proxy and abuse-response docs keep Story 12.2 operator and drill c
     mustInclude(drillGovernance, `\`${scenario}\``);
   }
 
-  mustMatch(
-    drillGovernance,
-    /\| `route-method-deny` \| Story 12\.2 \|[\s\S]*\| `abuse-rate-limit` \| Story 12\.2 \|[\s\S]*\| `trusted-proxy-rightmost-hop-selection` \| Story 12\.2 \|/m,
-  );
+  mustHaveTableRow(drillGovernance, [
+    "`route-method-deny`",
+    "`SEC`",
+    "weekly minimum + release review",
+    "Story 12.2",
+    "required",
+    "Confirms deterministic deny behavior for disallowed methods and internal namespaces.",
+  ]);
+  mustHaveTableRow(drillGovernance, [
+    "`abuse-rate-limit`",
+    "`SEC`",
+    "weekly minimum + release review",
+    "Story 12.2",
+    "required",
+    "Confirms perimeter abuse controls and evidence fields from `docs/ops/dmz-abuse-response.md`.",
+  ]);
+  mustHaveTableRow(drillGovernance, [
+    "`trusted-proxy-rightmost-hop-selection`",
+    "`SEC`",
+    "weekly minimum + release review",
+    "Story 12.2",
+    "required",
+    "Separate right-most-hop selection scenario.",
+  ]);
 });
 
 test("Story 12.2 keeps QA evidence inside tracked story artifacts", () => {

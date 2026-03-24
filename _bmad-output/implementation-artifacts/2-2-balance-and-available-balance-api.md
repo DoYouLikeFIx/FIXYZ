@@ -7,12 +7,12 @@ Status: done
 ## Story
 
 As an authenticated user,
-I want real-time position and cash balance information,
+I want real-time position and cash balance information for my default trading account,
 so that order decisions can be made safely.
 
 ## Acceptance Criteria
 
-1. Given valid owned account, when `GET /api/v1/accounts/{accountId}/positions?symbol={symbol}` is called, then current `quantity`, `availableQuantity`, canonical `balance`, alias `availableBalance` (`== balance`), `currency`, and `asOf` are returned.
+1. Given valid owned default account, when `GET /api/v1/accounts/{accountId}/positions?symbol={symbol}` is called, then `maskedAccountNumber`, current `quantity`, `availableQuantity`, canonical `balance`, alias `availableBalance` (`== balance`), `currency`, and `asOf` are returned.
 2. Given non-owned account request, when authorization is checked by `AUTH_MEMBER_ID` ownership boundary, then API returns `403` with stable machine code `AUTH-005`.
 3. Given concurrent updates, when reads occur, then response remains transactionally consistent (single-read snapshot without contradictory cash/position state).
 4. Given downstream error, when query fails, then normalized retriable/non-retriable code is returned using fixed mapping table in this story.
@@ -21,12 +21,14 @@ so that order decisions can be made safely.
 
 - [x] Freeze Story 2.2 read contract across planning/implementation/account specs (AC: 1, 2, 4)
   - [x] Keep canonical scope as position + available quantity + cash balance
+  - [x] Include `maskedAccountNumber` in the canonical response for user-facing account identification
   - [x] Keep `balance` canonical and `availableBalance` alias-only (`== balance`)
   - [x] Keep `availableQuantity` canonical and `availableQty` compatibility alias (deprecated)
 - [x] Implement owned-account inquiry endpoint in channel/corebank boundary (AC: 1)
   - [x] Channel external endpoint: `GET /api/v1/accounts/{accountId}/positions?symbol={symbol}`
   - [x] Corebank internal endpoint: `GET /internal/v1/accounts/{accountId}/positions?symbol={symbol}&memberId={memberId}`
   - [x] Preserve currency/as-of semantics consistently
+  - [x] Keep MVP client usage anchored to the provisioned default `accountId` without requiring an account-selection surface
 - [x] Enforce ownership authorization on account reads (AC: 2)
   - [x] Extract `memberId` from session `AUTH_MEMBER_ID` in channel layer
   - [x] Forward `memberId` to corebank and enforce `accounts.member_id == memberId`
@@ -48,12 +50,14 @@ so that order decisions can be made safely.
 - Supplemental artifact `_bmad-output/implementation-artifacts/epic-2-order-session-and-otp.md` has different scope/numbering; use it only as technical reference, not story ID authority.
 - Depends on Story 2.1 and Story 1.2.
 - This story is the canonical read-side contract baseline for FE/MOB dashboard flows and order-prepare precheck.
+- MVP account model note: read-side inquiry assumes one provisioned default trading account per member; multi-account selection is out of scope for this story.
 
 ### Technical Requirements
 
 - Contract:
   - External endpoint: `GET /api/v1/accounts/{accountId}/positions?symbol={symbol}`.
   - Internal endpoint: `GET /internal/v1/accounts/{accountId}/positions?symbol={symbol}&memberId={memberId}`.
+  - `maskedAccountNumber` must be returned as the canonical masked identifier for user-facing account context.
   - `balance` is the canonical field and means available cash (already net of pending reservations).
   - `availableBalance` must be alias-only (`availableBalance == balance`) with no recomputation.
   - `availableQuantity` is canonical for available sell quantity.
@@ -63,6 +67,7 @@ so that order decisions can be made safely.
 - Security:
   - Ownership verification is mandatory before balance/position disclosure.
   - Channel must derive `memberId` from `AUTH_MEMBER_ID`; client-provided `memberId` is not trusted.
+  - MVP clients must use the provisioned default `accountId`; do not infer an account-selection step from this contract.
   - Ownership mismatch must return `403 AUTH-005`.
 - Consistency:
   - Reads during concurrent mutations must preserve transactional correctness and coherent cash/position snapshot.

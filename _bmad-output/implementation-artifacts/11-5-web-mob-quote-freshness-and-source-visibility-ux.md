@@ -1,6 +1,6 @@
 # Story 11.5: [FE/MOB][MD] Quote Freshness & Source Visibility UX
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 

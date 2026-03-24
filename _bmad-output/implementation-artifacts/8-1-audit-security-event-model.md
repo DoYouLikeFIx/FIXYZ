@@ -12,8 +12,8 @@ So that investigations and compliance checks are reliable.
 
 ## Acceptance Criteria
 
-1. Given significant user/system actions When events occur Then audit or security event is persisted in correct store.
-2. Given retention schedule When cleanup job runs Then records older than policy are purged.
+1. Given significant user/system actions When events occur Then audit or security event is persisted in the correct store/boundary with canonical actor and correlation context.
+2. Given retention schedule When cleanup job runs Then records older than the audit/security policy are purged independently, with security events retained longer than general audit logs.
 3. Given privileged actions When performed by admin Then actor identity is captured.
 4. Given event insert failure When exception occurs Then fallback operational log captures failure context.
 
@@ -47,6 +47,7 @@ So that investigations and compliance checks are reliable.
 - Canonical `audit_logs` schema must align with `_bmad-output/planning-artifacts/channels/db_schema.md` and include at minimum: `audit_uuid`, `member_id`, `order_session_id`, `action`, `target_type`, `target_id`, `ip_address`, `user_agent`, `correlation_uuid`, and `created_at`.
 - Canonical `security_events` schema must align with `_bmad-output/planning-artifacts/channels/db_schema.md` and include at minimum: `security_event_uuid`, `event_type`, `status`, `severity`, `member_id`, `admin_member_id`, `order_session_id`, `detail`, `ip_address`, `correlation_uuid`, `occurred_at`, `resolved_at`, `created_at`, and `updated_at`.
 - Retention contract is fixed by PRD and architecture: audit logs = 90 days, security events = 180 days, both purged by scheduled application jobs.
+- Audit logs and security events must remain logically separate stores and cleanup paths; do not collapse them into a single retention policy.
 - Admin actor identity must be queryable for privileged actions; do not rely only on transient application logs for actor attribution.
 - Canonical admin-visible audit filter vocabulary must be fixed here before Story 7.5 depends on it. Required values: `LOGIN_SUCCESS`, `LOGIN_FAIL`, `LOGOUT`, `ADMIN_FORCE_LOGOUT`, `ORDER_SESSION_CREATE`, `ORDER_OTP_SUCCESS`, `ORDER_OTP_FAIL`, `ORDER_EXECUTE`, `ORDER_CANCEL`, `MANUAL_REPLAY`, `TOTP_ENROLL`, `TOTP_CONFIRM`.
 - If internal enum names differ from canonical admin-visible filter values, define one deterministic mapping layer and test it; do not expose mixed legacy and canonical names to consumers.
@@ -73,7 +74,7 @@ So that investigations and compliance checks are reliable.
 - Validate all acceptance criteria with automated tests (unit/integration/e2e as appropriate).
 - Ensure negative paths and validation/authorization/error flows are covered.
 - Verify migration shape matches canonical columns and indexes required by the planning artifacts.
-- Verify scheduled purge deletes only records older than the 90d / 180d policy boundaries.
+- Verify scheduled purge deletes only records older than the 90d / 180d policy boundaries and that the audit/security cleanup paths remain independent.
 - Verify privileged actions persist actor identity in the canonical store.
 - Verify event insert failure path emits deterministic fallback operational evidence without silently losing the failure context.
 

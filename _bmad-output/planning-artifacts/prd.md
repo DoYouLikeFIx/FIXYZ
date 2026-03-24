@@ -1233,7 +1233,7 @@ The MVP is complete when every architectural claim in FIX is backed by a passing
 | Documentation | Swagger UI + dual-audience README |
 | Infrastructure | Docker Compose with service/network isolation |
 | CI | GitHub Actions with all 7 acceptance scenarios green |
-| Frontend | React Web with 5 screens (Login, Account List, Detail, Order, Notifications) |
+| Frontend | React Web with 5 screens (Login, Portfolio View, Order Entry, Order Flow, Notification Feed) |
 
 ---
 
@@ -1366,13 +1366,15 @@ jobs:
 
 ### Account Management
 
-- **FR-08:** Authenticated user can view a list of their own trading accounts
-- **FR-09:** Authenticated user can view the details of a specific account including masked account number and current balance
-- **FR-10:** System can display account numbers in a privacy-preserving masked format in all user-facing surfaces
+> **MVP account model note:** Each member is provisioned with one default trading account for the interview-ready MVP. Account-selection and multi-account switching UX are intentionally out of scope unless the PRD is expanded later.
+
+- **FR-08:** Authenticated user can view the summary of their default trading account immediately after login
+- **FR-09:** Authenticated user can view the details of their default trading account including masked account number, current balance, and portfolio positions
+- **FR-10:** System can display account numbers in a privacy-preserving masked format in all user-facing surfaces that expose an account identifier
 
 ### Order Initiation & Authorization
 
-- **FR-11:** Authenticated user can initiate an order (buy/sell) by specifying account, symbol, quantity, and side
+- **FR-11:** Authenticated user can initiate an order (buy/sell) within their default trading account context by specifying symbol, quantity, and side
 - **FR-12:** System can validate an order request against available position quantity before proceeding
 - **FR-13:** System can validate a SELL order request against the account's configured daily sell limit before proceeding
 - **FR-14:** System can validate a time-based one-time code submitted by the user during login MFA or conditional order step-up authentication, using a pre-enrolled TOTP secret (RFC 6238, Google Authenticator-compatible)
@@ -1443,7 +1445,7 @@ jobs:
 
 ---
 
-> **Traceability summary:** All 7 acceptance scenarios trace to FRs. All 4 User Journeys fully covered. The 6 baseline React screens remain designable from FRs alone, including the baseline admin console for audit search and force logout, and the password recovery capability contract is included in the MVP auth surface. Dedicated FE/MOB password recovery UX follow-on stories in Epic 1 consume FR-57~61 without introducing additional FRs. Epic 1 follow-on MFA recovery/rebind scope (Story 1.14 / 1.15) is treated as auth-surface hardening that reuses the existing numbered contract across FR-01, FR-03, FR-05, FR-14, FR-33, FR-38, and FR-45; it therefore does not introduce a separate numbered FR, but its executable API/UX contract is fixed in the channel auth planning artifacts. Epic 1 follow-on real recovery-challenge hardening scope (Story 1.16 / 1.17 / 1.18 / 1.19) likewise reuses FR-57~61 as an auth-surface hardening rollout and does not introduce separate numbered FRs; its executable API, UX, and ops evidence contract is fixed in the channel auth planning artifacts. No FR contains implementation details (HOW). Growth-scope capabilities (notification read/filter, richer admin dashboards, Keycloak) intentionally excluded.
+> **Traceability summary:** All 7 acceptance scenarios trace to FRs. All 4 User Journeys fully covered. The 6 baseline React screens remain designable from FRs alone, including the portfolio-first single-default-account web flow, the baseline admin console for audit search and force logout, and the password recovery capability contract included in the MVP auth surface. Dedicated FE/MOB password recovery UX follow-on stories in Epic 1 consume FR-57~61 without introducing additional FRs. Epic 1 follow-on MFA recovery/rebind scope (Story 1.14 / 1.15) is treated as auth-surface hardening that reuses the existing numbered contract across FR-01, FR-03, FR-05, FR-14, FR-33, FR-38, and FR-45; it therefore does not introduce a separate numbered FR, but its executable API/UX contract is fixed in the channel auth planning artifacts. Epic 1 follow-on real recovery-challenge hardening scope (Story 1.16 / 1.17 / 1.18 / 1.19) likewise reuses FR-57~61 as an auth-surface hardening rollout and does not introduce separate numbered FRs; its executable API, UX, and ops evidence contract is fixed in the channel auth planning artifacts. No FR contains implementation details (HOW). Growth-scope capabilities (notification read/filter, richer admin dashboards, Keycloak) intentionally excluded.
 
 ---
 
@@ -1453,7 +1455,7 @@ jobs:
 
 ### Performance
 
-- **NFR-P1:** Channel-service read endpoints (account list, balance inquiry) must achieve p95 response time <= 500ms under normal load.
+- **NFR-P1:** Channel-service read endpoints (default-account portfolio summary, balance inquiry) must achieve p95 response time <= 500ms under normal load.
   _Measurement: Prometheus `http_server_requests_seconds` queried via PromQL and visualized in Grafana p95 panel (`uri`, `outcome=SUCCESS` filters)._
 
 - **NFR-P2:** Order Prepare endpoint (OTP issuance) must achieve p95 response time <= 1,000ms under normal load.

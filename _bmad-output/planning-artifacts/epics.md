@@ -844,6 +844,9 @@ So that account access remains under my control.
 - **Given** profile/password update request  
   **When** validation passes  
   **Then** account profile is updated with audit trail.
+- **Given** valid authenticated session info request  
+  **When** `GET /api/v1/auth/session` is called  
+  **Then** the response returns the member's identity, primary role, and session status/expiry metadata for the active session.
 - **Given** expired or invalidated session  
   **When** protected endpoint is called  
   **Then** API returns authentication-required error.
@@ -1324,6 +1327,8 @@ So that abuse-defense hardening is measurable and supportable.
 
 ## Epic 2: Account Domain & Inquiry APIs
 
+> **MVP account model note:** Epic 2 assumes one member-owned default trading account for the interview-ready MVP. Account selection and multi-account switching UI are intentionally out of scope unless the product scope is widened later.
+
 ### Story 2.1: [BE][AC] Schema & Auto Account Provisioning
 
 As an **account-domain owner**,  
@@ -1340,6 +1345,9 @@ So that every registered member has a usable account baseline.
 - **Given** successful member registration event  
   **When** provisioning endpoint is called  
   **Then** default account is created idempotently.
+- **Given** successful default-account provisioning  
+  **When** downstream portfolio and order flows are reviewed  
+  **Then** the member-owned default account is treated as the authoritative MVP trading account and no account-selection surface is required.
 - **Given** duplicate provisioning request  
   **When** same member is targeted  
   **Then** account duplication does not occur.
@@ -1361,7 +1369,7 @@ So that order decisions can be made safely.
 
 - **Given** valid owned account  
   **When** `GET /api/v1/accounts/{accountId}/positions?symbol={symbol}` is called  
-  **Then** current position quantity, available quantity, cash balance, and `availableBalance` alias (`== balance`) are returned with currency/as-of metadata.
+  **Then** masked account number, current position quantity, available quantity, cash balance, and `availableBalance` alias (`== balance`) are returned with currency/as-of metadata.
 - **Given** non-owned account request  
   **When** authorization is checked via session `AUTH_MEMBER_ID` ownership boundary  
   **Then** API returns forbidden (`403`) with stable machine code `AUTH-005`.
@@ -1376,8 +1384,9 @@ So that order decisions can be made safely.
 
 - Channel external path: `GET /api/v1/accounts/{accountId}/positions?symbol={symbol}`.
 - Corebank internal path: `GET /internal/v1/accounts/{accountId}/positions?symbol={symbol}&memberId={memberId}`.
-- Canonical fields: `quantity`, `availableQuantity`, `balance`.
+- Canonical fields: `maskedAccountNumber`, `quantity`, `availableQuantity`, `balance`.
 - Compatibility aliases: `availableQty == availableQuantity`, `availableBalance == balance`.
+- MVP client model: web/mobile use the member's provisioned default `accountId` and do not expose an account-selection surface.
 - Valuation/PnL expansion is intentionally outside Story 2.2 scope and is owned by Story 2.7.
 
 ### Story 2.3: [BE][AC] Order History API
@@ -1418,7 +1427,7 @@ So that portfolio insights are available in one place.
 
 - **Given** authenticated session  
   **When** dashboard loads  
-  **Then** portfolio summary and position quantities are displayed.
+  **Then** default-account portfolio summary, masked account number, and position quantities are displayed without an account-selection step.
 - **Given** order history tab interaction  
   **When** page/filter is changed  
   **Then** server-driven order history list updates correctly.
@@ -1441,7 +1450,7 @@ So that parity with web is maintained.
 
 - **Given** authenticated mobile session  
   **When** dashboard screen opens  
-  **Then** positions and portfolio summaries render correctly.
+  **Then** default-account positions, masked account number, and portfolio summaries render correctly without an account-selection step.
 - **Given** pull-to-refresh on order history  
   **When** user requests refresh  
   **Then** latest order records load without duplications.
@@ -1757,6 +1766,9 @@ So that invalid state progression cannot occur.
 - **Given** state persistence event  
   **When** transition completes  
   **Then** status and timestamps are stored consistently.
+- **Given** the parent authenticated session is force-invalidated while an order session is still client-owned and non-terminal  
+  **When** cleanup policy evaluates the order session  
+  **Then** `PENDING_NEW` or `AUTHED` sessions transition to `EXPIRED` and cannot be resumed after forced logout.
 - **Given** API status response  
   **When** serialized  
   **Then** optional fields follow status-specific contract.
@@ -2132,6 +2144,9 @@ So that repeated external failures do not cascade.
 - **Given** probe request fails  
   **When** half-open state active  
   **Then** breaker returns to open.
+- **Given** an operator or reviewer queries the resilience ops surface  
+  **When** the circuit breaker is `CLOSED`, `OPEN`, or `HALF_OPEN`  
+  **Then** current breaker state and recent transition context are available without reproducing live traffic.
 
 ### Story 6.2: [BE][FEP] Retry Boundary Policy
 
@@ -2201,6 +2216,9 @@ So that ambiguous orders can converge to terminal states.
 - **Given** scheduler cycle execution  
   **When** metrics collected  
   **Then** attempt and convergence counters are recorded.
+- **Given** an operator queries the recovery scheduler ops surface  
+  **When** scheduler status is requested  
+  **Then** running/idle state, last run summary, and pending recovery visibility are returned for operations review.
 
 ### Story 6.5: [BE][FEP] Manual Replay/Recovery API
 
@@ -2333,7 +2351,7 @@ So that order execution results are visible even across brief disconnections.
   **Then** single SSE connection is established.
 - **Given** SSE disconnect  
   **When** retry policy executes  
-  **Then** bounded retries occur before fallback.
+  **Then** the first reconnect attempt begins within 5 seconds and bounded retries occur before fallback.
 - **Given** missed-event window  
   **When** reconnection succeeds  
   **Then** fallback list API backfills notifications.
@@ -2355,8 +2373,8 @@ So that order execution outcomes remain visible on mobile.
   **When** notification module starts  
   **Then** live updates are received and stored in UI state.
 - **Given** app network loss/recovery  
-  **When** connection is restored  
-  **Then** missed notifications are synchronized.
+  **When** reconnect logic runs after disconnect or app resume  
+  **Then** the first reconnect attempt begins within 5 seconds and missed notifications are synchronized once the connection is restored.
 - **Given** notification read action  
   **When** user marks as read  
   **Then** read state is reflected in app and backend.
@@ -2377,6 +2395,9 @@ So that security incidents can be handled quickly.
 - **Given** admin role request  
   **When** invalidate-session API called  
   **Then** target member sessions are removed.
+- **Given** forced session invalidation targets a member with client-owned non-terminal order sessions  
+  **When** invalidation completes  
+  **Then** stale `PENDING_NEW` or `AUTHED` order sessions are terminalized through the same session-expiry/cleanup policy so continuation is blocked after logout.
 - **Given** audit query filters  
   **When** endpoint executes  
   **Then** paginated and filterable audit list is returned.
@@ -2476,6 +2497,9 @@ So that investigations and compliance checks are reliable.
 - **Given** retention schedule  
   **When** cleanup job runs  
   **Then** records older than policy are purged.
+- **Given** security-significant events and general audit events use different governance requirements  
+  **When** retention policies are defined and executed  
+  **Then** audit logs and security events follow separate retention policies and security events retain longer than general audit records.
 - **Given** privileged actions  
   **When** performed by admin  
   **Then** actor identity is captured.
@@ -2525,6 +2549,9 @@ So that end-to-end traces are reconstructable.
 - **Given** log aggregation query  
   **When** searching by correlation id  
   **Then** all four backend services show traceable chain.
+- **Given** backend service logs for the same request chain  
+  **When** observability evidence is reviewed  
+  **Then** each backend service emits valid JSON logs containing `traceId` and `correlationId` so the chain is reconstructable without ad-hoc parsing.
 - **Given** propagation regression test  
   **When** CI runs  
   **Then** 3-hop header assertions pass.
@@ -2844,7 +2871,7 @@ So that deployment readiness is validated before production cut.
 
 - **Given** fresh environment boot  
   **When** compose stack starts  
-  **Then** health endpoints are green within threshold.
+  **Then** health endpoints are green and the first mandatory API response is returned within 120 seconds.
 - **Given** critical API/docs endpoints  
   **When** smoke checks run  
   **Then** mandatory endpoints respond correctly.
@@ -2857,6 +2884,9 @@ So that deployment readiness is validated before production cut.
 - **Given** observability stack requirement  
   **When** rehearsal verification runs  
   **Then** Prometheus targets are UP and Grafana release dashboard is reachable.
+- **Given** demo-session scalability requirement  
+  **When** 5 independent authenticated browser or scripted sessions run against the rehearsal environment  
+  **Then** session state remains isolated with no cross-session leakage and no visible degradation that blocks the demo.
 
 ### Story 10.5: [FE] Web Release Readiness Pack
 
@@ -2880,6 +2910,9 @@ So that web deployment quality is auditable.
 - **Given** final FE candidate build  
   **When** validated  
   **Then** versioned release notes are generated.
+- **Given** repository-facing release documentation  
+  **When** an interviewer or evaluator opens the README and local setup references  
+  **Then** the dual-audience demo paths, architecture diagram, Quick Start, CI badges, `## Architecture Decisions`, `## Environment Variables`, `application-local.yml.template` references, and OWASP-referenced audit/PII/session-security explanations are present and mutually consistent.
 
 ### Story 10.6: [MOB] Mobile Release Readiness Pack
 

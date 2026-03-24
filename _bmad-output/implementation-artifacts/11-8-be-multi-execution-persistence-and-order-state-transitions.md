@@ -1,6 +1,6 @@
 # Story 11.8: [BE][AC] Multi-Execution Persistence and Order State Transitions
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -20,26 +20,26 @@ So that matching outcomes are durably recorded and downstream balances stay cons
 
 ## Tasks / Subtasks
 
-- [ ] Implement acceptance-criteria scope 1 (AC: 1)
-  - [ ] Replace single execution write path with fill-list persistence
-  - [ ] Add `executionSeq` generation rule (1..N, contiguous)
-  - [ ] Add row-level linkage validation tests
-- [ ] Implement acceptance-criteria scope 2 (AC: 2)
-  - [ ] Centralize order-state transition mapping from matching result
-  - [ ] Add weighted-average execution price calculation contract
-  - [ ] Add transition matrix regression tests
-- [ ] Implement acceptance-criteria scope 3 (AC: 3)
-  - [ ] Add explicit `ORD-013` no-liquidity reject guard for mutation suppression
-  - [ ] Add mutation/no-mutation assertions
-- [ ] Implement acceptance-criteria scope 4 (AC: 4)
-  - [ ] Add quote snapshot trace-field persistence contract with MARKET/LIMIT nullability rule
-  - [ ] Add auditability verification for stored linkage
-- [ ] Implement acceptance-criteria scope 5 (AC: 5)
-  - [ ] Document and enforce lock acquisition order in persistence service
-  - [ ] Add concurrent deadlock-regression test with deterministic lock order assertions
-- [ ] Migration and backfill readiness
-  - [ ] Add Flyway migration for new columns/constraints/indexes required by multi-execution model
-  - [ ] Add backfill script for legacy single-fill rows (`executionSeq=1`, linkage defaults) and migration verification test
+- [x] Implement acceptance-criteria scope 1 (AC: 1)
+  - [x] Replace single execution write path with fill-list persistence
+  - [x] Add `executionSeq` generation rule (1..N, contiguous)
+  - [x] Add row-level linkage validation tests
+- [x] Implement acceptance-criteria scope 2 (AC: 2)
+  - [x] Centralize order-state transition mapping from matching result
+  - [x] Add weighted-average execution price calculation contract
+  - [x] Add transition matrix regression tests
+- [x] Implement acceptance-criteria scope 3 (AC: 3)
+  - [x] Add explicit `ORD-013` no-liquidity reject guard for mutation suppression
+  - [x] Add mutation/no-mutation assertions
+- [x] Implement acceptance-criteria scope 4 (AC: 4)
+  - [x] Add quote snapshot trace-field persistence contract with MARKET/LIMIT nullability rule
+  - [x] Add auditability verification for stored linkage
+- [x] Implement acceptance-criteria scope 5 (AC: 5)
+  - [x] Document and enforce lock acquisition order in persistence service
+  - [x] Add concurrent deadlock-regression test with deterministic lock order assertions
+- [x] Migration and backfill readiness
+  - [x] Add Flyway migration for new columns/constraints/indexes required by multi-execution model
+  - [x] Add backfill script for legacy single-fill rows (`executionSeq=1`, linkage defaults) and migration verification test
 
 ## Dev Notes
 

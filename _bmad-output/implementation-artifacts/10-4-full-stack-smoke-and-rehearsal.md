@@ -11,11 +11,12 @@ So that deployment readiness is validated before production cut.
 
 ## Acceptance Criteria
 
-1. Given fresh environment boot When compose stack starts Then health endpoints are green within threshold.
+1. Given fresh environment boot When compose stack starts Then health endpoints are green and the first mandatory API response is returned within 120 seconds.
 2. Given critical API/docs endpoints When smoke checks run Then mandatory endpoints respond correctly.
 3. Given rollback rehearsal plan When exercise performed Then recovery procedure is executable and documented.
 4. Given rehearsal completion When reviewed Then go/no-go checklist can be updated.
 5. Given observability stack verification When smoke rehearsal runs Then Prometheus targets are UP and Grafana dashboard is reachable.
+6. Given demo-session scalability requirement When 5 independent authenticated browser or scripted sessions run against the rehearsal environment Then session state remains isolated with no cross-session leakage and no visible degradation that blocks the demo.
 
 ## Scenario Catalog (Plain Language)
 
@@ -37,6 +38,8 @@ So that deployment readiness is validated before production cut.
   - [ ] Add test coverage for AC 4
 - [ ] Implement acceptance-criteria scope 5 (AC: 5)
   - [ ] Add test coverage for AC 5
+- [ ] Implement acceptance-criteria scope 6 (AC: 6)
+  - [ ] Add test coverage for AC 6
 
 ## Dev Notes
 
@@ -51,6 +54,8 @@ So that deployment readiness is validated before production cut.
 - Implement only the scope defined in this story's acceptance criteria.
 - Keep API, error, and ownership semantics consistent with architecture and PRD contracts.
 - Avoid cross-lane coupling outside required integration boundaries.
+- Rehearsal smoke must prove the cold-start target of `docker compose up` to first mandatory API response within 120 seconds.
+- Rehearsal evidence must include a 5-session authenticated isolation check aligned to the portfolio demo scalability target.
 
 ### Architecture Compliance
 
@@ -61,6 +66,8 @@ So that deployment readiness is validated before production cut.
 
 - Validate all acceptance criteria with automated tests (unit/integration/e2e as appropriate).
 - Ensure negative paths and validation/authorization/error flows are covered.
+- Validate cold-start timing evidence against the 120-second target.
+- Validate 5 independent authenticated sessions without cookie/session-state leakage between clients.
 
 ### Story Completion Status
 

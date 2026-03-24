@@ -1,6 +1,6 @@
 # Story 11.6: [BE][AC] OrderBook Query and Sorting Contract
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -19,19 +19,19 @@ So that matching input order is stable and auditable before fill calculation.
 
 ## Tasks / Subtasks
 
-- [ ] Implement acceptance-criteria scope 1 (AC: 1)
-  - [ ] Add repository query contract for opposite-side open orders
-  - [ ] Add status filter coverage for `NEW` and `PARTIALLY_FILLED`
-- [ ] Implement acceptance-criteria scope 2 (AC: 2)
-  - [ ] Implement explicit price-time sort contract in repository/custom query layer
-  - [ ] Add deterministic tie-break sort by `id ASC` for same `price` + `createdAt`
-  - [ ] Add deterministic ordering test cases for both sides
-- [ ] Implement acceptance-criteria scope 3 (AC: 3)
-  - [ ] Add transaction-scope reproducibility tests
-  - [ ] Add mismatch-regression test for accidental unordered scans
-- [ ] Implement acceptance-criteria scope 4 (AC: 4)
-  - [ ] Add query variant with pessimistic lock for execution path
-  - [ ] Add concurrent-consumption test proving no duplicate liquidity consumption
+- [x] Implement acceptance-criteria scope 1 (AC: 1)
+  - [x] Add repository query contract for opposite-side open orders
+  - [x] Add status filter coverage for `NEW` and `PARTIALLY_FILLED`
+- [x] Implement acceptance-criteria scope 2 (AC: 2)
+  - [x] Implement explicit price-time sort contract in repository/custom query layer
+  - [x] Add deterministic tie-break sort by `id ASC` for same `price` + `createdAt`
+  - [x] Add deterministic ordering test cases for both sides
+- [x] Implement acceptance-criteria scope 3 (AC: 3)
+  - [x] Add transaction-scope reproducibility tests
+  - [x] Add mismatch-regression test for accidental unordered scans
+- [x] Implement acceptance-criteria scope 4 (AC: 4)
+  - [x] Add query variant with pessimistic lock for execution path
+  - [x] Add concurrent-consumption test proving no duplicate liquidity consumption
 
 ## Dev Notes
 

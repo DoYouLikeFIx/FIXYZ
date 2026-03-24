@@ -16,6 +16,7 @@ so that account access remains under my control.
 2. Given profile/password update request, when validation passes, then account profile is updated with audit trail.
 3. Given expired or invalidated session, when protected endpoint is called, then API returns authentication-required error.
 4. Given session timeout policy, when inactivity exceeds threshold, then session is treated as expired.
+5. Given an authenticated session, when `GET /api/v1/auth/session` is called, then member identity, primary role, and session status/expiry metadata are returned.
 
 ## Tasks / Subtasks
 
@@ -29,7 +30,9 @@ so that account access remains under my control.
   - [x] Ensure 401 behavior is deterministic for invalidated/expired sessions
 - [x] Enforce session timeout handling path (AC: 4)
   - [x] Validate TTL-based expiry path and client-visible behavior contract
-- [x] Add integration tests for logout/profile/session expiry behavior (AC: 1, 2, 3, 4)
+- [x] Define authenticated session introspection contract (AC: 5)
+  - [x] Return member identity, primary role, and session status/expiry metadata from `GET /api/v1/auth/session`
+- [x] Add integration tests for logout/profile/session expiry behavior (AC: 1, 2, 3, 4, 5)
 
 ## Dev Notes
 
@@ -40,6 +43,7 @@ so that account access remains under my control.
 
 - Depends on Story 1.1 auth/session issuance.
 - This story owns account-control safety behavior (logout + profile/password + expiry semantics).
+- This story also owns the authenticated-session introspection contract used by FE/MOB to resolve active identity and role state.
 - Supplemental detailed artifact maps similar concerns under different split; keep this plan?셲 Story 1.2 numbering as source of truth.
 
 ### Technical Requirements
@@ -47,6 +51,7 @@ so that account access remains under my control.
 - Session invalidation must be immediate and observable on next protected request.
 - Profile/password mutations require audit logging and validation guardrails.
 - Session expiry behavior must align with security requirements and predictable UX redirect paths.
+- `GET /api/v1/auth/session` must return member identity, primary role, and session status/expiry metadata without leaking additional sensitive fields.
 - Error responses must preserve standardized global format.
 
 ### Architecture Compliance

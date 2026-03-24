@@ -13,7 +13,7 @@ So that order outcomes remain visible on mobile.
 ## Acceptance Criteria
 
 1. Given active mobile session When notification module starts Then live updates are received and stored in UI state.
-2. Given app network loss/recovery When connection is restored Then missed notifications are synchronized.
+2. Given app network loss/recovery When reconnect logic runs after disconnect or app resume Then the first reconnect attempt begins within 5 seconds and missed notifications are synchronized once the connection is restored.
 3. Given notification read action When user marks as read Then read state is reflected in app and backend.
 4. Given repeated disconnects When retry threshold exceeded Then user sees retry guidance.
 
@@ -23,6 +23,7 @@ So that order outcomes remain visible on mobile.
   - [x] Add test coverage for AC 1
 - [x] Implement acceptance-criteria scope 2 (AC: 2)
   - [x] Add test coverage for AC 2
+  - [x] Keep reconnect attempts starting within 5 seconds for disconnect and app-resume recovery
 - [x] Implement acceptance-criteria scope 3 (AC: 3)
   - [x] Add test coverage for AC 3
 - [x] Implement acceptance-criteria scope 4 (AC: 4)
@@ -48,6 +49,7 @@ So that order outcomes remain visible on mobile.
 - Implement only the scope defined in this story's acceptance criteria.
 - Keep API, error, and ownership semantics consistent with architecture and PRD contracts.
 - Avoid cross-lane coupling outside required integration boundaries.
+- Mobile notification reconnect behavior must begin a retry attempt within 5 seconds of disconnect or app resume to satisfy the SSE recovery SLA.
 
 ### Architecture Compliance
 
@@ -58,6 +60,7 @@ So that order outcomes remain visible on mobile.
 
 - Validate all acceptance criteria with automated tests (unit/integration/e2e as appropriate).
 - Ensure negative paths and validation/authorization/error flows are covered.
+- Validate reconnect timing and missed-notification backfill against the 5-second initial reconnect SLA.
 
 ### Story Completion Status
 

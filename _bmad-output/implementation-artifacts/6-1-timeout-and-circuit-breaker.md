@@ -48,6 +48,7 @@ So that repeated external failures do not cascade.
 - Implement only the scope defined in this story's acceptance criteria.
 - Keep API, error, and ownership semantics consistent with architecture and PRD contracts.
 - Avoid cross-lane coupling outside required integration boundaries.
+- The resilience ops surface must expose current breaker state and recent transition context for the submit/status breakers so operators can confirm `OPEN`, `HALF_OPEN`, and `CLOSED` behavior.
 - Circuit breaker baseline parameters (apply to `fep-submit`, `fep-status`):
   - `slidingWindowType=COUNT_BASED`
   - `slidingWindowSize=3`
@@ -65,6 +66,7 @@ So that repeated external failures do not cascade.
 
 - Validate all acceptance criteria with automated tests (unit/integration/e2e as appropriate).
 - Ensure negative paths and validation/authorization/error flows are covered.
+- Validate that the chosen ops surface makes current breaker state observable during open, half-open, and recovered scenarios.
 
 ### QA Gate Execution Standard
 

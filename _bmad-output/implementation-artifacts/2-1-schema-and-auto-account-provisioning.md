@@ -13,25 +13,26 @@ so that every registered member has a usable account baseline.
 ## Acceptance Criteria
 
 1. Given migration scripts, when service boots, then account/member tables are created with required constraints.
-2. Given successful member registration event, when provisioning endpoint is called, then default account is created idempotently.
+2. Given successful member registration event, when provisioning endpoint is called, then default account is created idempotently as the member's authoritative MVP trading account.
 3. Given duplicate provisioning request, when same member is targeted, then account duplication does not occur.
 4. Given provisioning failure, when transaction is rolled back, then failure reason is returned with normalized code.
 
 ## Tasks / Subtasks
 
-- [ ] Implement and verify account-domain schema migrations (AC: 1)
-  - [ ] Add/verify account table constraints (ownership, uniqueness, status defaults)
-  - [ ] Ensure migration startup validation fails fast on mismatch
-- [ ] Implement idempotent default-account provisioning flow (AC: 2)
-  - [ ] Provide internal provisioning path for newly registered member
-  - [ ] Guarantee one default account baseline per member policy
-- [ ] Prevent duplicate account creation on retries/replays (AC: 3)
-  - [ ] Enforce idempotency via constraint + deterministic conflict handling
-  - [ ] Return stable success/duplicate semantics
-- [ ] Implement rollback-safe failure handling (AC: 4)
-  - [ ] Ensure failed provisioning leaves no partial account state
-  - [ ] Return normalized error code with actionable reason
-- [ ] Add integration tests for bootstrap/duplicate/failure scenarios (AC: 1, 2, 3, 4)
+- [x] Implement and verify account-domain schema migrations (AC: 1)
+  - [x] Add/verify account table constraints (ownership, uniqueness, status defaults)
+  - [x] Ensure migration startup validation fails fast on mismatch
+- [x] Implement idempotent default-account provisioning flow (AC: 2)
+  - [x] Provide internal provisioning path for newly registered member
+  - [x] Guarantee one default account baseline per member policy
+  - [x] Treat the provisioned default account as the authoritative MVP trading account with no account-selection surface required
+- [x] Prevent duplicate account creation on retries/replays (AC: 3)
+  - [x] Enforce idempotency via constraint + deterministic conflict handling
+  - [x] Return stable success/duplicate semantics
+- [x] Implement rollback-safe failure handling (AC: 4)
+  - [x] Ensure failed provisioning leaves no partial account state
+  - [x] Return normalized error code with actionable reason
+- [x] Add integration tests for bootstrap/duplicate/failure scenarios (AC: 1, 2, 3, 4)
 
 ## Dev Notes
 
@@ -41,12 +42,14 @@ so that every registered member has a usable account baseline.
 - Supplemental artifact `_bmad-output/implementation-artifacts/epic-2-order-session-and-otp.md` has different scope/numbering; use it only as technical reference, not story ID authority.
 - Depends on Story 0.1 and Story 1.1.
 - This story establishes account-domain baseline for all Epic 2 inquiry APIs.
+- MVP account model note: each member owns one default trading account in scope for the interview-ready MVP; account-selection and multi-account switching are out of scope here.
 
 ### Technical Requirements
 
 - Schema and ownership:
   - Account domain must be migration-managed and deterministic at startup.
   - Provisioning must keep member-account ownership explicit and enforceable.
+  - MVP scope is one member-owned default trading account; downstream clients should not assume multi-account selection UX.
 - Idempotency:
   - Repeated provisioning for the same member must not create duplicate accounts.
   - Retry behavior must be deterministic and safe under at-least-once invocation.

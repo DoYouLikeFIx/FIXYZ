@@ -23,24 +23,24 @@ So that I can complete password recovery without stale state, redirect loss, or 
 
 ## Tasks / Subtasks
 
-- [ ] Extend FE recovery controllers and API client for proof-of-work v2 (AC: 1, 2, 3)
-  - [ ] Consume `challengeContractVersion=2`, opaque `challengeId`, authoritative issued/expiry epochs, and the discriminated proof-of-work bundle
-  - [ ] Preserve the original submitted email payload and existing one-refresh/one-retry CSRF behavior
-- [ ] Implement contract-driven proof-of-work solve UX (AC: 1, 2, 5, 6)
-  - [ ] Render progress, refresh, and restart actions without leaking provider internals into the rest of the auth flow
-  - [ ] Key transient challenge state by opaque `challengeId` and replace stale state only when a newer distinct `challengeId` with greater authoritative `challengeIssuedAtEpochMs` arrives
-  - [ ] Fail closed and refresh if distinct bundles arrive with equal authoritative issue timestamps, or when authoritative timestamps indicate expiry-window entry, clock-skew confidence loss, or other `validity-untrusted` resume states
-  - [ ] Record canonical fail-closed telemetry reasons from `docs/contracts/recovery-challenge-fail-closed.json` for `unknown-version`, `kind-mismatch`, `malformed-payload`, `mixed-shape`, `clock-skew`, and `validity-untrusted`
-- [ ] Align FE recovery error semantics with the canonical auth contract (AC: 4)
-  - [ ] Add deterministic guidance for `AUTH-022`, `AUTH-023`, `AUTH-024`, and `AUTH-025`
-  - [ ] Clear stale state on replay or verify-unavailable paths
-  - [ ] Honor `Retry-After` as advisory backoff for bootstrap-unavailable and restart-only verify-unavailable flows
-  - [ ] Keep all pre-submit bundle-trust failures on canonical `refresh-challenge` guidance rather than restart-only recovery copy
-- [ ] Preserve redirect continuity across the full recovery lane (AC: 7)
-  - [ ] Carry protected-route intent through forgot, challenge, reset, and return-to-login success
-- [ ] Add automated FE coverage for proof-of-work recovery (AC: 1, 2, 3, 4, 5, 6, 7, 8)
-  - [ ] Cover contract parsing, stale-state replacement, exact canonical fail-closed reason labeling, `Retry-After` present vs absent handling, CSRF retry behavior, and redirect preservation
-  - [ ] Prove equal-timestamp collision, `clock-skew`, and `validity-untrusted` paths fail closed with refresh guidance before solve or resume continues
+- [x] Extend FE recovery controllers and API client for proof-of-work v2 (AC: 1, 2, 3)
+  - [x] Consume `challengeContractVersion=2`, opaque `challengeId`, authoritative issued/expiry epochs, and the discriminated proof-of-work bundle
+  - [x] Preserve the original submitted email payload and existing one-refresh/one-retry CSRF behavior
+- [x] Implement contract-driven proof-of-work solve UX (AC: 1, 2, 5, 6)
+  - [x] Render progress, refresh, and restart actions without leaking provider internals into the rest of the auth flow
+  - [x] Key transient challenge state by opaque `challengeId` and replace stale state only when a newer distinct `challengeId` with greater authoritative `challengeIssuedAtEpochMs` arrives
+  - [x] Fail closed and refresh if distinct bundles arrive with equal authoritative issue timestamps, or when authoritative timestamps indicate expiry-window entry, clock-skew confidence loss, or other `validity-untrusted` resume states
+  - [x] Record canonical fail-closed telemetry reasons from `docs/contracts/recovery-challenge-fail-closed.json` for `unknown-version`, `kind-mismatch`, `malformed-payload`, `mixed-shape`, `clock-skew`, and `validity-untrusted`
+- [x] Align FE recovery error semantics with the canonical auth contract (AC: 4)
+  - [x] Add deterministic guidance for `AUTH-022`, `AUTH-023`, `AUTH-024`, and `AUTH-025`
+  - [x] Clear stale state on replay or verify-unavailable paths
+  - [x] Honor `Retry-After` as advisory backoff for bootstrap-unavailable and restart-only verify-unavailable flows
+  - [x] Keep all pre-submit bundle-trust failures on canonical `refresh-challenge` guidance rather than restart-only recovery copy
+- [x] Preserve redirect continuity across the full recovery lane (AC: 7)
+  - [x] Carry protected-route intent through forgot, challenge, reset, and return-to-login success
+- [x] Add automated FE coverage for proof-of-work recovery (AC: 1, 2, 3, 4, 5, 6, 7, 8)
+  - [x] Cover contract parsing, stale-state replacement, exact canonical fail-closed reason labeling, `Retry-After` present vs absent handling, CSRF retry behavior, and redirect preservation
+  - [x] Prove equal-timestamp collision, `clock-skew`, and `validity-untrusted` paths fail closed with refresh guidance before solve or resume continues
 
 ## Dev Notes
 
@@ -104,8 +104,8 @@ So that I can complete password recovery without stale state, redirect loss, or 
 
 ### Story Completion Status
 
-- Status set to `ready-for-dev`.
-- Completion note: Story scaffold regenerated from canonical Epic 1 follow-on planning and web recovery hardening requirements.
+- Status set to `review`.
+- Completion note: Web proof-of-work recovery UX implementation landed and targeted QA passed on 2026-03-20.
 
 ### References
 
