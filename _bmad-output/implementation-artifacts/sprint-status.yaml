@@ -37,6 +37,7 @@ development_status:
   0-13-vault-production-separation-and-external-operations: done
   0-14-vault-external-cutover-rehearsal-and-audit-evidence: done
   0-15-mobile-edge-parity-and-physical-device-transport-hardening: blocked
+  0-16-prometheus-grafana-observability-stack-bootstrap: ready-for-dev
   epic-0-retrospective: optional
 
   epic-1: in-progress
@@ -68,7 +69,7 @@ development_status:
   2-4-web-account-dashboard-and-history: done
   2-5-mobile-account-dashboard-and-history: done
   2-6-account-status-contract: done
-  2-7-position-valuation-and-pnl-contract: ready-for-dev
+  2-7-position-valuation-and-pnl-contract: done
   2-8-portfolio-pnl-visibility-and-stale-valuation-guidance: ready-for-dev
   epic-2-retrospective: optional
 
@@ -121,7 +122,7 @@ development_status:
   7-5-admin-session-and-audit-apis: done
   7-6-web-admin-console-screens: done
   7-7-channel-security-hardening: done
-  7-8-web-operations-monitoring-dashboard-mvp: ready-for-dev
+  7-8-web-operations-monitoring-dashboard-mvp: done
   epic-7-retrospective: optional
 
   epic-8: in-progress
