@@ -37,8 +37,8 @@ development_status:
   0-12-redis-recovery-and-self-healing-baseline: done
   0-13-vault-production-separation-and-external-operations: done
   0-14-vault-external-cutover-rehearsal-and-audit-evidence: done
-  0-15-mobile-edge-parity-and-physical-device-transport-hardening: blocked
-  0-16-prometheus-grafana-observability-stack-bootstrap: in-progress\
+  0-15-mobile-edge-parity-and-physical-device-transport-hardening: done
+  0-16-prometheus-grafana-observability-stack-bootstrap: in-progress
 
   epic-0-retrospective: optional
 
@@ -172,6 +172,6 @@ development_status:
   12-2-edge-perimeter-policy-hardening: done
   12-3-service-boundary-trust-hardening-secret-rotation-mtls-readiness: done
   12-4-admin-access-control-path-for-dmz-operations: done
-  12-6-canonical-public-edge-route-enablement: done
   12-5-dmz-security-drill-and-evidence-gate: done
+  12-6-canonical-public-edge-route-enablement: done
   epic-12-retrospective: optional

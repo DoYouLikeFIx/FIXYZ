@@ -131,3 +131,8 @@ GPT-5 Codex (Codex desktop)
 - /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/12-5-dmz-security-drill-and-evidence-gate.md
 - /Users/yeongjae/fixyz/_bmad-output/implementation-artifacts/sprint-status.yaml
 - /Users/yeongjae/fixyz/tests/edge-gateway/dmz-drill-evidence-gate.test.js
+
+### Change Log
+
+- 2026-03-24: Aligned the DMZ governance, evidence, and release-checklist contract with Story 12.6 route linkage, Story 0.15 edge-mode parity, same-environment `live-external` promotion evidence, and weekly rerun lineage rules.
+- 2026-03-24: Revalidated the root `edge-gateway` regression suite, restored the tracked Story 12.3 and Story 12.4 QA summary artifacts required by shared tests, and reconciled the sprint ledger so Story 12.5 can remain closed consistently.
