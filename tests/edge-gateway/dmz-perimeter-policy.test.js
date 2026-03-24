@@ -303,10 +303,30 @@ test("Trusted proxy and abuse-response docs keep Story 12.2 operator and drill c
     mustInclude(drillGovernance, `\`${scenario}\``);
   }
 
-  mustMatch(
-    drillGovernance,
-    /\| `route-method-deny` \| Story 12\.2 \|[\s\S]*\| `abuse-rate-limit` \| Story 12\.2 \|[\s\S]*\| `trusted-proxy-rightmost-hop-selection` \| Story 12\.2 \|/m,
-  );
+  mustHaveTableRow(drillGovernance, [
+    "`route-method-deny`",
+    "`SEC`",
+    "weekly minimum + release review",
+    "Story 12.2",
+    "required",
+    "Confirms deterministic deny behavior for disallowed methods and internal namespaces.",
+  ]);
+  mustHaveTableRow(drillGovernance, [
+    "`abuse-rate-limit`",
+    "`SEC`",
+    "weekly minimum + release review",
+    "Story 12.2",
+    "required",
+    "Confirms perimeter abuse controls and evidence fields from `docs/ops/dmz-abuse-response.md`.",
+  ]);
+  mustHaveTableRow(drillGovernance, [
+    "`trusted-proxy-rightmost-hop-selection`",
+    "`SEC`",
+    "weekly minimum + release review",
+    "Story 12.2",
+    "required",
+    "Separate right-most-hop selection scenario.",
+  ]);
 });
 
 test("Story 12.2 keeps QA evidence inside tracked story artifacts", () => {
