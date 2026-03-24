@@ -22,6 +22,25 @@ services:
     networks:
       - fix-net
 
+  mysql-primary-grant-repair:
+    image: mysql:8.4
+    container_name: mysql-primary-grant-repair
+    profiles: ["ha-db"]
+    restart: "no"
+    depends_on:
+      mysql-primary:
+        condition: service_healthy
+    environment:
+      MYSQL_HOST: mysql-primary
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_USER: ${MYSQL_USER:-fix}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-fix}
+    entrypoint: ["/bin/sh", "/bootstrap/repair-service-databases.sh"]
+    volumes:
+      - ./scripts/infra-bootstrap/repair-service-databases.sh:/bootstrap/repair-service-databases.sh:ro
+    networks:
+      - fix-net
+
   mysql-replica:
     image: mysql:8.4
     container_name: mysql-replica
@@ -38,6 +57,8 @@ services:
     depends_on:
       mysql-primary:
         condition: service_healthy
+      mysql-primary-grant-repair:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p${MYSQL_ROOT_PASSWORD:-root}"]
       interval: 5s

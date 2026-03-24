@@ -18,6 +18,24 @@ services:
     networks:
       - fix-net
 
+  mysql-grant-repair:
+    image: mysql:8.4
+    container_name: mysql-grant-repair
+    restart: "no"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_USER: ${MYSQL_USER:-fix}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-fix}
+    entrypoint: ["/bin/sh", "/bootstrap/repair-service-databases.sh"]
+    volumes:
+      - ./scripts/infra-bootstrap/repair-service-databases.sh:/bootstrap/repair-service-databases.sh:ro
+    networks:
+      - fix-net
+
   redis:
     image: redis:7.2-alpine
     container_name: redis
@@ -108,6 +126,8 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+      mysql-grant-repair:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     healthcheck:
