@@ -54,6 +54,7 @@ Validation includes:
 - Nginx edge checks from `docker/nginx/scripts/validate-edge-gateway.sh`
 - Vault secret-read check via `docker/vault/scripts/read-internal-secret.sh`
 - Policy/config contract checks for `runtime-internal-secret.hcl` and `ci-docs-publish.hcl`
+- Idempotent MySQL service-database grant reconciliation for existing `mysql-data` volumes via `scripts/infra-bootstrap/repair-service-databases.sh`
 
 For `staging`/`prod`, use the external Vault contract and profile guard documented in `docs/ops/vault-external-operations.md`.
 
@@ -66,6 +67,7 @@ BOOTSTRAP_ENV=dev ./scripts/infra-bootstrap/bootstrap.sh
 ```
 
 Already-created resources are detected and marked as `already-present` without destructive replacement.
+Existing local `mysql-data` volumes are also reconciled non-destructively so newly introduced service databases/grants do not require a manual volume reset.
 
 ## Parity and drift detection
 

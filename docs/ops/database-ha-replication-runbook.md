@@ -44,6 +44,8 @@ BOOTSTRAP_REPLICATION_MODE=live \
 ./docker/mysql/ha/scripts/bootstrap-replication.sh
 ```
 
+The HA profile also runs an idempotent grant-repair helper against `mysql-primary` before replica bootstrap so pre-existing `mysql-primary-data` volumes pick up newly required service databases without destructive reset.
+
 ## Replication observability checks (state and lag)
 
 ```bash
