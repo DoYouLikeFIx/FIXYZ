@@ -27,22 +27,22 @@ So that the recovery lane resists abuse without breaking existing anti-enumerati
 
 ## Tasks / Subtasks
 
-- [ ] Add a `PasswordRecoveryChallengeProvider` abstraction and proof-of-work implementation (AC: 1, 2, 11)
-  - [ ] Support canonical proof-of-work issue and verify semantics through one provider contract
-  - [ ] Protect the real challenge path behind a staged rollout flag with safe legacy fallback
-- [ ] Extend recovery bootstrap and verify contracts for proof-of-work v2 (AC: 1, 2, 3, 9)
-  - [ ] Return `challengeContractVersion`, opaque `challengeId`, authoritative issued/expiry epochs, and discriminated `challengePayload`
-  - [ ] Keep email normalization server-side and bind verification to the exact submitted email payload digest plus normalized-email challenge identity
-  - [ ] Reject missing-half challenged submits, dual-field submits, payload-based PoW submits, and exact-email drift with deterministic `AUTH-022`
-- [ ] Preserve anti-enumeration, replay safety, deterministic timing behavior, and calibrated difficulty selection (AC: 2, 3, 4, 5, 6, 10)
-  - [ ] Keep status/body parity for known vs unknown emails
-  - [ ] Reuse Redis-backed replay protection and benchmark the p95 delta target
-- [ ] Add deterministic infrastructure-failure handling and telemetry (AC: 7, 8, 12)
-  - [ ] Split bootstrap-unavailable and verify-unavailable paths into `AUTH-023` and `AUTH-025`
-  - [ ] Emit audit/security evidence without raw proof, token, or unhashed email leakage
-- [ ] Add automated coverage for contract, parity, replay, and rollout safety (AC: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
-  - [ ] Cover known/unknown parity, invalid proof, replayed proof, expired proof, bootstrap unavailable, verify unavailable, newest-challenge-wins behavior, and flag-disabled fallback behavior
-  - [ ] Provide an injectable test harness or provider failpoint that can force `AUTH-023` and `AUTH-025` independently
+- [x] Add a `PasswordRecoveryChallengeProvider` abstraction and proof-of-work implementation (AC: 1, 2, 11)
+  - [x] Support canonical proof-of-work issue and verify semantics through one provider contract
+  - [x] Protect the real challenge path behind a staged rollout flag with safe legacy fallback
+- [x] Extend recovery bootstrap and verify contracts for proof-of-work v2 (AC: 1, 2, 3, 9)
+  - [x] Return `challengeContractVersion`, opaque `challengeId`, authoritative issued/expiry epochs, and discriminated `challengePayload`
+  - [x] Keep email normalization server-side and bind verification to the exact submitted email payload digest plus normalized-email challenge identity
+  - [x] Reject missing-half challenged submits, dual-field submits, payload-based PoW submits, and exact-email drift with deterministic `AUTH-022`
+- [x] Preserve anti-enumeration, replay safety, deterministic timing behavior, and calibrated difficulty selection (AC: 2, 3, 4, 5, 6, 10)
+  - [x] Keep status/body parity for known vs unknown emails
+  - [x] Reuse Redis-backed replay protection and benchmark the p95 delta target
+- [x] Add deterministic infrastructure-failure handling and telemetry (AC: 7, 8, 12)
+  - [x] Split bootstrap-unavailable and verify-unavailable paths into `AUTH-023` and `AUTH-025`
+  - [x] Emit audit/security evidence without raw proof, token, or unhashed email leakage
+- [x] Add automated coverage for contract, parity, replay, and rollout safety (AC: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
+  - [x] Cover known/unknown parity, invalid proof, replayed proof, expired proof, bootstrap unavailable, verify unavailable, newest-challenge-wins behavior, and flag-disabled fallback behavior
+  - [x] Provide an injectable test harness or provider failpoint that can force `AUTH-023` and `AUTH-025` independently
 
 ## Dev Notes
 
@@ -119,8 +119,8 @@ So that the recovery lane resists abuse without breaking existing anti-enumerati
 
 ### Story Completion Status
 
-- Status set to `ready-for-dev`.
-- Completion note: Story scaffold regenerated from canonical Epic 1 follow-on planning and contract hardening decisions.
+- Status set to `review`.
+- Completion note: Backend proof-of-work recovery challenge implementation landed and targeted QA passed on 2026-03-20.
 
 ### References
 

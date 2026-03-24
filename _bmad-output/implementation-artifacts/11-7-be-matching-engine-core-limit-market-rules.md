@@ -1,6 +1,6 @@
 # Story 11.7: [BE][AC] Matching Engine Core (LIMIT/MARKET Rules)
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -21,21 +21,21 @@ So that execution behavior is deterministic and policy-compliant.
 
 ## Tasks / Subtasks
 
-- [ ] Implement acceptance-criteria scope 1 (AC: 1)
-  - [ ] Add LIMIT cross predicate and fill loop
-  - [ ] Add leaves-quantity update logic for matched quantity
-- [ ] Implement acceptance-criteria scope 2 (AC: 2)
-  - [ ] Keep non-cross LIMIT in `NEW` without execution rows
-  - [ ] Add non-cross regression assertions
-- [ ] Implement acceptance-criteria scope 3 (AC: 3)
-  - [ ] Add MARKET sweep loop by ordered opposite-book rows
-  - [ ] Add multi-level sweep deterministic test coverage
-- [ ] Implement acceptance-criteria scope 4 (AC: 4)
-  - [ ] Add partial-fill branch and `PARTIALLY_FILLED` mapping data
-  - [ ] Add deterministic `ORD-013` no-liquidity reject contract checks
-- [ ] Implement acceptance-criteria scope 5 (AC: 6)
-  - [ ] Return pure matching-result DTO without repository writes
-  - [ ] Add payload-schema assertions for deterministic field set
+- [x] Implement acceptance-criteria scope 1 (AC: 1)
+  - [x] Add LIMIT cross predicate and fill loop
+  - [x] Add leaves-quantity update logic for matched quantity
+- [x] Implement acceptance-criteria scope 2 (AC: 2)
+  - [x] Keep non-cross LIMIT in `NEW` without execution rows
+  - [x] Add non-cross regression assertions
+- [x] Implement acceptance-criteria scope 3 (AC: 3)
+  - [x] Add MARKET sweep loop by ordered opposite-book rows
+  - [x] Add multi-level sweep deterministic test coverage
+- [x] Implement acceptance-criteria scope 4 (AC: 4)
+  - [x] Add partial-fill branch and `PARTIALLY_FILLED` mapping data
+  - [x] Add deterministic `ORD-013` no-liquidity reject contract checks
+- [x] Implement acceptance-criteria scope 5 (AC: 6)
+  - [x] Return pure matching-result DTO without repository writes
+  - [x] Add payload-schema assertions for deterministic field set
 
 ## Dev Notes
 

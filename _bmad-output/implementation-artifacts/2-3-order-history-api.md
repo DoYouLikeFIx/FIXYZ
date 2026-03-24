@@ -19,16 +19,16 @@ so that I can inspect recent financial activity.
 
 ## Tasks / Subtasks
 
-- [ ] Implement paginated order history endpoint for owned accounts (AC: 1)
-  - [ ] Enforce sort by created time descending
-  - [ ] Return stable page metadata and content shape
-- [ ] Implement empty-result consistency handling (AC: 2)
-  - [ ] Return deterministic empty content contract without null-shape drift
-- [ ] Enforce authorization guard by account ownership (AC: 3)
-  - [ ] Return forbidden contract on non-owned account access
-- [ ] Validate pagination parameters (AC: 4)
-  - [ ] Reject malformed page/size inputs with normalized validation errors
-- [ ] Add integration tests for pagination/empty/forbidden/validation (AC: 1, 2, 3, 4)
+- [x] Implement paginated order history endpoint for owned accounts (AC: 1)
+  - [x] Enforce sort by created time descending
+  - [x] Return stable page metadata and content shape
+- [x] Implement empty-result consistency handling (AC: 2)
+  - [x] Return deterministic empty content contract without null-shape drift
+- [x] Enforce authorization guard by account ownership (AC: 3)
+  - [x] Return forbidden contract on non-owned account access
+- [x] Validate pagination parameters (AC: 4)
+  - [x] Reject malformed page/size inputs with normalized validation errors
+- [x] Add integration tests for pagination/empty/forbidden/validation (AC: 1, 2, 3, 4)
 
 ## Dev Notes
 

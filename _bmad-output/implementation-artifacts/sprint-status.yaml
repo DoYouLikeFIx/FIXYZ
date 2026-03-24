@@ -58,10 +58,10 @@ development_status:
   1-13-mob-mobile-google-authenticator-enrollment-and-login-mfa-flow: done
   1-14-be-mfa-recovery-rebind-and-session-invalidation: done
   1-15-fe-mob-mfa-recovery-and-error-ux-alignment: done
-  1-16-be-real-password-recovery-challenge-provider-and-verification: review
-  1-17-fe-web-real-password-recovery-challenge-ux: review
-  1-18-mob-mobile-real-password-recovery-challenge-ux: review
-  1-19-recovery-challenge-abuse-defense-validation-and-ops-evidence: review
+  1-16-be-real-password-recovery-challenge-provider-and-verification: done
+  1-17-fe-web-real-password-recovery-challenge-ux: done
+  1-18-mob-mobile-real-password-recovery-challenge-ux: done
+  1-19-recovery-challenge-abuse-defense-validation-and-ops-evidence: done
   epic-1-retrospective: optional
 
   epic-2: in-progress
@@ -141,7 +141,7 @@ development_status:
   9-1-execution-orchestration: done
   9-2-end-state-normalization: done
   9-3-recovery-scheduler-integration: done
-  9-4-cross-system-idempotency-reconciliation: review
+  9-4-cross-system-idempotency-reconciliation: done
   9-5-integrated-final-state-and-retry-ux: done
   9-6-integrated-final-state-and-retry-ux: done
   epic-9-retrospective: optional
@@ -155,16 +155,16 @@ development_status:
   10-6-mobile-release-readiness-pack: ready-for-dev
   epic-10-retrospective: optional
 
-  epic-11: backlog
-  11-1-market-data-source-adapter-live-delayed-replay: ready-for-dev
-  11-2-quote-snapshot-freshness-guard: ready-for-dev
-  11-3-replay-timeline-controller: ready-for-dev
-  11-4-market-order-sweep-matching-validation: ready-for-dev
-  11-5-web-mob-quote-freshness-and-source-visibility-ux: review
-  11-6-be-orderbook-query-and-sorting-contract: ready-for-dev
-  11-7-be-matching-engine-core-limit-market-rules: ready-for-dev
-  11-8-be-multi-execution-persistence-and-order-state-transitions: ready-for-dev
-  11-9-be-matching-contract-and-integration-regression-suite: ready-for-dev
+  epic-11: done
+  11-1-market-data-source-adapter-live-delayed-replay: done
+  11-2-quote-snapshot-freshness-guard: done
+  11-3-replay-timeline-controller: done
+  11-4-market-order-sweep-matching-validation: done
+  11-5-web-mob-quote-freshness-and-source-visibility-ux: done
+  11-6-be-orderbook-query-and-sorting-contract: done
+  11-7-be-matching-engine-core-limit-market-rules: done
+  11-8-be-multi-execution-persistence-and-order-state-transitions: done
+  11-9-be-matching-contract-and-integration-regression-suite: done
   epic-11-retrospective: optional
 
   epic-12: done

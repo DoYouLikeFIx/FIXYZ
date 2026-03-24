@@ -13,7 +13,7 @@ So that order results are visible even across brief disconnections.
 ## Acceptance Criteria
 
 1. Given authenticated web session When app mounts provider Then single SSE connection is established.
-2. Given SSE disconnect When retry policy executes Then bounded retries occur before fallback.
+2. Given SSE disconnect When retry policy executes Then the first reconnect attempt begins within 5 seconds and bounded retries occur before fallback.
 3. Given missed-event window When reconnection succeeds Then fallback list API backfills notifications.
 4. Given no notifications When feed renders Then empty state message is shown.
 
@@ -23,6 +23,7 @@ So that order results are visible even across brief disconnections.
   - [x] Add test coverage for AC 1
 - [x] Implement acceptance-criteria scope 2 (AC: 2)
   - [x] Add test coverage for AC 2
+  - [x] Keep reconnect attempts starting within 5 seconds of disconnect before bounded retry fallback
 - [x] Implement acceptance-criteria scope 3 (AC: 3)
   - [x] Add test coverage for AC 3
 - [x] Implement acceptance-criteria scope 4 (AC: 4)
@@ -41,6 +42,7 @@ So that order results are visible even across brief disconnections.
 - Implement only the scope defined in this story's acceptance criteria.
 - Keep API, error, and ownership semantics consistent with architecture and PRD contracts.
 - Avoid cross-lane coupling outside required integration boundaries.
+- Web notification reconnect behavior must begin a retry attempt within 5 seconds of disconnect to satisfy the SSE recovery SLA.
 
 ### Architecture Compliance
 
@@ -51,6 +53,7 @@ So that order results are visible even across brief disconnections.
 
 - Validate all acceptance criteria with automated tests (unit/integration/e2e as appropriate).
 - Ensure negative paths and validation/authorization/error flows are covered.
+- Validate reconnect timing and fallback behavior against the 5-second initial reconnect SLA.
 
 ### Story Completion Status
 

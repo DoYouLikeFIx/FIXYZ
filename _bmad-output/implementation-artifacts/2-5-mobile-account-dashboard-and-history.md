@@ -7,30 +7,31 @@ Status: done
 ## Story
 
 As a mobile user,
-I want account dashboard and history on mobile,
+I want default-account dashboard and history on mobile,
 so that parity with web is maintained.
 
 ## Acceptance Criteria
 
-1. Given authenticated mobile session, when dashboard screen opens, then balances and account summaries render correctly.
+1. Given authenticated mobile session, when dashboard screen opens, then default-account portfolio summary, masked account number, and balances render correctly without an account-selection step.
 2. Given pull-to-refresh on history, when user requests refresh, then latest records load without duplications.
 3. Given empty or error response, when screen state resolves, then empty/error states follow UI standard.
 4. Given masked account display policy, when numbers render, then same masking rule as web is applied.
 
 ## Tasks / Subtasks
 
-- [ ] Implement mobile dashboard summary screen (AC: 1)
-  - [ ] Render account balances and summaries for authenticated user
-  - [ ] Keep loading and stale-state handling deterministic
-- [ ] Implement history refresh behavior (AC: 2)
-  - [ ] Wire pull-to-refresh with dedup-safe state updates
-  - [ ] Preserve server-driven ordering semantics in refreshed lists
-- [ ] Implement standardized empty/error states (AC: 3)
-  - [ ] Align screen-state behavior with mobile UI standards
-  - [ ] Reuse shared network error normalization path
-- [ ] Apply web-parity masking rules in mobile rendering (AC: 4)
-  - [ ] Ensure full account numbers are never shown
-- [ ] Add mobile tests for dashboard/history/empty/error/masking behavior (AC: 1, 2, 3, 4)
+- [x] Implement mobile default-account dashboard summary screen (AC: 1)
+  - [x] Render default-account balances, masked account number, and summaries for the authenticated user
+  - [x] Keep MVP mobile entry flow free of an account-selection step
+  - [x] Keep loading and stale-state handling deterministic
+- [x] Implement history refresh behavior (AC: 2)
+  - [x] Wire pull-to-refresh with dedup-safe state updates
+  - [x] Preserve server-driven ordering semantics in refreshed lists
+- [x] Implement standardized empty/error states (AC: 3)
+  - [x] Align screen-state behavior with mobile UI standards
+  - [x] Reuse shared network error normalization path
+- [x] Apply web-parity masking rules in mobile rendering (AC: 4)
+  - [x] Ensure full account numbers are never shown
+- [x] Add mobile tests for dashboard/history/empty/error/masking behavior (AC: 1, 2, 3, 4)
 
 ## Dev Notes
 
@@ -40,11 +41,13 @@ so that parity with web is maintained.
 - Supplemental artifact `_bmad-output/implementation-artifacts/epic-2-order-session-and-otp.md` has different scope/numbering; use it only as technical reference, not story ID authority.
 - Depends on Story 2.2, Story 2.3, and Story 1.4.
 - This story establishes mobile parity for account inquiry UX.
+- MVP account model note: mobile dashboard assumes one member-owned default trading account; account-selection UX is out of scope for this story.
 
 ### Technical Requirements
 
 - Data and parity:
-  - Dashboard/history contracts must match backend semantics used by web.
+  - Dashboard/history contracts must match backend semantics used by web for the single default-account MVP flow.
+  - Mobile entry must resolve directly to the provisioned default account with no account-selection branch.
   - Refresh behavior must avoid duplicate entries and stale-state drift.
 - UX consistency:
   - Empty/error states must follow mobile standard patterns.

@@ -18,16 +18,16 @@ so that freeze/close lifecycle and order eligibility can be governed consistentl
 
 ## Tasks / Subtasks
 
-- [ ] Implement account status query contract (AC: 1)
-  - [ ] Expose status response with metadata fields required by callers
-  - [ ] Keep enum/value semantics stable (`ACTIVE`, `FROZEN`, `CLOSED`)
-- [ ] Implement order-eligibility evaluation contract (AC: 2)
-  - [ ] Return deterministic denial reason code (`ORD-012`) for non-eligible states
-  - [ ] Ensure caller-visible behavior is consistent across repeated checks
-- [ ] Emit audit/security event on status transitions (AC: 3)
-  - [ ] Record transition actor/context/reason in structured event payload
-  - [ ] Ensure event emission is coupled to committed status transition
-- [ ] Add integration tests for status query, eligibility denial, and event emission
+- [x] Implement account status query contract (AC: 1)
+  - [x] Expose status response with metadata fields required by callers
+  - [x] Keep enum/value semantics stable (`ACTIVE`, `FROZEN`, `CLOSED`)
+- [x] Implement order-eligibility evaluation contract (AC: 2)
+  - [x] Return deterministic denial reason code (`ORD-012`) for non-eligible states
+  - [x] Ensure caller-visible behavior is consistent across repeated checks
+- [x] Emit audit/security event on status transitions (AC: 3)
+  - [x] Record transition actor/context/reason in structured event payload
+  - [x] Ensure event emission is coupled to committed status transition
+- [x] Add integration tests for status query, eligibility denial, and event emission
 
 ## Dev Notes
 

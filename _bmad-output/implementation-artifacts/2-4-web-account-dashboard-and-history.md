@@ -7,30 +7,31 @@ Status: done
 ## Story
 
 As a web user,
-I want to view my accounts and order history,
-so that account insights are available in one place.
+I want to view my default-account portfolio summary and order history,
+so that portfolio insights are available in one place.
 
 ## Acceptance Criteria
 
-1. Given authenticated session, when dashboard loads, then account summary and balances are displayed.
+1. Given authenticated session, when dashboard loads, then default-account portfolio summary, masked account number, balances, and positions are displayed without an account-selection step.
 2. Given history tab interaction, when page/filter is changed, then server-driven history list updates correctly.
 3. Given API failure, when error occurs, then user sees standardized retry guidance.
 4. Given account number policy, when UI renders values, then masking format is applied consistently.
 
 ## Tasks / Subtasks
 
-- [ ] Implement dashboard account summary rendering (AC: 1)
-  - [ ] Load and display owned account balances on initial dashboard view
-  - [ ] Keep loading/error/empty states deterministic
-- [ ] Implement history list with server-driven paging/filtering (AC: 2)
-  - [ ] Sync page/filter controls with backend query contract
-  - [ ] Prevent duplicate or stale list rendering on quick interactions
-- [ ] Implement standardized API-failure guidance (AC: 3)
-  - [ ] Reuse global error semantics and retry guidance pattern
-  - [ ] Keep message/action consistency with FE auth error standards
-- [ ] Apply account-number masking policy consistently (AC: 4)
-  - [ ] Ensure full account number is never shown in user-facing surfaces
-- [ ] Add FE tests for dashboard/history/error/masking behaviors (AC: 1, 2, 3, 4)
+- [x] Implement dashboard default-account summary rendering (AC: 1)
+  - [x] Load and display default-account balances, masked account number, and portfolio summary on initial dashboard view
+  - [x] Keep MVP entry flow free of an account-selection step
+  - [x] Keep loading/error/empty states deterministic
+- [x] Implement history list with server-driven paging/filtering (AC: 2)
+  - [x] Sync page/filter controls with backend query contract
+  - [x] Prevent duplicate or stale list rendering on quick interactions
+- [x] Implement standardized API-failure guidance (AC: 3)
+  - [x] Reuse global error semantics and retry guidance pattern
+  - [x] Keep message/action consistency with FE auth error standards
+- [x] Apply account-number masking policy consistently (AC: 4)
+  - [x] Ensure full account number is never shown in user-facing surfaces
+- [x] Add FE tests for dashboard/history/error/masking behaviors (AC: 1, 2, 3, 4)
 
 ## Dev Notes
 
@@ -40,15 +41,17 @@ so that account insights are available in one place.
 - Supplemental artifact `_bmad-output/implementation-artifacts/epic-2-order-session-and-otp.md` has different scope/numbering; use it only as technical reference, not story ID authority.
 - Depends on Story 2.2, Story 2.3, and Story 1.3.
 - This story consumes Epic 2 inquiry APIs and exposes them in FE dashboard UX.
+- MVP account model note: FE dashboard assumes one member-owned default trading account; account-selection UX is out of scope for this story.
 
 ### Technical Requirements
 
 - Data flow:
-  - Dashboard must consume balance/account summary contract from backend.
+  - Dashboard must consume default-account balance/account summary contract from backend.
+  - Dashboard entry must resolve directly to the provisioned default account with no account-selection branch.
   - History tab must use server-driven pagination/filtering semantics.
 - UX consistency:
   - Error handling must follow standardized retry guidance pattern.
-  - Masking rule must be identical across account list/history surfaces.
+  - Masking rule must be identical across portfolio summary/history surfaces.
 
 ### Architecture Compliance
 

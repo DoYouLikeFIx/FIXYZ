@@ -15,6 +15,7 @@ So that web deployment quality is auditable.
 2. Given regression in core order/auth paths When detected Then release gate fails.
 3. Given release checklist template When preparing shipment Then checklist items are completed with evidence links.
 4. Given final FE candidate build When validated Then versioned release notes are generated.
+5. Given repository-facing release documentation When an interviewer or evaluator opens the README and local setup references Then the dual-audience demo paths, architecture diagram, Quick Start, CI badges, `## Architecture Decisions`, `## Environment Variables`, `application-local.yml.template` references, and OWASP-referenced audit/PII/session-security explanations are present and mutually consistent.
 
 ## Scenario Catalog (Plain Language)
 
@@ -31,6 +32,8 @@ So that web deployment quality is auditable.
   - [ ] Add test coverage for AC 3
 - [ ] Implement acceptance-criteria scope 4 (AC: 4)
   - [ ] Add test coverage for AC 4
+- [ ] Implement acceptance-criteria scope 5 (AC: 5)
+  - [ ] Add test coverage for AC 5
 
 ## Dev Notes
 
@@ -45,6 +48,9 @@ So that web deployment quality is auditable.
 - Implement only the scope defined in this story's acceptance criteria.
 - Keep API, error, and ownership semantics consistent with architecture and PRD contracts.
 - Avoid cross-lane coupling outside required integration boundaries.
+- This story owns the final README/release-doc pass for the web-facing portfolio experience, including dual-audience navigation, Quick Start, CI badges, and local configuration guidance.
+- README release evidence must keep `## Architecture Decisions`, `## Environment Variables`, and `application-local.yml.template` references consistent with the shipped runtime setup.
+- README release evidence must also include OWASP-referenced audit, PII masking, and session-security guidance suitable for reviewer walkthroughs.
 
 ### Architecture Compliance
 
@@ -55,6 +61,7 @@ So that web deployment quality is auditable.
 
 - Validate all acceptance criteria with automated tests (unit/integration/e2e as appropriate).
 - Ensure negative paths and validation/authorization/error flows are covered.
+- Validate README/release-doc evidence against the dual-audience reviewer path and local setup/configuration consistency requirements.
 
 ### Story Completion Status
 

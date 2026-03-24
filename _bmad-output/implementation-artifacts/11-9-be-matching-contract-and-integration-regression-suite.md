@@ -1,6 +1,6 @@
 # Story 11.9: [BE][AC] Matching Contract and Integration Regression Suite
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -20,21 +20,21 @@ So that future changes cannot silently break deterministic matching behavior.
 
 ## Tasks / Subtasks
 
-- [ ] Implement acceptance-criteria scope 1 (AC: 1)
-  - [ ] Add scenario matrix for LIMIT/LIMIT non-cross/MARKET sweep/partial/no-liquidity
-  - [ ] Add deterministic result assertions for each matrix row
-- [ ] Implement acceptance-criteria scope 2 (AC: 2)
-  - [ ] Add persistence-level field assertions including quote linkage
-  - [ ] Add integration-level consistency checks between order summary and execution rows
-- [ ] Implement acceptance-criteria scope 3 (AC: 3)
-  - [ ] Add explicit anti-regression tests for immediate-fill fallback behavior
-  - [ ] Add change-detection assertions around multi-execution semantics
-- [ ] Implement acceptance-criteria scope 4 (AC: 4)
-  - [ ] Add CI-ready execution contract and evidence output expectations
-  - [ ] Add stable fixture set, deterministic replay strategy, and anti-flake controls (fixed seed/clock, isolated DB state)
-- [ ] Implement acceptance-criteria scope 5 (AC: 5)
-  - [ ] Add Gatling/k6 smoke profile for matching paths with p95 extraction
-  - [ ] Wire SLA assertion to fail release gate when p95 > 1000ms
+- [x] Implement acceptance-criteria scope 1 (AC: 1)
+  - [x] Add scenario matrix for LIMIT/LIMIT non-cross/MARKET sweep/partial/no-liquidity
+  - [x] Add deterministic result assertions for each matrix row
+- [x] Implement acceptance-criteria scope 2 (AC: 2)
+  - [x] Add persistence-level field assertions including quote linkage
+  - [x] Add integration-level consistency checks between order summary and execution rows
+- [x] Implement acceptance-criteria scope 3 (AC: 3)
+  - [x] Add explicit anti-regression tests for immediate-fill fallback behavior
+  - [x] Add change-detection assertions around multi-execution semantics
+- [x] Implement acceptance-criteria scope 4 (AC: 4)
+  - [x] Add CI-ready execution contract and evidence output expectations
+  - [x] Add stable fixture set, deterministic replay strategy, and anti-flake controls (fixed seed/clock, isolated DB state)
+- [x] Implement acceptance-criteria scope 5 (AC: 5)
+  - [x] Add Gatling/k6 smoke profile for matching paths with p95 extraction
+  - [x] Wire SLA assertion to fail release gate when p95 > 1000ms
 
 ## Dev Notes
 
