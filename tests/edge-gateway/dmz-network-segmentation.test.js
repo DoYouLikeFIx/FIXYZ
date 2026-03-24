@@ -49,17 +49,23 @@ test("DMZ mapping documents the current topology together with the active canoni
   const compose = readText(composePath);
   const edgeTemplate = readText(edgeTemplatePath);
   const dmzDoc = readText(dmzDocPath);
-  const redisProbeBlock = extractServiceBlock(compose, "redis-recovery-probe", "vault");
+  const redisProbeBlock = extractServiceBlock(compose, "redis-recovery-probe", "prometheus");
   const vaultBlock = extractServiceBlock(compose, "vault", "vault-init");
   const vaultInitBlock = extractServiceBlock(compose, "vault-init", "corebank-service");
   const corebankBlock = extractServiceBlock(compose, "corebank-service", "fep-gateway");
   const fepGatewayBlock = extractServiceBlock(compose, "fep-gateway", "fep-simulator");
   const fepSimulatorBlock = extractServiceBlock(compose, "fep-simulator", "channel-service");
+  const prometheusBlock = extractServiceBlock(compose, "prometheus", "grafana");
+  const grafanaBlock = extractServiceBlock(compose, "grafana", "vault");
   const channelBlock = extractServiceBlock(compose, "channel-service", "edge-gateway");
   const edgeGatewayBlock = extractServiceBlockBeforeTopLevelSection(compose, "edge-gateway", "volumes");
 
   mustMatch(channelBlock, /ports:\s*\n\s*-\s*"8080:8080"/);
   mustMatch(edgeGatewayBlock, /ports:\s*\n\s*-\s*"80:80"\s*\n\s*-\s*"443:443"/);
+  mustMatch(prometheusBlock, /ports:\s*\n\s*-\s*"127\.0\.0\.1:9090:9090"/);
+  mustMatch(grafanaBlock, /ports:\s*\n\s*-\s*"127\.0\.0\.1:3000:3000"/);
+  assert.doesNotMatch(prometheusBlock, /ports:\s*\n\s*-\s*"(?!127\.0\.0\.1:9090:9090)[^"]+"/);
+  assert.doesNotMatch(grafanaBlock, /ports:\s*\n\s*-\s*"(?!127\.0\.0\.1:3000:3000)[^"]+"/);
 
   for (const block of [
     redisProbeBlock,
@@ -76,6 +82,9 @@ test("DMZ mapping documents the current topology together with the active canoni
   mustInclude(dmzDoc, "- Host-exposed services:");
   mustInclude(dmzDoc, "- `channel-service:8080`");
   mustInclude(dmzDoc, "- `edge-gateway:80/443`");
+  mustInclude(dmzDoc, "- Loopback-only operator surfaces:");
+  mustInclude(dmzDoc, "- `prometheus:127.0.0.1:9090`");
+  mustInclude(dmzDoc, "- `grafana:127.0.0.1:3000`");
   mustInclude(dmzDoc, "- Always-on services without direct host port exposure:");
   mustInclude(dmzDoc, "- Profile-scoped baseline services without direct host port exposure:");
 
