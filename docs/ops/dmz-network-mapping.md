@@ -12,6 +12,9 @@ The current runtime topology still inherits the Story 0.7 local/dev baseline:
 - Host-exposed services:
   - `channel-service:8080`
   - `edge-gateway:80/443`
+- Loopback-only operator surfaces:
+  - `prometheus:127.0.0.1:9090`
+  - `grafana:127.0.0.1:3000`
 - Always-on services without direct host port exposure:
   - `corebank-service`
   - `fep-gateway`
@@ -27,6 +30,7 @@ Profile notes:
 
 - `vault` and `vault-init` are part of the local baseline only when the `local-vault` profile is enabled.
 - `redis-recovery-probe` is present only when the `ops-drills` profile is enabled.
+- `prometheus` and `grafana` are present only when the `observability` profile is enabled and remain loopback-bound operator surfaces rather than reviewed public ingress.
 
 Public-ingress note:
 
