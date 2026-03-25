@@ -127,13 +127,33 @@ prometheus_query() {
     "${OBSERVABILITY_PROMETHEUS_BASE_URL}/api/v1/query"
 }
 
+wait_for_http_ok() {
+  local url="$1"
+  local label="$2"
+  local timeout_seconds="${3:-60}"
+  local started_at
+  started_at="$(date +%s)"
+
+  while true; do
+    if curl -fsS "${url}" >/dev/null 2>&1; then
+      return 0
+    fi
+
+    if (( $(date +%s) - started_at >= timeout_seconds )); then
+      fail "${label} did not become ready within ${timeout_seconds}s"
+    fi
+
+    sleep 2
+  done
+}
+
 verify_runtime_contract() {
   # Story 10.4 keeps Prometheus/Grafana running because downstream smoke and evidence
   # assembly steps rely on the same rehearsal stack remaining available.
   compose_cmd up -d prometheus grafana >/dev/null
 
-  curl -fsS "${OBSERVABILITY_PROMETHEUS_BASE_URL}/-/healthy" >/dev/null
-  curl -fsS "${OBSERVABILITY_GRAFANA_BASE_URL}/api/health" >/dev/null
+  wait_for_http_ok "${OBSERVABILITY_PROMETHEUS_BASE_URL}/-/healthy" "Prometheus"
+  wait_for_http_ok "${OBSERVABILITY_GRAFANA_BASE_URL}/api/health" "Grafana"
 
   for job in channel-service corebank-service fep-gateway fep-simulator; do
     prometheus_query "max(up{job=\"${job}\"})" >/dev/null
@@ -156,6 +176,9 @@ verify_runtime_contract() {
   echo "Channel actuator prometheus endpoint should not be exposed"
   echo "Reprovisioning Prometheus and Grafana"
   compose_cmd up -d --force-recreate prometheus grafana >/dev/null
+
+  wait_for_http_ok "${OBSERVABILITY_PROMETHEUS_BASE_URL}/-/healthy" "Prometheus after reprovision"
+  wait_for_http_ok "${OBSERVABILITY_GRAFANA_BASE_URL}/api/health" "Grafana after reprovision"
 
   curl -fsS -u "${OBSERVABILITY_GRAFANA_ADMIN_USER}:${OBSERVABILITY_GRAFANA_ADMIN_PASSWORD}" \
     "${OBSERVABILITY_GRAFANA_BASE_URL}${GRAFANA_DATASOURCE_API_PATH}" >/dev/null
