@@ -1,1 +1,2 @@
 scripts/observability/validate-observability-stack.sh text eol=lf
+scripts/release-readiness/run-full-stack-smoke.sh text eol=lf

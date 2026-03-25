@@ -7,7 +7,7 @@
     "doc": "docs"
   },
   "scripts": {
-    "test": "npm run test:collab-webhook && npm run test:edge-gateway && npm run test:vault && npm run test:infra-bootstrap && npm run test:observability && npm run test:db-ha && npm run test:redis-recovery && npm run test:client-parity && npm run test:supply-chain",
+    "test": "npm run test:collab-webhook && npm run test:edge-gateway && npm run test:vault && npm run test:infra-bootstrap && npm run test:observability && npm run test:release-readiness && npm run test:db-ha && npm run test:redis-recovery && npm run test:client-parity && npm run test:supply-chain",
     "test:be:critical-contract-suites": "node scripts/run-gradle-wrapper.js --cwd BE --no-daemon :channel-service:criticalContractSuites",
     "test:collab-webhook": "node --test tests/collab-webhook/*.test.js",
     "test:supply-chain": "node --test tests/supply-chain/*.test.cjs",
@@ -16,6 +16,7 @@
     "test:vault": "node --test tests/vault/*.test.js",
     "test:infra-bootstrap": "node --test tests/infra-bootstrap/*.test.js",
     "test:observability": "node --test tests/observability/*.test.js",
+    "test:release-readiness": "node --test tests/release-readiness/*.test.js",
     "test:db-ha": "node --test tests/db-ha/*.test.js",
     "test:redis-recovery": "node --test tests/redis-recovery/*.test.js",
     "test:client-parity": "node --test tests/client-parity/*.test.js",
@@ -25,6 +26,7 @@
     "lint:vault": "bash -n docker/vault/init/*.sh docker/vault/scripts/*.sh .github/scripts/vault/*.sh scripts/vault/*.sh",
     "lint:infra-bootstrap": "bash -n scripts/infra-bootstrap/*.sh",
     "lint:observability": "bash -n scripts/observability/*.sh && node --check scripts/observability/generate-monitoring-panels.mjs",
+    "lint:release-readiness": "bash -n scripts/release-readiness/*.sh && node --check tests/release-readiness/full-stack-smoke-runtime.test.js",
     "lint:db-ha": "bash -n docker/mysql/ha/scripts/*.sh",
     "lint:redis-recovery": "bash -n scripts/redis-recovery/*.sh",
     "prepare": "husky"

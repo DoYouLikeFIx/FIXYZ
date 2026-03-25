@@ -43,3 +43,4 @@ gradlew
 gradlew.bat
 *.sh
 !scripts/observability/validate-observability-stack.sh
+!scripts/release-readiness/run-full-stack-smoke.sh
