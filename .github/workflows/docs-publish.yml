@@ -114,7 +114,7 @@ jobs:
 
       - name: Assemble static docs site
         run: |
-          node BE/scripts/assemble-openapi-docs-site.mjs --repo-root "$PWD" --output-dir "$PWD/docs-site"
+          node BE/scripts/assemble-openapi-docs-site.mjs --output-dir "$PWD/docs-site"
 
       - name: Deploy to GitHub Pages
         if: ${{ !env.ACT }}

@@ -138,6 +138,8 @@ test("docs-publish workflow includes OIDC permissions and Vault JWT login flow",
   mustInclude(workflow, "env.VAULT_ADDR == ''");
   mustInclude(workflow, "vault write -field=token auth/jwt/login");
   mustInclude(workflow, "role=ci-docs-publish");
+  mustInclude(workflow, "assemble-openapi-docs-site.mjs --output-dir \"$PWD/docs-site\"");
+  assert.doesNotMatch(workflow, /assemble-openapi-docs-site\.mjs --repo-root "\$PWD"/);
 });
 
 test("Vault runbook defines secret paths, least-privilege matrix, rotation drill, audit check, and fallback behavior", () => {
