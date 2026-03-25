@@ -42,3 +42,4 @@ docs/ops/redis-recovery/**/*.json
 gradlew
 gradlew.bat
 *.sh
+!.github/scripts/vault/resolve-internal-secret.sh

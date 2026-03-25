@@ -68,7 +68,7 @@ jobs:
           VAULT_PROTECTED_WORKFLOWS_FILE: .github/vault-protected-workflows.txt
         run: |
           # Resolver performs: vault write -field=token auth/jwt/login role=ci-docs-publish
-          ./.github/scripts/vault/resolve-internal-secret.sh
+          bash ./.github/scripts/vault/resolve-internal-secret.sh
 
       - name: Restore Node PATH for act compatibility
         if: ${{ env.ACT }}
