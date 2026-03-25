@@ -23,6 +23,15 @@ const isRetryableOrderExecutionError = (error) => {
     );
 };
 
+const isOrderSessionAuthorizationError = (error) => {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes('/execute returned 409')
+    && (
+      message.includes('"code":"ORD-009"')
+      || message.includes('order session is not authorized for execution')
+    );
+};
+
 const shellQuote = (value) => `'${String(value).replace(/'/g, `'\"'\"'`)}'`;
 
 const unwrapEnvelope = (payload) => (
@@ -252,6 +261,21 @@ export const generateStableTotp = async (
   return generateTotp(manualEntryKey);
 };
 
+export const generateFreshTotp = async (
+  manualEntryKey,
+  previousOtpCode,
+  minRemainingMs = 8_000,
+) => {
+  let otpCode = await generateStableTotp(manualEntryKey, minRemainingMs);
+
+  while (previousOtpCode && otpCode === previousOtpCode) {
+    await wait(millisUntilNextTotpWindow() + 1_500);
+    otpCode = await generateStableTotp(manualEntryKey, minRemainingMs);
+  }
+
+  return otpCode;
+};
+
 const isChartReadyPosition = (position) =>
   typeof position === 'object'
   && position !== null
@@ -321,6 +345,59 @@ const waitForDashboardQuoteData = async (
   }
 
   throw new Error(`Timed out waiting for dashboard quote metadata for account ${accountId}.`);
+};
+
+const isAuthorizedOrderSession = (orderSession) =>
+  typeof orderSession === 'object'
+  && orderSession !== null
+  && orderSession.status === 'AUTHED';
+
+const verifyOrderSessionIfRequired = async ({
+  cookieJar,
+  baseUrl,
+  orderSession,
+  manualEntryKey,
+  previousOtpCode,
+  requestTimeoutMs,
+}) => {
+  if (isAuthorizedOrderSession(orderSession)) {
+    return {
+      orderSession,
+      otpCode: previousOtpCode,
+    };
+  }
+
+  const orderSessionId = orderSession?.orderSessionId;
+
+  if (!orderSessionId) {
+    throw new Error('Order session bootstrap did not return orderSessionId.');
+  }
+
+  const otpCode = await generateFreshTotp(manualEntryKey, previousOtpCode);
+  const csrf = await fetchLiveCsrf(cookieJar, baseUrl, requestTimeoutMs);
+  const verifiedOrderSession = unwrapEnvelope(await fetchLiveJson(
+    cookieJar,
+    baseUrl,
+    `/api/v1/orders/sessions/${orderSessionId}/otp/verify`,
+    {
+      method: 'POST',
+      headers: {
+        [csrf.headerName]: csrf.csrfToken,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ otpCode }),
+    },
+    requestTimeoutMs,
+  ));
+
+  if (!isAuthorizedOrderSession(verifiedOrderSession)) {
+    throw new Error(`Order session ${orderSessionId} remained ${verifiedOrderSession?.status ?? 'UNKNOWN'} after OTP verification.`);
+  }
+
+  return {
+    orderSession: verifiedOrderSession,
+    otpCode,
+  };
 };
 
 export const createProvisionedStory115DashboardAccount = async ({
@@ -445,6 +522,8 @@ export const createProvisionedStory115DashboardAccount = async ({
     throw new Error('Registered live account did not expose accountId via /api/v1/auth/session.');
   }
 
+  let lastOtpCode = enrollmentCode;
+
   csrf = await fetchLiveCsrf(cookieJar, baseUrl, requestTimeoutMs);
   const createdSession = unwrapEnvelope(await fetchLiveJson(
     cookieJar,
@@ -473,14 +552,26 @@ export const createProvisionedStory115DashboardAccount = async ({
     throw new Error('Low-risk live order session bootstrap did not return orderSessionId.');
   }
 
+  const authorization = await verifyOrderSessionIfRequired({
+    cookieJar,
+    baseUrl,
+    orderSession: createdSession,
+    manualEntryKey,
+    previousOtpCode: lastOtpCode,
+    requestTimeoutMs,
+  });
+  let authorizedSession = authorization.orderSession;
+  lastOtpCode = authorization.otpCode;
+
   let executedSession;
+  let recoveredAuthorization = false;
   for (let attempt = 1; attempt <= orderExecuteRetryCount; attempt += 1) {
     try {
       csrf = await fetchLiveCsrf(cookieJar, baseUrl, requestTimeoutMs);
       executedSession = unwrapEnvelope(await fetchLiveJson(
         cookieJar,
         baseUrl,
-        `/api/v1/orders/sessions/${createdSession.orderSessionId}/execute`,
+        `/api/v1/orders/sessions/${authorizedSession.orderSessionId}/execute`,
         {
           method: 'POST',
           headers: {
@@ -493,6 +584,32 @@ export const createProvisionedStory115DashboardAccount = async ({
       ));
       break;
     } catch (error) {
+      if (!recoveredAuthorization && isOrderSessionAuthorizationError(error)) {
+        recoveredAuthorization = true;
+        const latestSession = unwrapEnvelope(await fetchLiveJson(
+          cookieJar,
+          baseUrl,
+          `/api/v1/orders/sessions/${createdSession.orderSessionId}`,
+          {
+            method: 'GET',
+            headers: {
+              Accept: 'application/json',
+            },
+          },
+          requestTimeoutMs,
+        ));
+        const recovery = await verifyOrderSessionIfRequired({
+          cookieJar,
+          baseUrl,
+          orderSession: latestSession,
+          manualEntryKey,
+          previousOtpCode: lastOtpCode,
+          requestTimeoutMs,
+        });
+        authorizedSession = recovery.orderSession;
+        lastOtpCode = recovery.otpCode;
+        continue;
+      }
       if (attempt >= orderExecuteRetryCount || !isRetryableOrderExecutionError(error)) {
         throw error;
       }
@@ -517,6 +634,7 @@ export const createProvisionedStory115DashboardAccount = async ({
     cookieJar,
     member,
     createdSession,
+    authorizedSession,
     executedSession,
     dashboardData,
   };
