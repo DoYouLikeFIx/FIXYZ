@@ -51,6 +51,7 @@ jobs:
       ROLLBACK_REHEARSAL_OWNER: release-platform-oncall
       NODE_TLS_REJECT_UNAUTHORIZED: "0"
       EDGE_BASE_URL: https://127.0.0.1
+      SMOKE_MANDATORY_API_BASE_URL: http://127.0.0.1:8080
 
     steps:
       - name: Checkout repository
