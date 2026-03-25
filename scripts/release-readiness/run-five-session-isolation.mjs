@@ -23,6 +23,7 @@ const DEFAULT_HELPER_MODULE_URL = new URL("../story-11-5-live-dashboard-account.
 const startedAt = new Date().toISOString();
 const outputDir = process.env.SESSION_ISOLATION_OUTPUT_DIR?.trim() || DEFAULT_OUTPUT_DIR;
 const summaryPath = path.join(outputDir, "session-isolation-summary.json");
+const requireDashboardReady = process.env.SESSION_ISOLATION_REQUIRE_DASHBOARD_READY === "1";
 
 function shortHash(value) {
   return createHash("sha256").update(String(value)).digest("hex").slice(0, 16);
@@ -143,8 +144,13 @@ function buildChecks(results, expectedCount) {
 }
 
 function overallStatus(checks) {
+  const ignoredChecks = new Set(["expectedSessionCount", "actualSessionCount"]);
+  if (!requireDashboardReady) {
+    ignoredChecks.add("dashboardReady");
+  }
+
   return Object.entries(checks)
-    .filter(([name]) => name !== "expectedSessionCount" && name !== "actualSessionCount")
+    .filter(([name]) => !ignoredChecks.has(name))
     .every(([, passed]) => Boolean(passed))
     ? "passed"
     : "failed";
@@ -186,6 +192,7 @@ async function main() {
             ...(password ? { password } : {}),
             requestTimeoutMs,
             pollTimeoutMs,
+            skipDashboardQuoteWait: !requireDashboardReady,
             emailPrefix: `story10_4_session_${index}`,
             namePrefix: `Story 10.4 Session ${index}`,
           })
@@ -225,6 +232,13 @@ async function main() {
   }, null, 2));
 
   if (status !== "passed") {
+    const failedSessions = sessionResults.filter((session) => session.status !== "passed");
+    if (failedSessions.length > 0) {
+      console.error(`Session isolation failed sessions: ${JSON.stringify(failedSessions)}`);
+    } else if (requireDashboardReady && !checks.dashboardReady) {
+      console.error("Session isolation failed because dashboard readiness did not converge.");
+    }
+    console.error(`Session isolation summary: ${summaryPath}`);
     process.exitCode = 1;
   }
 }

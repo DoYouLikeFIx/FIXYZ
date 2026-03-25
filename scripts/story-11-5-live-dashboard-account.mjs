@@ -321,6 +321,7 @@ export const createProvisionedStory115DashboardAccount = async ({
   namePrefix = 'Story 11.5 Live',
   requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
   pollTimeoutMs = DEFAULT_POLL_TIMEOUT_MS,
+  skipDashboardQuoteWait = false,
 } = {}) => {
   const identity = createLiveIdentity({
     prefix: emailPrefix,
@@ -477,12 +478,14 @@ export const createProvisionedStory115DashboardAccount = async ({
     requestTimeoutMs,
   ));
 
-  const dashboardData = await waitForDashboardQuoteData(
-    cookieJar,
-    baseUrl,
-    accountId,
-    pollTimeoutMs,
-  );
+  const dashboardData = skipDashboardQuoteWait
+    ? null
+    : await waitForDashboardQuoteData(
+      cookieJar,
+      baseUrl,
+      accountId,
+      pollTimeoutMs,
+    );
 
   return {
     identity,

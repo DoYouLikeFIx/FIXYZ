@@ -297,7 +297,7 @@ check_docs_endpoints() {
     return 1
   fi
 
-  swagger_status="$(http_status "${SWAGGER_UI_URL}" "${swagger_ui_body}")"
+  swagger_status="$(curl -k -sS -L -o "${swagger_ui_body}" -w '%{http_code}' "${SWAGGER_UI_URL}")"
   if [[ "${swagger_status}" != "200" ]]; then
     DOCS_STATUS="failed"
     fail "Swagger UI endpoint returned ${swagger_status}"

@@ -90,7 +90,7 @@ while [ "$#" -gt 0 ]; do
       fi
       shift 2
       ;;
-    -s|-S|-f|-fsS|-k)
+    -s|-S|-f|-fsS|-k|-L)
       shift 1
       ;;
     *)
