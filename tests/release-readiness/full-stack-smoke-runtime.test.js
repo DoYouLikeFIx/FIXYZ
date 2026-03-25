@@ -5,59 +5,9 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { spawnSync } = require("node:child_process");
 
 const repoRoot = path.resolve(__dirname, "..", "..");
-
-function toBashPath(filePath) {
-  if (process.platform !== "win32") {
-    return filePath;
-  }
-
-  return filePath
-    .replace(/\\/g, "/")
-    .replace(/^([A-Za-z]):/, (_, drive) => `/mnt/${drive.toLowerCase()}`);
-}
-
-function normalizeEnvValue(value) {
-  if (typeof value !== "string") {
-    return value;
-  }
-  if (/^[A-Za-z]:[\\/]/.test(value)) {
-    return toBashPath(value);
-  }
-  return value.replace(/\\/g, "/");
-}
-
-function quoteForBash(value) {
-  return `'${String(value).replace(/'/g, `'\\''`)}'`;
-}
-
-function buildBashCommand(scriptPath, options = {}) {
-  const statements = [];
-
-  for (const [name, value] of Object.entries(options.env || {})) {
-    statements.push(`export ${name}=${quoteForBash(normalizeEnvValue(value))}`);
-  }
-
-  if ((options.prependPathEntries || []).length > 0) {
-    const prepended = options.prependPathEntries.map((entry) => toBashPath(entry)).join(":");
-    statements.push(`export PATH=${quoteForBash(`${prepended}:`)}"$PATH"`);
-  }
-
-  statements.push(`bash ${quoteForBash(toBashPath(path.join(repoRoot, scriptPath)))}`);
-  return statements.join("; ");
-}
-
-function runBashScript(scriptPath, options = {}) {
-  return spawnSync("bash", ["-lc", buildBashCommand(scriptPath, options)], {
-    cwd: repoRoot,
-    env: { ...process.env },
-    encoding: "utf8",
-    timeout: options.timeout ?? 30000,
-    maxBuffer: 1024 * 1024,
-  });
-}
+const { runBashScript } = require("../helpers/bash-script-test-utils");
 
 function makeTempDir(prefix) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -188,7 +138,7 @@ test("full-stack smoke script emits success evidence for cold-start, docs, and o
   const outputDir = path.join(tempDir, "output");
   const { binDir, dockerLog, curlLog, validatorLog, validatorPath } = setupMockTooling(tempDir);
 
-  const result = runBashScript("scripts/release-readiness/run-full-stack-smoke.sh", {
+  const result = runBashScript(repoRoot, "scripts/release-readiness/run-full-stack-smoke.sh", {
     timeout: 30000,
     prependPathEntries: [binDir],
     env: {
@@ -214,6 +164,9 @@ test("full-stack smoke script emits success evidence for cold-start, docs, and o
   assert.equal(coldStartReport.firstMandatoryApi.withinTarget, true);
   assert.equal(docsReport.status, "passed");
   assert.equal(smokeSummary.status, "passed");
+  assert.equal(smokeSummary.scenarios[0].evidencePath, "cold-start-timing.json");
+  assert.equal(smokeSummary.scenarios[1].evidencePath, "docs-summary.json");
+  assert.equal(smokeSummary.checks.composeUpLog, "compose-up.log");
   assert.deepEqual(smokeSummary.scenarios.map((scenario) => scenario.id), [
     "E10-SMOKE-001",
     "E10-SMOKE-002",
@@ -242,7 +195,7 @@ test("full-stack smoke script writes failed evidence when mandatory API misses t
   const outputDir = path.join(tempDir, "output");
   const { binDir, validatorPath } = setupMockTooling(tempDir);
 
-  const result = runBashScript("scripts/release-readiness/run-full-stack-smoke.sh", {
+  const result = runBashScript(repoRoot, "scripts/release-readiness/run-full-stack-smoke.sh", {
     timeout: 30000,
     prependPathEntries: [binDir],
     env: {

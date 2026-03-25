@@ -5,6 +5,7 @@
 Story `10.4` release-readiness rehearsal for the repository-owned Docker stack.
 
 - Cold-start smoke: `scripts/release-readiness/run-full-stack-smoke.sh`
+- Edge gateway validation: `scripts/release-readiness/run-edge-gateway-validation.sh`
 - Five-session isolation rehearsal: `scripts/release-readiness/run-five-session-isolation.mjs`
 - Rollback rehearsal: `scripts/release-readiness/run-rollback-rehearsal.sh`
 - Supporting baseline: `docs/ops/infrastructure-bootstrap-runbook.md`
@@ -24,6 +25,8 @@ Run the Story `10.4` rehearsal in this order:
 COMPOSE_PROFILES=observability \
 ./scripts/release-readiness/run-full-stack-smoke.sh
 
+bash ./scripts/release-readiness/run-edge-gateway-validation.sh
+
 node ./scripts/release-readiness/run-five-session-isolation.mjs
 
 ./scripts/release-readiness/run-rollback-rehearsal.sh
@@ -36,6 +39,8 @@ Expected evidence output under `_bmad-output/test-artifacts/epic-10/<build-id>/s
 - `cold-start-timing.json`
 - `docs-summary.json`
 - `smoke-summary.json`
+- `edge-summary.json`
+- `edge-gateway-validation.log`
 - `session-isolation-summary.json`
 - `rollback-rehearsal-summary.json`
 - `go-no-go-summary.json`
@@ -49,7 +54,7 @@ The release gate is green only when all of the following are true:
 
 1. `docker compose up` reaches the first mandatory API response within 120 seconds.
 2. Health endpoints for the critical services are green.
-3. Mandatory API/docs endpoints respond correctly.
+3. Mandatory API/docs endpoints and edge gateway validation respond correctly.
 4. Prometheus targets are `UP` and Grafana is reachable.
 
 ## Rollback Strategy
@@ -87,13 +92,14 @@ Execute mode must be treated as a controlled rehearsal. If the compose re-apply 
 
 ## Go/No-Go Update Procedure
 
-After smoke, session isolation, rollback rehearsal, and evidence assembly complete:
+After smoke, edge validation, session isolation, rollback rehearsal, and evidence assembly complete:
 
 1. Open `go-no-go-summary.json` and `go-no-go-summary.md`.
 2. Open `matrix-summary.json` and `matrix-summary.md`.
 3. Confirm linked evidence paths point to the same Story `10.4` rehearsal run.
 4. Update the release review with:
    - smoke status
+   - edge validation status
    - session isolation status
    - rollback rehearsal status
    - final `go` or `no-go` decision
@@ -105,6 +111,7 @@ Mark the rehearsal as failed and stop promotion review when any of the following
 
 - cold-start target exceeds 120 seconds
 - mandatory API/docs checks fail
+- edge gateway validation fails
 - session isolation shows cookie or session cross-contamination
 - rollback compose re-apply fails
 - required evidence artifact is missing

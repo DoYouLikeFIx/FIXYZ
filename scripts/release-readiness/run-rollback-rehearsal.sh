@@ -10,6 +10,7 @@ RUNBOOK_PATH="${ROOT_DIR}/docs/ops/full-stack-smoke-rehearsal-runbook.md"
 CHECKLIST_TEMPLATE_PATH="${ROOT_DIR}/docs/ops/release-go-no-go-checklist-template.md"
 SMOKE_SUMMARY_PATH="${ROLLBACK_REHEARSAL_SMOKE_SUMMARY_PATH:-${OUTPUT_DIR}/smoke-summary.json}"
 SESSION_ISOLATION_SUMMARY_PATH="${ROLLBACK_REHEARSAL_SESSION_SUMMARY_PATH:-${OUTPUT_DIR}/session-isolation-summary.json}"
+EDGE_SUMMARY_PATH="${ROLLBACK_REHEARSAL_EDGE_SUMMARY_PATH:-${OUTPUT_DIR}/edge-summary.json}"
 ROLLBACK_SUMMARY_PATH="${OUTPUT_DIR}/rollback-rehearsal-summary.json"
 GO_NO_GO_SUMMARY_PATH="${OUTPUT_DIR}/go-no-go-summary.json"
 GO_NO_GO_MARKDOWN_PATH="${OUTPUT_DIR}/go-no-go-summary.md"
@@ -28,6 +29,7 @@ GO_NO_GO_DECISION="no-go"
 FINAL_MESSAGE=""
 SMOKE_STATUS="unknown"
 SESSION_STATUS="unknown"
+EDGE_STATUS="unknown"
 ROLLBACK_ACTION="not-run"
 ROLLBACK_COMMAND=""
 BLOCKERS=()
@@ -43,6 +45,7 @@ done
 
 fail() {
   FINAL_MESSAGE="$1"
+  add_blocker "$1"
   echo "rollback rehearsal failed: $1" >&2
   exit 1
 }
@@ -82,6 +85,27 @@ resolve_docker_cli() {
   fail "docker compose CLI is not available"
 }
 
+resolve_json_parser() {
+  if command -v python >/dev/null 2>&1; then
+    command -v python
+    return
+  fi
+  if command -v python.exe >/dev/null 2>&1; then
+    command -v python.exe
+    return
+  fi
+  if command -v node >/dev/null 2>&1; then
+    command -v node
+    return
+  fi
+  if command -v node.exe >/dev/null 2>&1; then
+    command -v node.exe
+    return
+  fi
+
+  fail "json parser runtime is not available"
+}
+
 compose_cmd() {
   local docker_cli
   local compose_file_arg
@@ -101,8 +125,17 @@ compose_cmd() {
 
 extract_status() {
   local path="$1"
+  local parser
   local status
-  status="$(awk -F'"' '/"status"[[:space:]]*:/ {print $4; exit}' "${path}")"
+  parser="$(resolve_json_parser)"
+  status="$(
+    "${parser}" -c "import json, sys
+payload = json.load(sys.stdin)
+status = payload.get('status', '')
+if not isinstance(status, str) or not status.strip():
+    raise SystemExit(2)
+sys.stdout.write(status.strip())" < "${path}" 2>/dev/null
+  )"
   if [[ -z "${status}" ]]; then
     fail "unable to parse status from ${path}"
   fi
@@ -110,7 +143,14 @@ extract_status() {
 }
 
 add_blocker() {
-  BLOCKERS+=("$1")
+  local blocker="$1"
+  local existing
+  for existing in "${BLOCKERS[@]}"; do
+    if [[ "${existing}" == "${blocker}" ]]; then
+      return
+    fi
+  done
+  BLOCKERS+=("${blocker}")
 }
 
 render_blockers_json() {
@@ -164,6 +204,7 @@ emit_reports() {
   "recoveryStrategy": "deterministic re-run",
   "sourceChecks": {
     "smoke": "$(json_escape "${SMOKE_STATUS}")",
+    "edge": "$(json_escape "${EDGE_STATUS}")",
     "sessionIsolation": "$(json_escape "${SESSION_STATUS}")"
   },
   "rollbackAction": "$(json_escape "${ROLLBACK_ACTION}")",
@@ -191,12 +232,14 @@ EOF
   "changeRef": "$(json_escape "${ROLLBACK_REHEARSAL_CHANGE_REF}")",
   "checks": {
     "smoke": "$(json_escape "${SMOKE_STATUS}")",
+    "edge": "$(json_escape "${EDGE_STATUS}")",
     "sessionIsolation": "$(json_escape "${SESSION_STATUS}")",
     "rollbackRehearsal": "$(json_escape "${ROLLBACK_STATUS}")"
   },
   "blockers": $(render_blockers_json),
   "linkedEvidence": {
     "smokeSummaryPath": "$(json_escape "${SMOKE_SUMMARY_PATH}")",
+    "edgeSummaryPath": "$(json_escape "${EDGE_SUMMARY_PATH}")",
     "sessionIsolationSummaryPath": "$(json_escape "${SESSION_ISOLATION_SUMMARY_PATH}")",
     "rollbackSummaryPath": "$(json_escape "${ROLLBACK_SUMMARY_PATH}")",
     "runbookPath": "$(json_escape "${RUNBOOK_PATH}")",
@@ -213,6 +256,7 @@ EOF
 - Change Ref: ${ROLLBACK_REHEARSAL_CHANGE_REF}
 - Rollback Owner: ${ROLLBACK_REHEARSAL_OWNER}
 - Smoke: ${SMOKE_STATUS}
+- Edge Validation: ${EDGE_STATUS}
 - Session Isolation: ${SESSION_STATUS}
 - Rollback Rehearsal: ${ROLLBACK_STATUS}
 - Rollback Action: ${ROLLBACK_ACTION}
@@ -237,11 +281,24 @@ trap emit_reports EXIT
 main() {
   [[ -f "${RUNBOOK_PATH}" ]] || fail "missing rehearsal runbook: ${RUNBOOK_PATH}"
   [[ -f "${CHECKLIST_TEMPLATE_PATH}" ]] || fail "missing checklist template: ${CHECKLIST_TEMPLATE_PATH}"
-  [[ -f "${SMOKE_SUMMARY_PATH}" ]] || fail "missing smoke summary: ${SMOKE_SUMMARY_PATH}"
-  [[ -f "${SESSION_ISOLATION_SUMMARY_PATH}" ]] || fail "missing session isolation summary: ${SESSION_ISOLATION_SUMMARY_PATH}"
-
-  SMOKE_STATUS="$(extract_status "${SMOKE_SUMMARY_PATH}")"
-  SESSION_STATUS="$(extract_status "${SESSION_ISOLATION_SUMMARY_PATH}")"
+  if [[ -f "${SMOKE_SUMMARY_PATH}" ]]; then
+    SMOKE_STATUS="$(extract_status "${SMOKE_SUMMARY_PATH}")"
+  else
+    SMOKE_STATUS="missing"
+    add_blocker "Smoke summary is missing."
+  fi
+  if [[ -f "${EDGE_SUMMARY_PATH}" ]]; then
+    EDGE_STATUS="$(extract_status "${EDGE_SUMMARY_PATH}")"
+  else
+    EDGE_STATUS="missing"
+    add_blocker "Edge validation summary is missing."
+  fi
+  if [[ -f "${SESSION_ISOLATION_SUMMARY_PATH}" ]]; then
+    SESSION_STATUS="$(extract_status "${SESSION_ISOLATION_SUMMARY_PATH}")"
+  else
+    SESSION_STATUS="missing"
+    add_blocker "Session isolation summary is missing."
+  fi
 
   case "${ROLLBACK_REHEARSAL_MODE}" in
     simulate)
@@ -266,6 +323,9 @@ main() {
 
   if [[ "${SMOKE_STATUS}" != "passed" ]]; then
     add_blocker "Smoke summary is ${SMOKE_STATUS}."
+  fi
+  if [[ "${EDGE_STATUS}" != "passed" ]]; then
+    add_blocker "Edge validation summary is ${EDGE_STATUS}."
   fi
   if [[ "${SESSION_STATUS}" != "passed" ]]; then
     add_blocker "Session isolation summary is ${SESSION_STATUS}."

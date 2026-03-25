@@ -50,6 +50,10 @@ function writePassingEvidence(outputDir) {
     status: "passed",
   });
 
+  writeJson(path.join(outputDir, "edge-summary.json"), {
+    status: "passed",
+  });
+
   writeJson(path.join(outputDir, "smoke-summary.json"), {
     status: "passed",
     scenarios: [
@@ -92,6 +96,7 @@ test("story 10.4 evidence assembler writes passed matrix summary when all eviden
   assert.equal(summary.goNoGo.releaseReady, true);
   assert.equal(summary.scenarios.length, 6);
   assert.ok(summary.scenarios.every((scenario) => scenario.result === "PASSED"));
+  assert.equal(summary.edge.status, "PASSED");
   assert.match(markdown, /Story 10\.4 Full-Stack Smoke\/Rehearsal Summary/);
   assert.match(markdown, /E10-SESSION-001/);
 });

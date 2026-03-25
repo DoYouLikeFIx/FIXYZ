@@ -87,11 +87,11 @@ function finalizeSessionResult(index, durationMs, payload, error) {
       durationMs,
       error: error instanceof Error ? error.message : String(error),
       dashboardReady: false,
-      identity: null,
-      accountId: null,
+      identityHash: null,
+      accountHash: null,
       sessionCookieHash: null,
       xsrfTokenHash: null,
-      orderSessionId: null,
+      orderSessionHash: null,
     };
   }
 
@@ -100,6 +100,8 @@ function finalizeSessionResult(index, durationMs, payload, error) {
   const executedOrderSessionId = String(payload.executedSession?.orderSessionId ?? createdOrderSessionId);
   const sessionCookie = extractCookieValue(payload.cookieJar, "SESSION");
   const xsrfToken = extractCookieValue(payload.cookieJar, "XSRF-TOKEN");
+  const identitySource = payload.identity?.email ?? payload.identity?.name ?? `session-${index}`;
+  const orderSessionSource = createdOrderSessionId || executedOrderSessionId || "";
 
   return {
     index,
@@ -107,14 +109,11 @@ function finalizeSessionResult(index, durationMs, payload, error) {
     durationMs,
     error: null,
     dashboardReady: isDashboardReady(payload.dashboardData),
-    identity: {
-      email: payload.identity?.email ?? null,
-      name: payload.identity?.name ?? null,
-    },
-    accountId: accountId || null,
+    identityHash: shortHash(identitySource),
+    accountHash: accountId ? shortHash(accountId) : null,
     sessionCookieHash: sessionCookie ? shortHash(sessionCookie) : null,
     xsrfTokenHash: xsrfToken ? shortHash(xsrfToken) : null,
-    orderSessionId: createdOrderSessionId || executedOrderSessionId || null,
+    orderSessionHash: orderSessionSource ? shortHash(orderSessionSource) : null,
   };
 }
 
@@ -126,10 +125,10 @@ function hasDistinctValues(results, fieldName, expectedCount) {
 function buildChecks(results, expectedCount) {
   const allSessionsSucceeded = results.length === expectedCount && results.every((result) => result.status === "passed");
   const dashboardReady = results.every((result) => result.dashboardReady);
-  const uniqueAccounts = hasDistinctValues(results, "accountId", expectedCount);
+  const uniqueAccounts = hasDistinctValues(results, "accountHash", expectedCount);
   const uniqueSessionCookies = hasDistinctValues(results, "sessionCookieHash", expectedCount);
   const uniqueXsrfTokens = hasDistinctValues(results, "xsrfTokenHash", expectedCount);
-  const uniqueOrderSessions = hasDistinctValues(results, "orderSessionId", expectedCount);
+  const uniqueOrderSessions = hasDistinctValues(results, "orderSessionHash", expectedCount);
 
   return {
     expectedSessionCount: expectedCount,

@@ -39,6 +39,7 @@ COLD_START_REPORT_PATH="${OUTPUT_DIR}/cold-start-timing.json"
 SMOKE_SUMMARY_PATH="${OUTPUT_DIR}/smoke-summary.json"
 DOCS_SUMMARY_PATH="${OUTPUT_DIR}/docs-summary.json"
 OBSERVABILITY_LOG_PATH="${OUTPUT_DIR}/observability-validation.log"
+COMPOSE_UP_LOG_PATH="${OUTPUT_DIR}/compose-up.log"
 
 STARTED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 COMPLETED_AT=""
@@ -153,6 +154,15 @@ json_escape() {
   value="${value//$'\r'/\\r}"
   value="${value//$'\t'/\\t}"
   printf '%s' "${value}"
+}
+
+relative_output_path() {
+  local target_path="$1"
+  if [[ "${target_path}" == "${OUTPUT_DIR}"/* ]]; then
+    printf '%s' "${target_path#"${OUTPUT_DIR}/"}"
+    return
+  fi
+  printf '%s' "${target_path}"
 }
 
 http_status() {
@@ -340,22 +350,22 @@ EOF
     {
       "id": "E10-SMOKE-001",
       "status": "$(if [[ "${MANDATORY_API_STATUS}" == "passed" && "${HEALTH_STATUS}" == "passed" ]]; then echo "passed"; else echo "failed"; fi)",
-      "evidencePath": "$(json_escape "${COLD_START_REPORT_PATH}")"
+      "evidencePath": "$(json_escape "$(relative_output_path "${COLD_START_REPORT_PATH}")")"
     },
     {
       "id": "E10-SMOKE-002",
       "status": "$(if [[ "${DOCS_STATUS}" == "passed" ]]; then echo "passed"; else echo "failed"; fi)",
-      "evidencePath": "$(json_escape "${DOCS_SUMMARY_PATH}")"
+      "evidencePath": "$(json_escape "$(relative_output_path "${DOCS_SUMMARY_PATH}")")"
     },
     {
       "id": "E10-OBS-001",
       "status": "$(if [[ "${OBSERVABILITY_STATUS}" == "passed" ]]; then echo "passed"; else echo "failed"; fi)",
-      "evidencePath": "$(json_escape "${OBSERVABILITY_LOG_PATH}")"
+      "evidencePath": "$(json_escape "$(relative_output_path "${OBSERVABILITY_LOG_PATH}")")"
     },
     {
       "id": "E10-OBS-002",
       "status": "$(if [[ "${OBSERVABILITY_STATUS}" == "passed" ]]; then echo "passed"; else echo "failed"; fi)",
-      "evidencePath": "$(json_escape "${OBSERVABILITY_LOG_PATH}")"
+      "evidencePath": "$(json_escape "$(relative_output_path "${OBSERVABILITY_LOG_PATH}")")"
     }
   ],
   "checks": {
@@ -363,7 +373,8 @@ EOF
     "health": "$(json_escape "${HEALTH_STATUS}")",
     "mandatoryApi": "$(json_escape "${MANDATORY_API_STATUS}")",
     "docs": "$(json_escape "${DOCS_STATUS}")",
-    "observability": "$(json_escape "${OBSERVABILITY_STATUS}")"
+    "observability": "$(json_escape "${OBSERVABILITY_STATUS}")",
+    "composeUpLog": "$(json_escape "$(relative_output_path "${COMPOSE_UP_LOG_PATH}")")"
   }
 }
 EOF
@@ -398,8 +409,9 @@ main() {
       channel-service \
       edge-gateway \
       prometheus \
-      grafana >/dev/null; then
+      grafana >"${COMPOSE_UP_LOG_PATH}" 2>&1; then
       STACK_BOOT_STATUS="failed"
+      cat "${COMPOSE_UP_LOG_PATH}" >&2 || true
       fail "docker compose up failed"
     fi
   fi

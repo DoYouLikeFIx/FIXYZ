@@ -15,6 +15,8 @@ Use this template after Story `10.4` smoke and rehearsal evidence is generated.
 - `smoke-summary.json`:
 - `cold-start-timing.json`:
 - `docs-summary.json`:
+- `edge-summary.json`:
+- `edge-gateway-validation.log`:
 - `session-isolation-summary.json`:
 - `rollback-rehearsal-summary.json`:
 - `go-no-go-summary.json`:
@@ -26,6 +28,7 @@ Use this template after Story `10.4` smoke and rehearsal evidence is generated.
 
 - [ ] Cold-start target is within 120 seconds.
 - [ ] Mandatory API/docs endpoints responded correctly.
+- [ ] Edge gateway validation completed successfully.
 - [ ] Prometheus targets are `UP`.
 - [ ] Grafana dashboard is reachable.
 - [ ] Five authenticated sessions remained isolated.
@@ -33,9 +36,9 @@ Use this template after Story `10.4` smoke and rehearsal evidence is generated.
 
 ## Blocking Rules
 
-- Any missing Story `10.4` evidence keeps the release at `no-go`.
-- Any smoke, session isolation, or rollback rehearsal status other than `passed` keeps the release at `no-go`.
-- Any undocumented degraded path or missing rollback owner keeps the release at `no-go`.
+- Missing Story `10.4` evidence keeps the release at `no-go`.
+- Release readiness remains `no-go` when smoke, edge validation, session isolation, or rollback rehearsal is not `passed`.
+- Undocumented degraded paths or a missing rollback owner also keep the release at `no-go`.
 
 ## Decision
 

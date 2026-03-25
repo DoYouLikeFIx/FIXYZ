@@ -24,8 +24,8 @@ const SCENARIO_CATALOG = [
   },
   {
     scenarioId: "E10-SMOKE-002",
-    description: "Critical API/docs endpoints respond correctly during smoke validation.",
-    owner: "Story 10.4 docs smoke summary",
+    description: "Critical API/docs endpoints and edge gateway validation respond correctly during smoke validation.",
+    owner: "Story 10.4 docs and edge smoke summary",
     evidence: "docs-summary.json",
   },
   {
@@ -153,6 +153,31 @@ function scenarioFromStatus(filePayload, scenarioId, description, owner, evidenc
   };
 }
 
+function scenarioFromDocsAndEdge(docsSummary, edgeSummary, scenarioId, description, owner, evidencePath) {
+  const docsResult = normalizeResult(docsSummary?.status);
+  const edgeResult = normalizeResult(edgeSummary?.status);
+  const hasDocs = docsSummary !== null;
+  const hasEdge = edgeSummary !== null;
+
+  if (!hasDocs || !hasEdge) {
+    return {
+      scenarioId,
+      description,
+      result: "MISSING",
+      ownerTest: owner,
+      evidence: evidencePath,
+    };
+  }
+
+  return {
+    scenarioId,
+    description,
+    result: docsResult === "PASSED" && edgeResult === "PASSED" ? "PASSED" : "FAILED",
+    ownerTest: owner,
+    evidence: evidencePath,
+  };
+}
+
 function scenarioFromColdStart(smokeSummary, filePayload, scenarioId, description, owner, evidencePath) {
   const smokeScenario = scenarioFromSmoke(smokeSummary, scenarioId, description, owner, evidencePath);
   if (!filePayload) {
@@ -212,6 +237,7 @@ function main() {
   const coldStartPath = path.join(OUTPUT_DIR, "cold-start-timing.json");
   const docsSummaryPath = path.join(OUTPUT_DIR, "docs-summary.json");
   const smokeSummaryPath = path.join(OUTPUT_DIR, "smoke-summary.json");
+  const edgeSummaryPath = path.join(OUTPUT_DIR, "edge-summary.json");
   const sessionSummaryPath = path.join(OUTPUT_DIR, "session-isolation-summary.json");
   const rollbackSummaryPath = path.join(OUTPUT_DIR, "rollback-rehearsal-summary.json");
   const goNoGoSummaryPath = path.join(OUTPUT_DIR, "go-no-go-summary.json");
@@ -219,13 +245,21 @@ function main() {
   const coldStart = safeReadJson(coldStartPath);
   const docsSummary = safeReadJson(docsSummaryPath);
   const smokeSummary = safeReadJson(smokeSummaryPath);
+  const edgeSummary = safeReadJson(edgeSummaryPath);
   const sessionSummary = safeReadJson(sessionSummaryPath);
   const rollbackSummary = safeReadJson(rollbackSummaryPath);
   const goNoGoSummary = safeReadJson(goNoGoSummaryPath);
 
   const scenarios = [
     scenarioFromColdStart(smokeSummary, coldStart, "E10-SMOKE-001", SCENARIO_CATALOG[0].description, SCENARIO_CATALOG[0].owner, relativizeEvidence(coldStartPath)),
-    scenarioFromStatus(docsSummary, "E10-SMOKE-002", SCENARIO_CATALOG[1].description, SCENARIO_CATALOG[1].owner, relativizeEvidence(docsSummaryPath)),
+    scenarioFromDocsAndEdge(
+      docsSummary,
+      edgeSummary,
+      "E10-SMOKE-002",
+      SCENARIO_CATALOG[1].description,
+      SCENARIO_CATALOG[1].owner,
+      `${relativizeEvidence(docsSummaryPath)} | ${relativizeEvidence(edgeSummaryPath)}`,
+    ),
     scenarioFromStatus(rollbackSummary, "E10-SMOKE-003", SCENARIO_CATALOG[2].description, SCENARIO_CATALOG[2].owner, relativizeEvidence(rollbackSummaryPath)),
     scenarioFromSmoke(smokeSummary, "E10-OBS-001", SCENARIO_CATALOG[3].description, SCENARIO_CATALOG[3].owner, SCENARIO_CATALOG[3].evidence),
     scenarioFromSmoke(smokeSummary, "E10-OBS-002", SCENARIO_CATALOG[4].description, SCENARIO_CATALOG[4].owner, SCENARIO_CATALOG[4].evidence),
@@ -251,6 +285,10 @@ function main() {
       status: normalizeResult(docsSummary?.status),
       evidence: relativizeEvidence(docsSummaryPath),
     },
+    edge: {
+      status: normalizeResult(edgeSummary?.status),
+      evidence: relativizeEvidence(edgeSummaryPath),
+    },
     goNoGo: {
       decision: goNoGoDecision,
       releaseReady,
@@ -260,6 +298,7 @@ function main() {
     linkedEvidence: {
       coldStart: relativizeEvidence(coldStartPath),
       docs: relativizeEvidence(docsSummaryPath),
+      edge: relativizeEvidence(edgeSummaryPath),
       smoke: relativizeEvidence(smokeSummaryPath),
       sessionIsolation: relativizeEvidence(sessionSummaryPath),
       rollback: relativizeEvidence(rollbackSummaryPath),

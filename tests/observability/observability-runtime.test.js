@@ -7,6 +7,7 @@ const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
 const { spawn, spawnSync } = require("node:child_process");
+const { runAsyncBashScript, runBashScript } = require("../helpers/bash-script-test-utils");
 
 const repoRoot = path.resolve(__dirname, "..", "..");
 const composeEnv = {
@@ -54,64 +55,6 @@ function runAsync(command, args, options = {}) {
       clearTimeout(timeout);
       resolve({ status: code, stdout, stderr });
     });
-  });
-}
-
-function quoteForBash(value) {
-  return `'${String(value).replace(/'/g, `'\\''`)}'`;
-}
-
-function toBashPath(value) {
-  if (process.platform !== "win32") {
-    return value;
-  }
-  if (!/^[A-Za-z]:[\\/]/.test(value)) {
-    return value.replace(/\\/g, "/");
-  }
-
-  const driveLetter = value[0].toLowerCase();
-  const withoutDrive = value.slice(2).replace(/\\/g, "/");
-  return `/mnt/${driveLetter}${withoutDrive}`;
-}
-
-function toBashEnvValue(name, value) {
-  if (name !== "PATH") {
-    return toBashPath(String(value));
-  }
-
-  const segments = String(value)
-    .split(";")
-    .filter(Boolean)
-    .map((segment) => toBashPath(segment));
-
-  return segments.join(":");
-}
-
-function buildBashCommand(scriptPath, options = {}) {
-  const statements = [];
-
-  for (const [name, value] of Object.entries(options.env || {})) {
-    statements.push(`export ${name}=${quoteForBash(toBashEnvValue(name, value))}`);
-  }
-
-  if ((options.prependPathEntries || []).length > 0) {
-    const prepended = options.prependPathEntries.map((entry) => toBashPath(entry)).join(":");
-    statements.push(`export PATH=${quoteForBash(`${prepended}:`)}"$PATH"`);
-  }
-
-  statements.push(`bash ${quoteForBash(scriptPath.replace(/\\/g, "/"))}`);
-  return statements.join("; ");
-}
-
-function runBashScript(scriptPath, options = {}) {
-  return run("bash", ["-lc", buildBashCommand(scriptPath, options)], {
-    timeout: options.timeout,
-  });
-}
-
-function runAsyncBashScript(scriptPath, options = {}) {
-  return runAsync("bash", ["-lc", buildBashCommand(scriptPath, options)], {
-    timeout: options.timeout,
   });
 }
 
@@ -183,7 +126,7 @@ test("docker compose config succeeds with observability additions", () => {
 });
 
 test("validation script passes in static mode", () => {
-  const result = runBashScript("scripts/observability/validate-observability-stack.sh", {
+  const result = runBashScript(repoRoot, "scripts/observability/validate-observability-stack.sh", {
     env: { ...composeEnv, OBSERVABILITY_SKIP_RUNTIME: "1" },
   });
 
@@ -292,10 +235,10 @@ printf '%s\\n' "$*" >> "$MOCK_CURL_LOG"
 last_arg=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    -o|-w|-u|-H|-X)
+    -o|-w|-u|-H|-X|--data-urlencode)
       shift 2
       ;;
-    -s|-S|-f|-fsS|-T)
+    -s|-S|-f|-fsS|-T|-G)
       shift 1
       ;;
     *)
@@ -356,7 +299,7 @@ esac
   });
 
   try {
-    const result = await runAsyncBashScript("scripts/observability/validate-observability-stack.sh", {
+    const result = await runAsyncBashScript(repoRoot, "scripts/observability/validate-observability-stack.sh", {
       timeout: 120000,
       env: {
         ...composeEnv,

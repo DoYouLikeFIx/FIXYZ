@@ -1,3 +1,4 @@
 scripts/observability/validate-observability-stack.sh text eol=lf
+scripts/release-readiness/run-edge-gateway-validation.sh text eol=lf
 scripts/release-readiness/run-full-stack-smoke.sh text eol=lf
 scripts/release-readiness/run-rollback-rehearsal.sh text eol=lf

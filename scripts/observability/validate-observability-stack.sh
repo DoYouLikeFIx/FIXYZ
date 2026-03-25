@@ -122,10 +122,14 @@ require_static_contract() {
 
 prometheus_query() {
   local query="$1"
-  curl -fsS "${OBSERVABILITY_PROMETHEUS_BASE_URL}/api/v1/query?query=${query}"
+  curl -fsS -G \
+    --data-urlencode "query=${query}" \
+    "${OBSERVABILITY_PROMETHEUS_BASE_URL}/api/v1/query"
 }
 
 verify_runtime_contract() {
+  # Story 10.4 keeps Prometheus/Grafana running because downstream smoke and evidence
+  # assembly steps rely on the same rehearsal stack remaining available.
   compose_cmd up -d prometheus grafana >/dev/null
 
   curl -fsS "${OBSERVABILITY_PROMETHEUS_BASE_URL}/-/healthy" >/dev/null
