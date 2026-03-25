@@ -27,6 +27,8 @@ COMPOSE_PROFILES=observability \
 node ./scripts/release-readiness/run-five-session-isolation.mjs
 
 ./scripts/release-readiness/run-rollback-rehearsal.sh
+
+npm run assemble:story-10-4:evidence
 ```
 
 Expected evidence output under `_bmad-output/test-artifacts/epic-10/<build-id>/story-10-4/`:
@@ -38,6 +40,8 @@ Expected evidence output under `_bmad-output/test-artifacts/epic-10/<build-id>/s
 - `rollback-rehearsal-summary.json`
 - `go-no-go-summary.json`
 - `go-no-go-summary.md`
+- `matrix-summary.json`
+- `matrix-summary.md`
 
 ## Cold-Start Target
 
@@ -83,16 +87,17 @@ Execute mode must be treated as a controlled rehearsal. If the compose re-apply 
 
 ## Go/No-Go Update Procedure
 
-After smoke, session isolation, and rollback rehearsal complete:
+After smoke, session isolation, rollback rehearsal, and evidence assembly complete:
 
 1. Open `go-no-go-summary.json` and `go-no-go-summary.md`.
-2. Confirm linked evidence paths point to the same Story `10.4` rehearsal run.
-3. Update the release review with:
+2. Open `matrix-summary.json` and `matrix-summary.md`.
+3. Confirm linked evidence paths point to the same Story `10.4` rehearsal run.
+4. Update the release review with:
    - smoke status
    - session isolation status
    - rollback rehearsal status
    - final `go` or `no-go` decision
-4. If any prerequisite evidence is not `passed`, mark the review as `no-go`.
+5. If any prerequisite evidence is not `passed`, mark the review as `no-go`.
 
 ## Failure Handling
 

@@ -65,15 +65,15 @@ jobs:
         run: |
           set -euo pipefail
           cp .env.example .env
-          cat >> .env <<EOF
-          COMPOSE_PROFILES=${COMPOSE_PROFILES}
-          VAULT_DEV_ROOT_TOKEN_ID=${VAULT_DEV_ROOT_TOKEN_ID}
-          INTERNAL_SECRET_BOOTSTRAP=${INTERNAL_SECRET_BOOTSTRAP}
-          INTERNAL_SECRET=${INTERNAL_SECRET}
-          OBSERVABILITY_GRAFANA_ADMIN_USER=${OBSERVABILITY_GRAFANA_ADMIN_USER}
-          OBSERVABILITY_GRAFANA_ADMIN_PASSWORD=${OBSERVABILITY_GRAFANA_ADMIN_PASSWORD}
-          FEP_MARKETDATA_PROVIDER=${FEP_MARKETDATA_PROVIDER}
-          EOF
+          {
+            printf 'COMPOSE_PROFILES=%s\n' "${COMPOSE_PROFILES}"
+            printf 'VAULT_DEV_ROOT_TOKEN_ID=%s\n' "${VAULT_DEV_ROOT_TOKEN_ID}"
+            printf 'INTERNAL_SECRET_BOOTSTRAP=%s\n' "${INTERNAL_SECRET_BOOTSTRAP}"
+            printf 'INTERNAL_SECRET=%s\n' "${INTERNAL_SECRET}"
+            printf 'OBSERVABILITY_GRAFANA_ADMIN_USER=%s\n' "${OBSERVABILITY_GRAFANA_ADMIN_USER}"
+            printf 'OBSERVABILITY_GRAFANA_ADMIN_PASSWORD=%s\n' "${OBSERVABILITY_GRAFANA_ADMIN_PASSWORD}"
+            printf 'FEP_MARKETDATA_PROVIDER=%s\n' "${FEP_MARKETDATA_PROVIDER}"
+          } >> .env
 
       - name: Validate release-readiness scripts
         run: npm run lint:release-readiness
@@ -89,7 +89,7 @@ jobs:
           SMOKE_BUILD_ID: ${{ env.STORY_10_4_BUILD_ID }}
         run: |
           set -euo pipefail
-          ./scripts/release-readiness/run-full-stack-smoke.sh
+          bash ./scripts/release-readiness/run-full-stack-smoke.sh
 
       - name: Run edge gateway validation
         id: edge
@@ -102,7 +102,7 @@ jobs:
           set -euo pipefail
           output_dir="_bmad-output/test-artifacts/epic-10/${STORY_10_4_BUILD_ID}/story-10-4"
           mkdir -p "${output_dir}"
-          ./docker/nginx/scripts/validate-edge-gateway.sh > "${output_dir}/edge-gateway-validation.log" 2>&1
+          bash ./docker/nginx/scripts/validate-edge-gateway.sh > "${output_dir}/edge-gateway-validation.log" 2>&1
 
       - name: Run five-session isolation rehearsal
         id: session_isolation
@@ -121,7 +121,7 @@ jobs:
           ROLLBACK_REHEARSAL_BUILD_ID: ${{ env.STORY_10_4_BUILD_ID }}
         run: |
           set -euo pipefail
-          ./scripts/release-readiness/run-rollback-rehearsal.sh
+          bash ./scripts/release-readiness/run-rollback-rehearsal.sh
 
       - name: Assemble Story 10.4 evidence
         id: assemble

@@ -132,7 +132,8 @@ render_blockers_json() {
 }
 
 render_service_steps_json() {
-  local services=(${ROLLBACK_REHEARSAL_TARGET_SERVICES})
+  local services=()
+  read -r -a services <<<"${ROLLBACK_REHEARSAL_TARGET_SERVICES}"
   local rendered="["
   local index
   for index in "${!services[@]}"; do

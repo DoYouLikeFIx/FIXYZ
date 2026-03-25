@@ -19,6 +19,8 @@ Use this template after Story `10.4` smoke and rehearsal evidence is generated.
 - `rollback-rehearsal-summary.json`:
 - `go-no-go-summary.json`:
 - `go-no-go-summary.md`:
+- `matrix-summary.json`:
+- `matrix-summary.md`:
 
 ## Mandatory Checks
 

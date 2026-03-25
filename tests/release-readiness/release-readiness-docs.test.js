@@ -19,9 +19,12 @@ test("full-stack smoke rehearsal runbook links canonical Story 10.4 automation a
   assert.match(runbook, /run-full-stack-smoke\.sh/);
   assert.match(runbook, /run-five-session-isolation\.mjs/);
   assert.match(runbook, /run-rollback-rehearsal\.sh/);
+  assert.match(runbook, /assemble:story-10-4:evidence/);
   assert.match(runbook, /deterministic re-run/i);
   assert.match(runbook, /go-no-go-summary\.json/);
   assert.match(runbook, /go-no-go-summary\.md/);
+  assert.match(runbook, /matrix-summary\.json/);
+  assert.match(runbook, /matrix-summary\.md/);
 });
 
 test("go-no-go checklist template keeps Story 10.4 evidence and blocking rules explicit", () => {
@@ -31,6 +34,8 @@ test("go-no-go checklist template keeps Story 10.4 evidence and blocking rules e
   assert.match(checklist, /session-isolation-summary\.json/);
   assert.match(checklist, /rollback-rehearsal-summary\.json/);
   assert.match(checklist, /go-no-go-summary\.json/);
+  assert.match(checklist, /matrix-summary\.json/);
+  assert.match(checklist, /matrix-summary\.md/);
   assert.match(checklist, /Any missing Story `10\.4` evidence keeps the release at `no-go`\./);
   assert.match(checklist, /Any smoke, session isolation, or rollback rehearsal status other than `passed` keeps the release at `no-go`\./);
 });

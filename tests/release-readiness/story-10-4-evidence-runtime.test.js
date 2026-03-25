@@ -89,6 +89,7 @@ test("story 10.4 evidence assembler writes passed matrix summary when all eviden
 
   assert.equal(summary.overallResult, "PASSED");
   assert.equal(summary.goNoGo.decision, "go");
+  assert.equal(summary.goNoGo.releaseReady, true);
   assert.equal(summary.scenarios.length, 6);
   assert.ok(summary.scenarios.every((scenario) => scenario.result === "PASSED"));
   assert.match(markdown, /Story 10\.4 Full-Stack Smoke\/Rehearsal Summary/);
@@ -115,4 +116,23 @@ test("story 10.4 evidence assembler fails closed when evidence is missing or go-
 
   const sessionScenario = summary.scenarios.find((scenario) => scenario.scenarioId === "E10-SESSION-001");
   assert.equal(sessionScenario.result, "MISSING");
+});
+
+test("story 10.4 evidence assembler fails when go decision is inconsistent with releaseReady false", () => {
+  const tempDir = makeTempDir("story-10-4-evidence-release-ready-");
+  writePassingEvidence(tempDir);
+  writeJson(path.join(tempDir, "go-no-go-summary.json"), {
+    decision: "go",
+    releaseReady: false,
+    blockers: [],
+  });
+
+  const result = runAssembler(tempDir);
+  assert.equal(result.status, 1, "assembler should fail when releaseReady is false");
+  assert.match(result.stderr, /Story 10\.4 evidence gate failed/);
+
+  const summary = readJson(path.join(tempDir, "matrix-summary.json"));
+  assert.equal(summary.overallResult, "FAILED");
+  assert.equal(summary.goNoGo.decision, "go");
+  assert.equal(summary.goNoGo.releaseReady, false);
 });

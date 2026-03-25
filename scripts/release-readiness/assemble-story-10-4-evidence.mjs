@@ -153,23 +153,23 @@ function scenarioFromStatus(filePayload, scenarioId, description, owner, evidenc
   };
 }
 
-function scenarioFromColdStart(filePayload, scenarioId, description, owner, evidencePath) {
+function scenarioFromColdStart(smokeSummary, filePayload, scenarioId, description, owner, evidencePath) {
+  const smokeScenario = scenarioFromSmoke(smokeSummary, scenarioId, description, owner, evidencePath);
   if (!filePayload) {
     return {
       scenarioId,
       description,
-      result: "MISSING",
+      result: smokeScenario.result === "MISSING" ? "MISSING" : "FAILED",
       ownerTest: owner,
       evidence: evidencePath,
     };
   }
 
-  const status = normalizeResult(filePayload.status);
   const withinTarget = Boolean(filePayload.firstMandatoryApi?.withinTarget);
   return {
     scenarioId,
     description,
-    result: status === "PASSED" && withinTarget ? "PASSED" : "FAILED",
+    result: smokeScenario.result === "PASSED" && withinTarget ? "PASSED" : "FAILED",
     ownerTest: owner,
     evidence: evidencePath,
   };
@@ -224,7 +224,7 @@ function main() {
   const goNoGoSummary = safeReadJson(goNoGoSummaryPath);
 
   const scenarios = [
-    scenarioFromColdStart(coldStart, "E10-SMOKE-001", SCENARIO_CATALOG[0].description, SCENARIO_CATALOG[0].owner, relativizeEvidence(coldStartPath)),
+    scenarioFromColdStart(smokeSummary, coldStart, "E10-SMOKE-001", SCENARIO_CATALOG[0].description, SCENARIO_CATALOG[0].owner, relativizeEvidence(coldStartPath)),
     scenarioFromStatus(docsSummary, "E10-SMOKE-002", SCENARIO_CATALOG[1].description, SCENARIO_CATALOG[1].owner, relativizeEvidence(docsSummaryPath)),
     scenarioFromStatus(rollbackSummary, "E10-SMOKE-003", SCENARIO_CATALOG[2].description, SCENARIO_CATALOG[2].owner, relativizeEvidence(rollbackSummaryPath)),
     scenarioFromSmoke(smokeSummary, "E10-OBS-001", SCENARIO_CATALOG[3].description, SCENARIO_CATALOG[3].owner, SCENARIO_CATALOG[3].evidence),
@@ -235,7 +235,8 @@ function main() {
   const scenarioFailures = scenarios.filter((scenario) => scenario.result !== "PASSED");
   const goNoGoDecision = (goNoGoSummary?.decision ?? "no-go").toString();
   const goNoGoResult = normalizeResult(goNoGoDecision);
-  const overallResult = scenarioFailures.length === 0 && goNoGoResult === "PASSED" ? "PASSED" : "FAILED";
+  const releaseReady = goNoGoSummary?.releaseReady === true;
+  const overallResult = scenarioFailures.length === 0 && goNoGoResult === "PASSED" && releaseReady ? "PASSED" : "FAILED";
   const summary = {
     buildId: BUILD_ID,
     generatedAt: new Date().toISOString(),
@@ -252,7 +253,7 @@ function main() {
     },
     goNoGo: {
       decision: goNoGoDecision,
-      releaseReady: Boolean(goNoGoSummary?.releaseReady),
+      releaseReady,
       blockers: Array.isArray(goNoGoSummary?.blockers) ? goNoGoSummary.blockers : [],
       evidence: relativizeEvidence(goNoGoSummaryPath),
     },
@@ -270,6 +271,11 @@ function main() {
   fs.writeFileSync(MATRIX_MARKDOWN_PATH, renderMarkdown(summary));
 
   if (overallResult !== "PASSED") {
+    const failingScenarios = scenarios
+      .filter((scenario) => scenario.result !== "PASSED")
+      .map((scenario) => `${scenario.scenarioId}:${scenario.result}`);
+    console.error(`Story 10.4 evidence gate failed: ${failingScenarios.join(", ") || "go-no-go-contract"}`);
+    console.error(`Matrix summary: ${MATRIX_JSON_PATH}`);
     process.exitCode = 1;
   }
 }
