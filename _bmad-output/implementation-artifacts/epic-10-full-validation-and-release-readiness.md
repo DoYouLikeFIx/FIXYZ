@@ -117,12 +117,17 @@ So that mobile deployment quality is auditable.
 
 **Depends On:** Story 9.6, Story 10.1, Story 10.4
 
+Parallelization Note:
+
+- Implementation may start once Story 9.6 is complete by consuming the stable CI/report contracts from Stories 10.1 and 10.4.
+- Final release signoff still requires Stories 10.1 and 10.4 to be completed and linked as upstream evidence.
+
 **Acceptance Highlights:**
 
-- Critical mobile flows must pass across the target test matrix.
-- Auth/order/notification regressions block release.
-- Checklist and artifact links are completed for the handoff package.
-- Final release notes and distribution handoff are finalized from the approved build.
+- Critical mobile auth/order/dashboard flows must pass across the target release matrix (`ios-simulator/direct-maestro`, `live-backend-contract`, and `physical-device/edge-smoke`).
+- Auth/order/notification regressions block release, with notification regressions explicitly backed by notification API/UI evidence rather than inferred from auth/order coverage.
+- `MOB/docs/release/mobile-readiness-checklist.md` and `MOB/docs/release/mobile-test-matrix.md` are completed for the handoff package and link upstream Story 10.1 / Story 10.4 evidence.
+- Final versioned release notes and distribution handoff are finalized from the approved build in `MOB/docs/release/mobile-release-notes.md` and `MOB/docs/release/mobile-handoff-package.md`.
 
 **Implementation Artifact:** `_bmad-output/implementation-artifacts/10-6-mobile-release-readiness-pack.md`
 

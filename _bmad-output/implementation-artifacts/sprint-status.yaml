@@ -152,8 +152,8 @@ development_status:
   10-2-concurrency-performance-gate: ready-for-dev
   10-3-fep-resilience-drills: ready-for-dev
   10-4-full-stack-smoke-and-rehearsal: ready-for-dev
-  10-5-web-release-readiness-pack: ready-for-dev
-  10-6-mobile-release-readiness-pack: ready-for-dev
+  10-5-web-release-readiness-pack: review
+  10-6-mobile-release-readiness-pack: review
   epic-10-retrospective: optional
 
   epic-11: done
