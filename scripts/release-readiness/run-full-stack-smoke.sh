@@ -88,7 +88,6 @@ fail() {
   FINAL_MESSAGE="$1"
   echo "full-stack smoke failed: $1" >&2
   SCRIPT_STATUS="failed"
-  return 1
 }
 
 normalize_compose_file_for_docker_host() {
@@ -141,7 +140,10 @@ docker_cmd() {
 
 assert_file() {
   local path="$1"
-  [[ -f "${path}" ]] || fail "missing required file: ${path}"
+  if [[ ! -f "${path}" ]]; then
+    fail "missing required file: ${path}"
+    return 1
+  fi
 }
 
 now_ms() {
