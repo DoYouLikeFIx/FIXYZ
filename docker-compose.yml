@@ -317,6 +317,7 @@ services:
       EDGE_TLS_KEY_PATH: /etc/nginx/certs/tls.key
       CHANNEL_SERVICE_HOST: channel-service
       CHANNEL_SERVICE_PORT: 8080
+      CHANNEL_SERVICE_HEALTH_PORT: 18080
       COREBANK_SERVICE_HOST: corebank-service
       COREBANK_SERVICE_PORT: 8081
       FEP_GATEWAY_HOST: fep-gateway

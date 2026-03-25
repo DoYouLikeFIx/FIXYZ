@@ -3,6 +3,11 @@ upstream channel_service {
   keepalive 32;
 }
 
+upstream channel_service_health {
+  server ${CHANNEL_SERVICE_HOST}:${CHANNEL_SERVICE_HEALTH_PORT};
+  keepalive 8;
+}
+
 upstream corebank_service {
   server ${COREBANK_SERVICE_HOST}:${COREBANK_SERVICE_PORT};
   keepalive 32;
@@ -80,7 +85,7 @@ server {
     if ($request_method != GET) {
       return 404 '{"error":"EDGE_METHOD_NOT_ALLOWED","status":404,"request_id":"$request_id"}';
     }
-    proxy_pass http://channel_service/actuator/health;
+    proxy_pass http://channel_service_health/actuator/health;
   }
 
   location = /health/corebank {
