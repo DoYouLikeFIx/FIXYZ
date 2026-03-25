@@ -7,6 +7,7 @@ const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
 const { spawn, spawnSync } = require("node:child_process");
+const { runAsyncBashScript, runBashScript } = require("../helpers/bash-script-test-utils");
 
 const repoRoot = path.resolve(__dirname, "..", "..");
 const composeEnv = {
@@ -125,7 +126,7 @@ test("docker compose config succeeds with observability additions", () => {
 });
 
 test("validation script passes in static mode", () => {
-  const result = run("bash", ["scripts/observability/validate-observability-stack.sh"], {
+  const result = runBashScript(repoRoot, "scripts/observability/validate-observability-stack.sh", {
     env: { ...composeEnv, OBSERVABILITY_SKIP_RUNTIME: "1" },
   });
 
@@ -234,10 +235,10 @@ printf '%s\\n' "$*" >> "$MOCK_CURL_LOG"
 last_arg=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    -o|-w|-u|-H|-X)
+    -o|-w|-u|-H|-X|--data-urlencode)
       shift 2
       ;;
-    -s|-S|-f|-fsS|-T)
+    -s|-S|-f|-fsS|-T|-G)
       shift 1
       ;;
     *)
@@ -298,17 +299,17 @@ esac
   });
 
   try {
-    const result = await runAsync("bash", ["scripts/observability/validate-observability-stack.sh"], {
+    const result = await runAsyncBashScript(repoRoot, "scripts/observability/validate-observability-stack.sh", {
       timeout: 120000,
       env: {
         ...composeEnv,
-        PATH: `${binDir}:${process.env.PATH}`,
         MOCK_DOCKER_LOG: dockerLog,
         MOCK_CURL_LOG: curlLog,
         OBSERVABILITY_PROMETHEUS_BASE_URL: server.baseUrl,
         OBSERVABILITY_GRAFANA_BASE_URL: "http://127.0.0.1:13000",
         OBSERVABILITY_LAST_UPDATED_AT: checkedAt,
       },
+      prependPathEntries: [binDir],
     });
 
     assert.equal(result.status, 0, `runtime validation failed: ${result.stderr}\n${result.stdout}`);

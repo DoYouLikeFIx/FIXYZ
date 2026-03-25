@@ -42,3 +42,8 @@ docs/ops/redis-recovery/**/*.json
 gradlew
 gradlew.bat
 *.sh
+!scripts/observability/validate-observability-stack.sh
+!scripts/infra-bootstrap/repair-service-databases.sh
+!scripts/release-readiness/run-edge-gateway-validation.sh
+!scripts/release-readiness/run-full-stack-smoke.sh
+!scripts/release-readiness/run-rollback-rehearsal.sh

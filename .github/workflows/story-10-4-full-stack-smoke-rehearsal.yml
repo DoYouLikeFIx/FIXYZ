@@ -1,0 +1,186 @@
+name: Story 10.4 Full-Stack Smoke Rehearsal
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'BE'
+      - 'BE/**'
+      - 'docker-compose.yml'
+      - 'docker/**'
+      - 'scripts/release-readiness/**'
+      - 'scripts/observability/**'
+      - 'scripts/story-11-5-live-dashboard-account.mjs'
+      - 'tests/release-readiness/**'
+      - 'docs/ops/**'
+      - '.env.example'
+      - 'package.json'
+      - '.github/workflows/story-10-4-full-stack-smoke-rehearsal.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: story-10-4-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  full-stack-smoke-rehearsal:
+    name: story-10-4-full-stack-smoke-rehearsal
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      STORY_10_4_BUILD_ID: gha-${{ github.run_id }}-${{ github.run_attempt }}
+      COMPOSE_PROFILES: observability
+      VAULT_DEV_ROOT_TOKEN_ID: ci-vault-root-token
+      INTERNAL_SECRET_BOOTSTRAP: ci-bootstrap-secret
+      INTERNAL_SECRET: ci-runtime-secret
+      OBSERVABILITY_GRAFANA_ADMIN_USER: admin
+      OBSERVABILITY_GRAFANA_ADMIN_PASSWORD: admin
+      FEP_MARKETDATA_PROVIDER: REPLAY
+      SESSION_ISOLATION_BASE_URL: http://127.0.0.1:8080
+      SESSION_ISOLATION_PASSWORD: LiveVideo115!
+      SESSION_ISOLATION_SESSION_TIMEOUT_MS: "180000"
+      SESSION_ISOLATION_REQUEST_TIMEOUT_MS: "90000"
+      SESSION_ISOLATION_POLL_TIMEOUT_MS: "90000"
+      ROLLBACK_REHEARSAL_MODE: simulate
+      ROLLBACK_REHEARSAL_OPERATOR: github-actions
+      ROLLBACK_REHEARSAL_CHANGE_REF: GHA-${{ github.run_id }}
+      ROLLBACK_REHEARSAL_OWNER: release-platform-oncall
+      NODE_TLS_REJECT_UNAUTHORIZED: "0"
+      EDGE_BASE_URL: https://127.0.0.1
+      SMOKE_MANDATORY_API_BASE_URL: http://127.0.0.1:8080
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: recursive
+          token: ${{ secrets.SUBMODULES_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "20"
+
+      - name: Materialize rehearsal environment file
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp .env.example .env
+          {
+            printf 'COMPOSE_PROFILES=%s\n' "${COMPOSE_PROFILES}"
+            printf 'VAULT_DEV_ROOT_TOKEN_ID=%s\n' "${VAULT_DEV_ROOT_TOKEN_ID}"
+            printf 'INTERNAL_SECRET_BOOTSTRAP=%s\n' "${INTERNAL_SECRET_BOOTSTRAP}"
+            printf 'INTERNAL_SECRET=%s\n' "${INTERNAL_SECRET}"
+            printf 'OBSERVABILITY_GRAFANA_ADMIN_USER=%s\n' "${OBSERVABILITY_GRAFANA_ADMIN_USER}"
+            printf 'OBSERVABILITY_GRAFANA_ADMIN_PASSWORD=%s\n' "${OBSERVABILITY_GRAFANA_ADMIN_PASSWORD}"
+            printf 'FEP_MARKETDATA_PROVIDER=%s\n' "${FEP_MARKETDATA_PROVIDER}"
+          } >> .env
+
+      - name: Validate release-readiness scripts
+        run: npm run lint:release-readiness
+
+      - name: Run release-readiness regression tests
+        run: npm run test:release-readiness
+
+      - name: Run full-stack smoke
+        id: smoke
+        continue-on-error: true
+        shell: bash
+        env:
+          SMOKE_BUILD_ID: ${{ env.STORY_10_4_BUILD_ID }}
+          SMOKE_STACK_READY_TIMEOUT_SECONDS: "300"
+        run: |
+          set -euo pipefail
+          bash ./scripts/release-readiness/run-full-stack-smoke.sh
+
+      - name: Run edge gateway validation
+        id: edge
+        if: ${{ always() && steps.smoke.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        env:
+          EDGE_VALIDATION_BUILD_ID: ${{ env.STORY_10_4_BUILD_ID }}
+          SKIP_COMPOSE_UP: "1"
+        run: |
+          set -euo pipefail
+          bash ./scripts/release-readiness/run-edge-gateway-validation.sh
+
+      - name: Run five-session isolation rehearsal
+        id: session_isolation
+        if: ${{ always() && steps.smoke.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          SESSION_ISOLATION_BUILD_ID: ${{ env.STORY_10_4_BUILD_ID }}
+        run: node ./scripts/release-readiness/run-five-session-isolation.mjs
+
+      - name: Run rollback rehearsal
+        id: rollback
+        if: always()
+        continue-on-error: true
+        shell: bash
+        env:
+          ROLLBACK_REHEARSAL_BUILD_ID: ${{ env.STORY_10_4_BUILD_ID }}
+        run: |
+          set -euo pipefail
+          bash ./scripts/release-readiness/run-rollback-rehearsal.sh
+
+      - name: Assemble Story 10.4 evidence
+        id: assemble
+        if: always()
+        continue-on-error: true
+        env:
+          STORY_10_4_BUILD_ID: ${{ env.STORY_10_4_BUILD_ID }}
+        run: npm run assemble:story-10-4:evidence
+
+      - name: Upload Story 10.4 evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: story-10-4-full-stack-smoke-rehearsal-${{ github.run_id }}-${{ github.run_attempt }}
+          path: _bmad-output/test-artifacts/epic-10/${{ env.STORY_10_4_BUILD_ID }}/story-10-4/**
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Tear down rehearsal stack
+        if: always()
+        shell: bash
+        run: |
+          docker compose down -v --remove-orphans || true
+          rm -f .env
+
+      - name: Enforce Story 10.4 gate
+        if: always()
+        shell: bash
+        run: |
+          failures=0
+
+          if [[ "${{ steps.smoke.outcome }}" != "success" ]]; then
+            echo "Smoke step failed."
+            failures=1
+          fi
+
+          if [[ "${{ steps.smoke.outcome }}" == "success" && "${{ steps.edge.outcome }}" != "success" ]]; then
+            echo "Edge gateway validation failed."
+            failures=1
+          fi
+
+          if [[ "${{ steps.smoke.outcome }}" == "success" && "${{ steps.session_isolation.outcome }}" != "success" ]]; then
+            echo "Session isolation rehearsal failed."
+            failures=1
+          fi
+
+          if [[ "${{ steps.rollback.outcome }}" != "success" ]]; then
+            echo "Rollback rehearsal failed."
+            failures=1
+          fi
+
+          if [[ "${{ steps.assemble.outcome }}" != "success" ]]; then
+            echo "Story 10.4 evidence assembly failed."
+            failures=1
+          fi
+
+          exit "${failures}"

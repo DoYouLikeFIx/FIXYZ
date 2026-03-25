@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "${ROOT_DIR}"
 
-BASE_URL="${EDGE_BASE_URL:-https://localhost}"
+BASE_URL="${EDGE_BASE_URL:-https://127.0.0.1}"
 COMPOSE_FILE="${EDGE_COMPOSE_FILE:-docker-compose.yml}"
 TLS_HOST="${EDGE_TLS_HOST:-}"
 TLS_PORT="${EDGE_TLS_PORT:-}"
@@ -53,6 +53,31 @@ canonical_runtime_checks=(
 fail() {
   echo "$1" >&2
   exit 1
+}
+
+wait_for_service_health() {
+  local service_name="$1"
+  local timeout_seconds="${2:-90}"
+  local started_at
+  local container_id=""
+  local health_status=""
+  started_at="$(date +%s)"
+
+  while true; do
+    container_id="$(docker compose -f "${COMPOSE_FILE}" ps -q "${service_name}" | tail -n1)"
+    if [[ -n "${container_id}" ]]; then
+      health_status="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "${container_id}")"
+      if [[ "${health_status}" == "healthy" || "${health_status}" == "running" ]]; then
+        return 0
+      fi
+    fi
+
+    if (( $(date +%s) - started_at >= timeout_seconds )); then
+      fail "Service ${service_name} did not become healthy within ${timeout_seconds}s after restart"
+    fi
+
+    sleep 2
+  done
 }
 
 curl_status() {
@@ -304,6 +329,7 @@ done
 
 if [[ "${channel_service_was_running}" == "1" ]]; then
   docker compose -f "${COMPOSE_FILE}" up -d channel-service >/dev/null
+  wait_for_service_health channel-service 90
 fi
 need_channel_service_restart=0
 channel_service_was_running=0
