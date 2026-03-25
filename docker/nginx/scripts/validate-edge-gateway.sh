@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "${ROOT_DIR}"
 
-BASE_URL="${EDGE_BASE_URL:-https://localhost}"
+BASE_URL="${EDGE_BASE_URL:-https://127.0.0.1}"
 COMPOSE_FILE="${EDGE_COMPOSE_FILE:-docker-compose.yml}"
 TLS_HOST="${EDGE_TLS_HOST:-}"
 TLS_PORT="${EDGE_TLS_PORT:-}"

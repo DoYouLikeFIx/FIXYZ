@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 COMPOSE_FILE="${SMOKE_COMPOSE_FILE:-${ROOT_DIR}/docker-compose.yml}"
 OUTPUT_DIR="${SMOKE_OUTPUT_DIR:-${ROOT_DIR}/_bmad-output/test-artifacts/epic-10/${SMOKE_BUILD_ID:-local}/story-10-4}"
-EDGE_BASE_URL="${EDGE_BASE_URL:-https://localhost}"
+EDGE_BASE_URL="${EDGE_BASE_URL:-https://127.0.0.1}"
 MANDATORY_API_PATH="${SMOKE_MANDATORY_API_PATH:-/api/v1/auth/csrf}"
 API_DOCS_URL="${SMOKE_API_DOCS_URL:-http://127.0.0.1:8080/v3/api-docs}"
 SWAGGER_UI_URL="${SMOKE_SWAGGER_UI_URL:-http://127.0.0.1:8080/swagger-ui/index.html}"

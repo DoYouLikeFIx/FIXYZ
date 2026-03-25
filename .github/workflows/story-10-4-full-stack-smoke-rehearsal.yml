@@ -50,6 +50,7 @@ jobs:
       ROLLBACK_REHEARSAL_CHANGE_REF: GHA-${{ github.run_id }}
       ROLLBACK_REHEARSAL_OWNER: release-platform-oncall
       NODE_TLS_REJECT_UNAUTHORIZED: "0"
+      EDGE_BASE_URL: https://127.0.0.1
 
     steps:
       - name: Checkout repository
