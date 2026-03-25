@@ -42,6 +42,9 @@ jobs:
       FEP_MARKETDATA_PROVIDER: REPLAY
       SESSION_ISOLATION_BASE_URL: http://127.0.0.1:8080
       SESSION_ISOLATION_PASSWORD: LiveVideo115!
+      SESSION_ISOLATION_SESSION_TIMEOUT_MS: "180000"
+      SESSION_ISOLATION_REQUEST_TIMEOUT_MS: "90000"
+      SESSION_ISOLATION_POLL_TIMEOUT_MS: "90000"
       ROLLBACK_REHEARSAL_MODE: simulate
       ROLLBACK_REHEARSAL_OPERATOR: github-actions
       ROLLBACK_REHEARSAL_CHANGE_REF: GHA-${{ github.run_id }}
@@ -87,13 +90,14 @@ jobs:
         shell: bash
         env:
           SMOKE_BUILD_ID: ${{ env.STORY_10_4_BUILD_ID }}
+          SMOKE_STACK_READY_TIMEOUT_SECONDS: "300"
         run: |
           set -euo pipefail
           bash ./scripts/release-readiness/run-full-stack-smoke.sh
 
       - name: Run edge gateway validation
         id: edge
-        if: always()
+        if: ${{ always() && steps.smoke.outcome == 'success' }}
         continue-on-error: true
         shell: bash
         env:
@@ -106,7 +110,7 @@ jobs:
 
       - name: Run five-session isolation rehearsal
         id: session_isolation
-        if: always()
+        if: ${{ always() && steps.smoke.outcome == 'success' }}
         continue-on-error: true
         env:
           SESSION_ISOLATION_BUILD_ID: ${{ env.STORY_10_4_BUILD_ID }}
@@ -158,12 +162,12 @@ jobs:
             failures=1
           fi
 
-          if [[ "${{ steps.edge.outcome }}" != "success" ]]; then
+          if [[ "${{ steps.smoke.outcome }}" == "success" && "${{ steps.edge.outcome }}" != "success" ]]; then
             echo "Edge gateway validation failed."
             failures=1
           fi
 
-          if [[ "${{ steps.session_isolation.outcome }}" != "success" ]]; then
+          if [[ "${{ steps.smoke.outcome }}" == "success" && "${{ steps.session_isolation.outcome }}" != "success" ]]; then
             echo "Session isolation rehearsal failed."
             failures=1
           fi

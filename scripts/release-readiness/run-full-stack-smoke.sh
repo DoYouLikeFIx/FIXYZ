@@ -11,6 +11,7 @@ API_DOCS_URL="${SMOKE_API_DOCS_URL:-http://127.0.0.1:8080/v3/api-docs}"
 SWAGGER_UI_URL="${SMOKE_SWAGGER_UI_URL:-http://127.0.0.1:8080/swagger-ui/index.html}"
 OBSERVABILITY_VALIDATOR_PATH="${OBSERVABILITY_VALIDATOR_PATH:-${ROOT_DIR}/scripts/observability/validate-observability-stack.sh}"
 SMOKE_START_TIMEOUT_SECONDS="${SMOKE_START_TIMEOUT_SECONDS:-120}"
+SMOKE_STACK_READY_TIMEOUT_SECONDS="${SMOKE_STACK_READY_TIMEOUT_SECONDS:-300}"
 SMOKE_POLL_INTERVAL_SECONDS="${SMOKE_POLL_INTERVAL_SECONDS:-2}"
 SKIP_COMPOSE_UP="${SKIP_COMPOSE_UP:-0}"
 REQUIRED_SERVICES=(
@@ -216,6 +217,49 @@ check_service_health() {
   HEALTH_STATUS="passed"
 }
 
+wait_for_required_services() {
+  local start_ms
+  local current_ms
+  local deadline_ms
+
+  start_ms="$(now_ms)"
+  deadline_ms="$((start_ms + (SMOKE_STACK_READY_TIMEOUT_SECONDS * 1000)))"
+
+  while true; do
+    local all_ready="1"
+    local service
+    local container_id
+    local health_status
+
+    for service in "${REQUIRED_SERVICES[@]}"; do
+      container_id="$(compose_cmd ps -q "${service}" | tail -n1)"
+      if [[ -z "${container_id}" ]]; then
+        all_ready="0"
+        break
+      fi
+      health_status="$(docker_cmd inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "${container_id}")"
+      if [[ "${health_status}" != "healthy" && "${health_status}" != "running" ]]; then
+        all_ready="0"
+        break
+      fi
+    done
+
+    if [[ "${all_ready}" == "1" ]]; then
+      HEALTH_STATUS="passed"
+      return
+    fi
+
+    current_ms="$(now_ms)"
+    if (( current_ms >= deadline_ms )); then
+      STACK_BOOT_STATUS="failed"
+      HEALTH_STATUS="failed"
+      fail "required services did not become healthy within ${SMOKE_STACK_READY_TIMEOUT_SECONDS}s"
+    fi
+
+    sleep "${SMOKE_POLL_INTERVAL_SECONDS}"
+  done
+}
+
 check_docs_endpoints() {
   local api_docs_body="${OUTPUT_DIR}/api-docs.json"
   local swagger_ui_body="${OUTPUT_DIR}/swagger-ui.html"
@@ -361,6 +405,7 @@ main() {
   fi
   STACK_BOOT_STATUS="passed"
 
+  wait_for_required_services
   wait_for_mandatory_api
   check_service_health
   check_docs_endpoints
