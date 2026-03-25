@@ -57,6 +57,64 @@ function runAsync(command, args, options = {}) {
   });
 }
 
+function quoteForBash(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
+}
+
+function toBashPath(value) {
+  if (process.platform !== "win32") {
+    return value;
+  }
+  if (!/^[A-Za-z]:[\\/]/.test(value)) {
+    return value.replace(/\\/g, "/");
+  }
+
+  const driveLetter = value[0].toLowerCase();
+  const withoutDrive = value.slice(2).replace(/\\/g, "/");
+  return `/mnt/${driveLetter}${withoutDrive}`;
+}
+
+function toBashEnvValue(name, value) {
+  if (name !== "PATH") {
+    return toBashPath(String(value));
+  }
+
+  const segments = String(value)
+    .split(";")
+    .filter(Boolean)
+    .map((segment) => toBashPath(segment));
+
+  return segments.join(":");
+}
+
+function buildBashCommand(scriptPath, options = {}) {
+  const statements = [];
+
+  for (const [name, value] of Object.entries(options.env || {})) {
+    statements.push(`export ${name}=${quoteForBash(toBashEnvValue(name, value))}`);
+  }
+
+  if ((options.prependPathEntries || []).length > 0) {
+    const prepended = options.prependPathEntries.map((entry) => toBashPath(entry)).join(":");
+    statements.push(`export PATH=${quoteForBash(`${prepended}:`)}"$PATH"`);
+  }
+
+  statements.push(`bash ${quoteForBash(scriptPath.replace(/\\/g, "/"))}`);
+  return statements.join("; ");
+}
+
+function runBashScript(scriptPath, options = {}) {
+  return run("bash", ["-lc", buildBashCommand(scriptPath, options)], {
+    timeout: options.timeout,
+  });
+}
+
+function runAsyncBashScript(scriptPath, options = {}) {
+  return runAsync("bash", ["-lc", buildBashCommand(scriptPath, options)], {
+    timeout: options.timeout,
+  });
+}
+
 function makeTempDir(prefix) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
@@ -125,7 +183,7 @@ test("docker compose config succeeds with observability additions", () => {
 });
 
 test("validation script passes in static mode", () => {
-  const result = run("bash", ["scripts/observability/validate-observability-stack.sh"], {
+  const result = runBashScript("scripts/observability/validate-observability-stack.sh", {
     env: { ...composeEnv, OBSERVABILITY_SKIP_RUNTIME: "1" },
   });
 
@@ -298,17 +356,17 @@ esac
   });
 
   try {
-    const result = await runAsync("bash", ["scripts/observability/validate-observability-stack.sh"], {
+    const result = await runAsyncBashScript("scripts/observability/validate-observability-stack.sh", {
       timeout: 120000,
       env: {
         ...composeEnv,
-        PATH: `${binDir}:${process.env.PATH}`,
         MOCK_DOCKER_LOG: dockerLog,
         MOCK_CURL_LOG: curlLog,
         OBSERVABILITY_PROMETHEUS_BASE_URL: server.baseUrl,
         OBSERVABILITY_GRAFANA_BASE_URL: "http://127.0.0.1:13000",
         OBSERVABILITY_LAST_UPDATED_AT: checkedAt,
       },
+      prependPathEntries: [binDir],
     });
 
     assert.equal(result.status, 0, `runtime validation failed: ${result.stderr}\n${result.stdout}`);

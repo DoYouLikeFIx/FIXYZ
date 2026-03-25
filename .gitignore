@@ -42,3 +42,4 @@ docs/ops/redis-recovery/**/*.json
 gradlew
 gradlew.bat
 *.sh
+!scripts/observability/validate-observability-stack.sh

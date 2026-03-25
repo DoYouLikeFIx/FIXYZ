@@ -24,7 +24,7 @@
     "lint:edge-gateway": "bash -n docker/nginx/scripts/*.sh",
     "lint:vault": "bash -n docker/vault/init/*.sh docker/vault/scripts/*.sh .github/scripts/vault/*.sh scripts/vault/*.sh",
     "lint:infra-bootstrap": "bash -n scripts/infra-bootstrap/*.sh",
-    "lint:observability": "bash -n scripts/observability/*.sh && node --check scripts/observability/*.mjs",
+    "lint:observability": "bash -n scripts/observability/*.sh && node --check scripts/observability/generate-monitoring-panels.mjs",
     "lint:db-ha": "bash -n docker/mysql/ha/scripts/*.sh",
     "lint:redis-recovery": "bash -n scripts/redis-recovery/*.sh",
     "prepare": "husky"
