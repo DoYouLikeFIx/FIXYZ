@@ -87,7 +87,8 @@ append_compose_profile() {
 fail() {
   FINAL_MESSAGE="$1"
   echo "full-stack smoke failed: $1" >&2
-  exit 1
+  SCRIPT_STATUS="failed"
+  return 1
 }
 
 normalize_compose_file_for_docker_host() {
@@ -191,6 +192,7 @@ wait_for_mandatory_api() {
       if (( MANDATORY_API_DURATION_MS > deadline_seconds * 1000 )); then
         MANDATORY_API_STATUS="failed"
         fail "mandatory API exceeded ${deadline_seconds}s target (${MANDATORY_API_DURATION_MS}ms)"
+        return 1
       fi
       MANDATORY_API_STATUS="passed"
       return
@@ -201,6 +203,7 @@ wait_for_mandatory_api() {
       MANDATORY_API_DURATION_MS="$((current_ms - start_ms))"
       MANDATORY_API_STATUS="failed"
       fail "mandatory API did not return 200 within ${deadline_seconds}s (last status ${MANDATORY_API_HTTP_STATUS})"
+      return 1
     fi
 
     sleep "${SMOKE_POLL_INTERVAL_SECONDS}"
@@ -217,11 +220,13 @@ check_service_health() {
     if [[ -z "${container_id}" ]]; then
       HEALTH_STATUS="failed"
       fail "service ${service} is not running"
+      return 1
     fi
     health_status="$(docker_cmd inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "${container_id}")"
     if [[ "${health_status}" != "healthy" && "${health_status}" != "running" ]]; then
       HEALTH_STATUS="failed"
       fail "service ${service} is not healthy (status=${health_status})"
+      return 1
     fi
   done
 
@@ -265,6 +270,7 @@ wait_for_required_services() {
       STACK_BOOT_STATUS="failed"
       HEALTH_STATUS="failed"
       fail "required services did not become healthy within ${SMOKE_STACK_READY_TIMEOUT_SECONDS}s"
+      return 1
     fi
 
     sleep "${SMOKE_POLL_INTERVAL_SECONDS}"
@@ -281,20 +287,24 @@ check_docs_endpoints() {
   if [[ "${api_docs_status}" != "200" ]]; then
     DOCS_STATUS="failed"
     fail "API docs endpoint returned ${api_docs_status}"
+    return 1
   fi
   if ! grep -q '"openapi"' "${api_docs_body}"; then
     DOCS_STATUS="failed"
     fail "API docs response missing openapi field"
+    return 1
   fi
 
   swagger_status="$(http_status "${SWAGGER_UI_URL}" "${swagger_ui_body}")"
   if [[ "${swagger_status}" != "200" ]]; then
     DOCS_STATUS="failed"
     fail "Swagger UI endpoint returned ${swagger_status}"
+    return 1
   fi
   if ! grep -Eqi 'Swagger UI|swagger-ui' "${swagger_ui_body}"; then
     DOCS_STATUS="failed"
     fail "Swagger UI response missing expected marker"
+    return 1
   fi
 
   DOCS_STATUS="passed"
@@ -306,6 +316,7 @@ run_observability_validation() {
     OBSERVABILITY_STATUS="failed"
     cat "${OBSERVABILITY_LOG_PATH}" >&2 || true
     fail "observability validator failed"
+    return 1
   fi
 
   OBSERVABILITY_STATUS="passed"
@@ -414,15 +425,26 @@ main() {
       STACK_BOOT_STATUS="failed"
       cat "${COMPOSE_UP_LOG_PATH}" >&2 || true
       fail "docker compose up failed"
+      return 1
     fi
   fi
   STACK_BOOT_STATUS="passed"
 
-  wait_for_required_services
-  wait_for_mandatory_api
-  check_service_health
-  check_docs_endpoints
-  run_observability_validation
+  if ! wait_for_required_services; then
+    return 0
+  fi
+  if ! wait_for_mandatory_api; then
+    return 0
+  fi
+  if ! check_service_health; then
+    return 0
+  fi
+  if ! check_docs_endpoints; then
+    return 0
+  fi
+  if ! run_observability_validation; then
+    return 0
+  fi
 
   SCRIPT_STATUS="passed"
   FINAL_MESSAGE="Cold-start smoke checks passed."

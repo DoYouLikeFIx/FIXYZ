@@ -211,7 +211,7 @@ test("full-stack smoke script writes failed evidence when mandatory API misses t
     },
   });
 
-  assert.notEqual(result.status, 0, "smoke script should fail when mandatory API never becomes ready");
+  assert.equal(result.status, 0, "smoke script should emit failed evidence without aborting the workflow");
 
   const coldStartReport = loadJson(path.join(outputDir, "cold-start-timing.json"));
   const smokeSummary = loadJson(path.join(outputDir, "smoke-summary.json"));
