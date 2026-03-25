@@ -14,6 +14,15 @@ const wait = (ms) => new Promise((resolve) => {
   setTimeout(resolve, ms);
 });
 
+const isRetryableOrderExecutionError = (error) => {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes('/execute returned 500')
+    && (
+      message.includes('Deadlock found when trying to get lock')
+      || message.includes('Lock wait timeout exceeded')
+    );
+};
+
 const shellQuote = (value) => `'${String(value).replace(/'/g, `'\"'\"'`)}'`;
 
 const unwrapEnvelope = (payload) => (
@@ -322,6 +331,8 @@ export const createProvisionedStory115DashboardAccount = async ({
   requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
   pollTimeoutMs = DEFAULT_POLL_TIMEOUT_MS,
   skipDashboardQuoteWait = false,
+  orderExecuteRetryCount = Number.parseInt(process.env.LIVE_ORDER_EXECUTE_RETRY_COUNT ?? '3', 10),
+  orderExecuteRetryDelayMs = Number.parseInt(process.env.LIVE_ORDER_EXECUTE_RETRY_DELAY_MS ?? '400', 10),
 } = {}) => {
   const identity = createLiveIdentity({
     prefix: emailPrefix,
@@ -462,21 +473,32 @@ export const createProvisionedStory115DashboardAccount = async ({
     throw new Error('Low-risk live order session bootstrap did not return orderSessionId.');
   }
 
-  csrf = await fetchLiveCsrf(cookieJar, baseUrl, requestTimeoutMs);
-  const executedSession = unwrapEnvelope(await fetchLiveJson(
-    cookieJar,
-    baseUrl,
-    `/api/v1/orders/sessions/${createdSession.orderSessionId}/execute`,
-    {
-      method: 'POST',
-      headers: {
-        [csrf.headerName]: csrf.csrfToken,
-        'Content-Type': 'application/json',
-      },
-      body: '{}',
-    },
-    requestTimeoutMs,
-  ));
+  let executedSession;
+  for (let attempt = 1; attempt <= orderExecuteRetryCount; attempt += 1) {
+    try {
+      csrf = await fetchLiveCsrf(cookieJar, baseUrl, requestTimeoutMs);
+      executedSession = unwrapEnvelope(await fetchLiveJson(
+        cookieJar,
+        baseUrl,
+        `/api/v1/orders/sessions/${createdSession.orderSessionId}/execute`,
+        {
+          method: 'POST',
+          headers: {
+            [csrf.headerName]: csrf.csrfToken,
+            'Content-Type': 'application/json',
+          },
+          body: '{}',
+        },
+        requestTimeoutMs,
+      ));
+      break;
+    } catch (error) {
+      if (attempt >= orderExecuteRetryCount || !isRetryableOrderExecutionError(error)) {
+        throw error;
+      }
+      await wait(orderExecuteRetryDelayMs * attempt);
+    }
+  }
 
   const dashboardData = skipDashboardQuoteWait
     ? null

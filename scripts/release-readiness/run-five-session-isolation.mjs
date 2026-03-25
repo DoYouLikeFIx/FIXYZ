@@ -24,6 +24,7 @@ const startedAt = new Date().toISOString();
 const outputDir = process.env.SESSION_ISOLATION_OUTPUT_DIR?.trim() || DEFAULT_OUTPUT_DIR;
 const summaryPath = path.join(outputDir, "session-isolation-summary.json");
 const requireDashboardReady = process.env.SESSION_ISOLATION_REQUIRE_DASHBOARD_READY === "1";
+const sessionStartStaggerMs = Number.parseInt(process.env.SESSION_ISOLATION_START_STAGGER_MS ?? "750", 10);
 
 function shortHash(value) {
   return createHash("sha256").update(String(value)).digest("hex").slice(0, 16);
@@ -182,6 +183,9 @@ async function main() {
 
     return (async () => {
       try {
+        if (sessionStartStaggerMs > 0) {
+          await new Promise((resolve) => setTimeout(resolve, sessionStartStaggerMs * zeroBasedIndex));
+        }
         const payload = await new Promise((resolve, reject) => {
           const timer = setTimeout(() => {
             reject(new Error(`Session ${index} exceeded ${sessionTimeoutMs}ms timeout.`));
