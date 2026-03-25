@@ -61,7 +61,20 @@ jobs:
           sudo install vault /usr/local/bin/vault
           vault -version
 
+      - name: Enter degraded mode when Vault is not configured
+        if: ${{ env.ACT || env.VAULT_ADDR == '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "VAULT_SECRET_MODE=degraded" >> "${GITHUB_ENV}"
+          if [[ -n "${ACT:-}" ]]; then
+            echo "[vault-gha] act runner detected; skipping Vault resolution"
+          else
+            echo "[vault-gha] VAULT_ADDR is not configured; skipping Vault resolution"
+          fi
+
       - name: Resolve INTERNAL_SECRET with protected Vault guardrails
+        if: ${{ !env.ACT && env.VAULT_ADDR != '' }}
         shell: bash
         env:
           VAULT_OIDC_AUDIENCE: ${{ vars.VAULT_OIDC_AUDIENCE || format('https://github.com/{0}', github.repository_owner) }}
