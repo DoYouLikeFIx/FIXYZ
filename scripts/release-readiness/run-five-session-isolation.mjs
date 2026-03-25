@@ -25,6 +25,7 @@ const outputDir = process.env.SESSION_ISOLATION_OUTPUT_DIR?.trim() || DEFAULT_OU
 const summaryPath = path.join(outputDir, "session-isolation-summary.json");
 const requireDashboardReady = process.env.SESSION_ISOLATION_REQUIRE_DASHBOARD_READY === "1";
 const sessionStartStaggerMs = Number.parseInt(process.env.SESSION_ISOLATION_START_STAGGER_MS ?? "750", 10);
+const sessionMaxConcurrency = Number.parseInt(process.env.SESSION_ISOLATION_MAX_CONCURRENCY ?? "1", 10);
 
 function shortHash(value) {
   return createHash("sha256").update(String(value)).digest("hex").slice(0, 16);
@@ -177,46 +178,64 @@ async function main() {
     throw new Error(`Invalid SESSION_ISOLATION_SESSION_COUNT: ${process.env.SESSION_ISOLATION_SESSION_COUNT ?? ""}`);
   }
 
-  const sessionTasks = Array.from({ length: sessionCount }, (_, zeroBasedIndex) => {
-    const index = zeroBasedIndex + 1;
+  if (!Number.isInteger(sessionMaxConcurrency) || sessionMaxConcurrency <= 0) {
+    throw new Error(`Invalid SESSION_ISOLATION_MAX_CONCURRENCY: ${process.env.SESSION_ISOLATION_MAX_CONCURRENCY ?? ""}`);
+  }
+
+  const runSession = async (index) => {
     const started = Date.now();
+    const zeroBasedIndex = index - 1;
 
-    return (async () => {
-      try {
-        if (sessionStartStaggerMs > 0) {
-          await new Promise((resolve) => setTimeout(resolve, sessionStartStaggerMs * zeroBasedIndex));
-        }
-        const payload = await new Promise((resolve, reject) => {
-          const timer = setTimeout(() => {
-            reject(new Error(`Session ${index} exceeded ${sessionTimeoutMs}ms timeout.`));
-          }, sessionTimeoutMs);
-
-          createProvisionedStory115DashboardAccount({
-            ...(baseUrl ? { baseUrl } : {}),
-            ...(password ? { password } : {}),
-            requestTimeoutMs,
-            pollTimeoutMs,
-            skipDashboardQuoteWait: !requireDashboardReady,
-            emailPrefix: `story10_4_session_${index}`,
-            namePrefix: `Story 10.4 Session ${index}`,
-          })
-            .then((value) => {
-              clearTimeout(timer);
-              resolve(value);
-            })
-            .catch((error) => {
-              clearTimeout(timer);
-              reject(error);
-            });
-        });
-        return finalizeSessionResult(index, Date.now() - started, payload, null);
-      } catch (error) {
-        return finalizeSessionResult(index, Date.now() - started, null, error);
+    try {
+      if (sessionMaxConcurrency > 1 && sessionStartStaggerMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, sessionStartStaggerMs * zeroBasedIndex));
       }
-    })();
-  });
+      const payload = await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          reject(new Error(`Session ${index} exceeded ${sessionTimeoutMs}ms timeout.`));
+        }, sessionTimeoutMs);
 
-  const sessionResults = await Promise.all(sessionTasks);
+        createProvisionedStory115DashboardAccount({
+          ...(baseUrl ? { baseUrl } : {}),
+          ...(password ? { password } : {}),
+          requestTimeoutMs,
+          pollTimeoutMs,
+          skipDashboardQuoteWait: !requireDashboardReady,
+          emailPrefix: `story10_4_session_${index}`,
+          namePrefix: `Story 10.4 Session ${index}`,
+        })
+          .then((value) => {
+            clearTimeout(timer);
+            resolve(value);
+          })
+          .catch((error) => {
+            clearTimeout(timer);
+            reject(error);
+          });
+      });
+      return finalizeSessionResult(index, Date.now() - started, payload, null);
+    } catch (error) {
+      return finalizeSessionResult(index, Date.now() - started, null, error);
+    }
+  };
+
+  const sessionResults = new Array(sessionCount);
+  const workerCount = Math.min(sessionCount, sessionMaxConcurrency);
+  let nextIndex = 1;
+
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (true) {
+      const index = nextIndex;
+      nextIndex += 1;
+
+      if (index > sessionCount) {
+        return;
+      }
+
+      sessionResults[index - 1] = await runSession(index);
+    }
+  }));
+
   const checks = buildChecks(sessionResults, sessionCount);
   const status = overallStatus(checks);
   const completedAt = new Date().toISOString();

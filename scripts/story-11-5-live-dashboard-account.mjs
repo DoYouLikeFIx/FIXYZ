@@ -331,8 +331,8 @@ export const createProvisionedStory115DashboardAccount = async ({
   requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
   pollTimeoutMs = DEFAULT_POLL_TIMEOUT_MS,
   skipDashboardQuoteWait = false,
-  orderExecuteRetryCount = Number.parseInt(process.env.LIVE_ORDER_EXECUTE_RETRY_COUNT ?? '3', 10),
-  orderExecuteRetryDelayMs = Number.parseInt(process.env.LIVE_ORDER_EXECUTE_RETRY_DELAY_MS ?? '400', 10),
+  orderExecuteRetryCount = Number.parseInt(process.env.LIVE_ORDER_EXECUTE_RETRY_COUNT ?? '5', 10),
+  orderExecuteRetryDelayMs = Number.parseInt(process.env.LIVE_ORDER_EXECUTE_RETRY_DELAY_MS ?? '750', 10),
 } = {}) => {
   const identity = createLiveIdentity({
     prefix: emailPrefix,
