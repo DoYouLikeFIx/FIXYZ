@@ -26,7 +26,7 @@
     "lint:vault": "bash -n docker/vault/init/*.sh docker/vault/scripts/*.sh .github/scripts/vault/*.sh scripts/vault/*.sh",
     "lint:infra-bootstrap": "bash -n scripts/infra-bootstrap/*.sh",
     "lint:observability": "bash -n scripts/observability/*.sh && node --check scripts/observability/generate-monitoring-panels.mjs",
-    "lint:release-readiness": "bash -n scripts/release-readiness/*.sh && node --check tests/release-readiness/full-stack-smoke-runtime.test.js",
+    "lint:release-readiness": "bash -n scripts/release-readiness/*.sh && node --check tests/release-readiness/full-stack-smoke-runtime.test.js && node --check tests/release-readiness/session-isolation-runtime.test.js && node --check scripts/release-readiness/run-five-session-isolation.mjs",
     "lint:db-ha": "bash -n docker/mysql/ha/scripts/*.sh",
     "lint:redis-recovery": "bash -n scripts/redis-recovery/*.sh",
     "prepare": "husky"
