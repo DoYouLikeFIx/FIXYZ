@@ -134,6 +134,8 @@ test("docs-publish workflow includes OIDC permissions and Vault JWT login flow",
 
   mustInclude(workflow, "id-token: write");
   mustInclude(workflow, "VAULT_ADDR");
+  mustInclude(workflow, "VAULT_SECRET_MODE=degraded");
+  mustInclude(workflow, "env.VAULT_ADDR == ''");
   mustInclude(workflow, "vault write -field=token auth/jwt/login");
   mustInclude(workflow, "role=ci-docs-publish");
 });

@@ -67,12 +67,11 @@ For the full operator checklist and recovery notes, continue with `docs/ops/vaul
 ## Protected GitHub Workflow Behavior
 
 1. Add the workflow path to `.github/vault-protected-workflows.txt`.
-2. Protected branches use `.github/scripts/vault/resolve-internal-secret.sh`.
-3. Protected flows fail closed when:
+2. Protected branches invoke `.github/scripts/vault/resolve-internal-secret.sh` when Vault is configured; workflows may explicitly enter documented degraded mode before invocation when the repository does not provide `VAULT_ADDR`.
+3. Protected flows fail closed once the resolver is invoked when:
    - the allowlist file is missing, empty, or contains a stale workflow path
    - an allowlisted workflow does not request `id-token: write` in the same job that invokes `.github/scripts/vault/resolve-internal-secret.sh`
    - the current workflow path is not allowlisted
-   - `VAULT_ADDR` is missing
    - `VAULT_ADDR` is not `https://`
    - `VAULT_CACERT` is missing or unreadable
    - GitHub OIDC request metadata is unavailable
