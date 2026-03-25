@@ -2911,8 +2911,8 @@ So that web deployment quality is auditable.
   **When** validated  
   **Then** versioned release notes are generated.
 - **Given** repository-facing release documentation  
-  **When** an interviewer or evaluator opens the README and local setup references  
-  **Then** the dual-audience demo paths, architecture diagram, Quick Start, CI badges, `## Architecture Decisions`, `## Environment Variables`, `application-local.yml.template` references, and OWASP-referenced audit/PII/session-security explanations are present and mutually consistent.
+  **When** an interviewer or evaluator opens `README.md` and the linked local setup references (`BE/README.md`, `FE/README.md`, `.env.example`, `FE/.env.example`, and `BE/application-local.yml.template`)  
+  **Then** the dual-audience demo paths, architecture diagram, Quick Start, CI badges, `## Architecture Decisions`, `## Environment Variables`, `BE/application-local.yml.template` guidance, and OWASP-referenced audit/PII/session-security explanations are present and mutually consistent, with `BE/application-local.yml.template` treated as the single reviewer-facing template source rather than per-service template copies.
 
 ### Story 10.6: [MOB] Mobile Release Readiness Pack
 
@@ -2922,20 +2922,22 @@ So that mobile deployment quality is auditable.
 
 **Depends On:** Story 9.6, Story 10.1, Story 10.4
 
+Implementation may begin in parallel once Story 9.6 is complete by targeting the stable CI/report contracts from Stories 10.1 and 10.4, but final release signoff still requires those upstream stories to be completed.
+
 **Acceptance Criteria:**
 
 - **Given** MOB E2E suite  
   **When** release pipeline runs  
-  **Then** critical flows pass on target test matrix.
+  **Then** critical auth/order/dashboard flows pass on the target release matrix (`ios-simulator/direct-maestro`, `live-backend-contract`, and `physical-device/edge-smoke`), with automated lanes passing in the pipeline and the approved-build physical-device lane linked from the checklist.
 - **Given** auth/order/notification regressions  
   **When** detected  
-  **Then** release gate fails.
+  **Then** release gate fails, with notification regressions explicitly traced to `notification-api` / `AuthenticatedHomeScreen` coverage and compact notification Maestro evidence instead of being inferred from auth/order-only scenarios.
 - **Given** release checklist template  
   **When** preparing distribution  
-  **Then** checklist and artifact links are completed.
+  **Then** `MOB/docs/release/mobile-readiness-checklist.md` and `MOB/docs/release/mobile-test-matrix.md` are completed with artifact links, including linked Story 10.1 CI evidence and Story 10.4 smoke/rehearsal evidence.
 - **Given** final build candidate  
   **When** approved  
-  **Then** release notes and handoff package are finalized.
+  **Then** versioned `MOB/docs/release/mobile-release-notes.md` and `MOB/docs/release/mobile-handoff-package.md` are finalized with build metadata, matrix-result summary, and linked evidence.
 
 ### Epic 10 Scenario Catalog (Release Gate View)
 

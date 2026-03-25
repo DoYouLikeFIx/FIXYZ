@@ -1550,7 +1550,7 @@ jobs:
 - **NFR-M3:** All public Controller-layer methods must have either Javadoc comments or springdoc-openapi `@Operation` annotations describing purpose, parameters, and response codes.
   _Measurement: Code review; Swagger UI displays description for every endpoint._
 
-- **NFR-M4:** No environment-specific values (DB URLs, Redis host, Redis password, service ports) may be hardcoded in source code. All must be externalized via `application.yml` profiles or environment variables. Required environment variables must be listed in a `## Environment Variables` README section with an `application-local.yml.template` file provided.
+- **NFR-M4:** No environment-specific values (DB URLs, Redis host, Redis password, service ports) may be hardcoded in source code. All must be externalized via `application.yml` profiles or environment variables. Required environment variables must be listed in a `## Environment Variables` README section with `BE/application-local.yml.template` provided as the single reviewer-facing backend local-profile template.
   _Measurement: `grep -r "localhost:3306\|localhost:6379" src/` returns 0 matches in non-test source._
 
 ### Scalability (Portfolio Scope)
